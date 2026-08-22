@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react'
 import { Button, Card, CopyButton, EmptyState, Field, Input, Modal, Pill, SectionTitle, Select, Textarea, cx, type Tone } from '../components/ui'
-import { IconLink, IconMegaphone, IconPlus, IconRefresh, IconTrash, IconWarn } from '../components/icons'
+import { IconDownload, IconGrid, IconLink, IconMegaphone, IconPlus, IconRefresh, IconTrash, IconWarn } from '../components/icons'
 import { bumpAd, createAdsForPortals, markAdPublished, patchAd, refreshAd, removeAd } from '../lib/actions'
 import { SCOPE_LABEL, adDrift, generateAd, limitsOf, portalOf } from '../lib/ads'
+import { collage, download, safeName, zip } from '../lib/bundle'
 import { catalogPageUrl } from '../lib/catalog'
 import { dateDE, eur, num, relativeDE } from '../lib/format'
-import { useStore } from '../lib/store'
+import { store, useStore } from '../lib/store'
 import { byMaker, isOpen } from '../lib/stats'
-import type { Ad, AdScope, AdScopeKind, AdStatus, Maker, Portal } from '../types'
+import type { Ad, AdScope, AdScopeKind, AdStatus, Maker, Portal, Tank } from '../types'
 
 const STATUS_TONE: Record<AdStatus, Tone> = { entwurf: 'neutral', online: 'green', offline: 'amber' }
 const STATUS_LABEL: Record<AdStatus, string> = { entwurf: 'Entwurf', online: 'Online', offline: 'Offline' }
@@ -313,6 +314,89 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
   )
 }
 
+/**
+ * Photos for one listing, ready to upload. The pictures sit in the private data
+ * repo — a buyer can never reach them by link, so they have to go onto the portal
+ * itself, where they cost nothing and where people actually look.
+ */
+function AdPhotos({ ad }: { ad: Ad }) {
+  const { db } = useStore()
+  const [busy, setBusy] = useState<'' | 'zip' | 'collage'>('')
+  const [error, setError] = useState<string | null>(null)
+
+  // Order follows the ad text, so the numbering matches what a reader sees.
+  const items = ad.tankIds
+    .map((id) => db.tanks.find((t) => t.id === id))
+    .filter((t): t is Tank => !!t)
+  const withPhoto = items.filter((t) => t.photos.length > 0)
+  const missing = items.length - withPhoto.length
+  const total = withPhoto.reduce((a, t) => a + t.photos.length, 0)
+
+  const nameOf = (t: Tank) => safeName(t.maker === 'Sonstige' ? t.type : `${t.maker}_${t.type}`)
+
+  async function run(kind: 'zip' | 'collage') {
+    setBusy(kind)
+    setError(null)
+    try {
+      if (kind === 'zip') {
+        const files: { name: string; blob: Blob }[] = []
+        let n = 0
+        for (const t of withPhoto) {
+          for (const [i, path] of t.photos.entries()) {
+            const url = await store.photoUrl(path)
+            if (!url) continue
+            n += 1
+            const blob = await (await fetch(url)).blob()
+            files.push({ name: `${String(n).padStart(2, '0')}_${nameOf(t)}${t.photos.length > 1 ? `_${i + 1}` : ''}.jpg`, blob })
+          }
+        }
+        if (files.length === 0) throw new Error('Keine Fotos zum Herunterladen.')
+        download(await zip(files), `${safeName(ad.title).slice(0, 40)}_Fotos.zip`)
+      } else {
+        // One photo per position — a collage of the same barrel twelve times helps nobody.
+        const entries = []
+        for (const t of withPhoto) {
+          const url = await store.photoUrl(t.photos[0])
+          if (url) entries.push({ url, caption: `${t.maker === 'Sonstige' ? t.type : `${t.maker} ${t.type}`}${t.litres > 0 ? ` · ${num(t.litres)} l` : ''}` })
+        }
+        download(await collage(entries), `${safeName(ad.title).slice(0, 40)}_Uebersicht.jpg`)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Hat nicht geklappt.')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-line bg-surface-2 p-3">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <span className="text-[13px] font-semibold text-muted">
+          Fotos · {total} {total === 1 ? 'Bild' : 'Bilder'} zu {withPhoto.length} von {items.length} Positionen
+        </span>
+        <span className="flex flex-wrap gap-2">
+          <Button size="sm" disabled={total === 0 || busy !== ''} onClick={() => void run('zip')}>
+            <IconDownload />{busy === 'zip' ? 'Packt …' : 'Alle Fotos (ZIP)'}
+          </Button>
+          <Button size="sm" disabled={withPhoto.length < 2 || busy !== ''} onClick={() => void run('collage')}>
+            <IconGrid />{busy === 'collage' ? 'Erzeugt …' : 'Übersichtsbild'}
+          </Button>
+        </span>
+      </div>
+      <p className="text-[13px] text-muted">
+        Die Bilder direkt beim Portal hochladen — dort sind sie kostenlos und werden angesehen. Als Link in den
+        Anzeigentext gehören sie nicht: Sie liegen im privaten Repository und wären für Käufer nicht erreichbar.
+      </p>
+      {missing > 0 && (
+        <p className="mt-1.5 text-[13px] font-semibold text-amber">
+          {missing} {missing === 1 ? 'Position hat' : 'Positionen haben'} noch kein Foto — im Bestand über „ohne Foto" zu finden.
+        </p>
+      )}
+      {error && <p className="mt-1.5 text-[13px] font-semibold text-rose">{error}</p>}
+    </div>
+  )
+}
+
 function AdModal({ id, onClose }: { id: string; onClose: () => void }) {
   const { db } = useStore()
   const ad = db.ads.find((a) => a.id === id)
@@ -346,6 +430,8 @@ function AdModal({ id, onClose }: { id: string; onClose: () => void }) {
           </div>
           <Textarea rows={14} value={ad.body} onChange={(e) => patchAd(ad.id, { body: e.target.value })} className="font-mono text-[13px]" />
         </div>
+
+        <AdPhotos ad={ad} />
 
         <div className="grid gap-3 sm:grid-cols-3">
           <div>
