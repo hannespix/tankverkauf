@@ -2,10 +2,10 @@ import { useMemo, useState } from 'react'
 import { PriceLadder, STATUS_FILL } from '../components/charts'
 import { Button, Card, EmptyState, Field, Input, Modal, Pill, Select, Textarea, cx, type Tone } from '../components/ui'
 import { IconFilter, IconPlus, IconSearch, IconTrash } from '../components/icons'
-import { addTank, createDeal, patchTank, removeTank, setTankOffer, setTankStatus } from '../lib/actions'
+import { addTank, createDeal, createQuote, patchTank, removeTank, setTankOffer, setTankStatus } from '../lib/actions'
 import { centsPerLitre, eur, num, todayISO } from '../lib/format'
 import { useStore } from '../lib/store'
-import { VERDICT_LABEL, judgeOffer, totals } from '../lib/stats'
+import { VERDICT_LABEL, judgeBundle, judgeOffer, totals } from '../lib/stats'
 import { STATUS_LABEL, type Maker, type Tank, type TankStatus } from '../types'
 
 const STATUSES: TankStatus[] = ['verfuegbar', 'kontakt', 'reserviert', 'verkauft']
@@ -31,6 +31,7 @@ export default function Tanks() {
   const [detail, setDetail] = useState<string | null>(null)
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [dealOpen, setDealOpen] = useState(false)
+  const [quoteOpen, setQuoteOpen] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
 
   const rows = useMemo(() => {
@@ -63,6 +64,8 @@ export default function Tanks() {
   }, [db, q, statusSel, makerSel, minL, maxL, withOffer, sort])
 
   const pickedTanks = db.tanks.filter((t) => picked.has(t.id))
+  // "Alle auswählen" applies to what the filter currently shows, minus what is already sold.
+  const selectable = rows.filter((t) => t.status !== 'verkauft')
   const pickedTotals = totals(pickedTanks)
   const active = statusSel.length + makerSel.length + (minL ? 1 : 0) + (maxL ? 1 : 0) + (withOffer ? 1 : 0)
   const shown = totals(rows)
@@ -117,13 +120,25 @@ export default function Tanks() {
         )}
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-4 py-2.5 text-[13px]">
-          <span className="text-muted">
-            <strong className="tnum text-ink">{rows.length}</strong> von {db.tanks.length} Tanks · <span className="tnum">{num(shown.litres)} l</span> · <span className="tnum">{eur(shown.vb)}</span> VB
+          <span className="flex flex-wrap items-center gap-2 text-muted">
+            <span>
+              <strong className="tnum text-ink">{rows.length}</strong> von {db.tanks.length} Tanks · <span className="tnum">{num(shown.litres)} l</span> · <span className="tnum">{eur(shown.vb)}</span> VB
+            </span>
+            {selectable.length > 0 && (
+              <Button size="sm" variant="ghost" onClick={() => setPicked(new Set(selectable.map((t) => t.id)))}>
+                Alle {selectable.length} auswählen
+              </Button>
+            )}
           </span>
           {picked.size > 0 && (
-            <span className="flex items-center gap-2">
-              <Pill tone="sky">{picked.size} ausgewählt · {num(pickedTotals.litres)} l · {eur(pickedTotals.vb)}</Pill>
-              {!readOnly && <Button size="sm" variant="primary" onClick={() => setDealOpen(true)}>Als Verkauf buchen</Button>}
+            <span className="flex flex-wrap items-center gap-2">
+              <Pill tone="sky">{picked.size} ausgewählt · {num(pickedTotals.litres)} l</Pill>
+              <span className="tnum">
+                VB <strong>{eur(pickedTotals.vb)}</strong> · Ziel <strong>{eur(pickedTotals.target)}</strong> ·{' '}
+                <span className="text-rose">Limit <strong>{eur(pickedTotals.floor)}</strong></span>
+              </span>
+              <Button size="sm" variant="primary" onClick={() => setQuoteOpen(true)}>Angebot erstellen</Button>
+              <Button size="sm" onClick={() => setDealOpen(true)}>Als Verkauf buchen</Button>
               <Button size="sm" variant="ghost" onClick={() => setPicked(new Set())}>Leeren</Button>
             </span>
           )}
@@ -244,6 +259,7 @@ export default function Tanks() {
 
       <TankDetail id={detail} onClose={() => setDetail(null)} readOnly={readOnly} />
       <DealModal open={dealOpen} onClose={() => { setDealOpen(false); setPicked(new Set()) }} tanks={pickedTanks} />
+      <QuoteModal open={quoteOpen} onClose={() => { setQuoteOpen(false); setPicked(new Set()) }} tanks={pickedTanks} />
       <AddTankModal open={addOpen} onClose={() => setAddOpen(false)} />
     </div>
   )
@@ -404,6 +420,97 @@ function AddTankModal({ open, onClose }: { open: boolean; onClose: () => void })
         <div className="flex justify-end gap-2 border-t border-line pt-4">
           <Button onClick={onClose}>Abbrechen</Button>
           <Button variant="primary" disabled={!l || !p} onClick={() => { addTank({ maker, type, litres: l, vb: p }); onClose(); setLitres(''); setVb('') }}>Hinzufügen</Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+/**
+ * The sales-call workflow: tanks are already picked, so the only open questions
+ * are what to ask for them and who is asking. Every price level stays visible
+ * while that number is being typed.
+ */
+function QuoteModal({ open, onClose, tanks }: { open: boolean; onClose: () => void; tanks: Tank[] }) {
+  const { db } = useStore()
+  const t = totals(tanks)
+  const [ask, setAsk] = useState('')
+  const [leadId, setLeadId] = useState('')
+  const [portalId, setPortalId] = useState('')
+  const [note, setNote] = useState('')
+
+  if (!open) return null
+  const value = Number(ask) || 0
+  const verdict = judgeBundle(t, value)
+  const makers = [...new Set(tanks.map((x) => x.maker))]
+  const label = makers.length === 1 ? `${makers[0]}-Paket · ${tanks.length} Tanks` : `Paket ${tanks.length} Tanks (${num(t.litres)} l)`
+
+  return (
+    <Modal open onClose={onClose} title="Angebot erstellen" wide>
+      <div className="space-y-4">
+        <div className="grid grid-cols-3 gap-2 text-center">
+          {([['Untergrenze', t.floor, 'text-rose'], ['Zielpreis', t.target, 'text-amber'], ['Summe VB', t.vb, '']] as const).map(([l, v, tone]) => (
+            <div key={l} className="rounded-xl bg-surface-2 p-3">
+              <div className="text-[11px] font-bold text-muted uppercase">{l}</div>
+              <div className={cx('tnum mt-0.5 font-extrabold', tone)}>{eur(v)}</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="rounded-xl bg-surface-2 p-3 text-[13px]">
+          <div className="font-bold">{tanks.length} Tanks · {num(t.litres)} l</div>
+          <ul className="mt-1.5 space-y-0.5 text-muted">
+            {tanks.map((x) => (
+              <li key={x.id}>{x.maker === 'Sonstige' ? x.type : `${x.maker} ${x.type}`} · {num(x.litres)} l · VB {eur(x.vb)} · Limit {eur(x.floor)}</li>
+            ))}
+          </ul>
+        </div>
+
+        <Field
+          label="Angebotspreis brutto gesamt"
+          hint={value > 0 && t.litres ? `${centsPerLitre(value, t.litres)} · ${eur(t.vb - value)} unter Einzel-VB` : 'Leer lassen und die Vorschläge unten nutzen.'}
+        >
+          <Input type="number" min={0} step={50} value={ask} onChange={(e) => setAsk(e.target.value)} placeholder={String(t.target)} className="tnum text-lg font-bold" autoFocus />
+        </Field>
+
+        <div className="flex flex-wrap gap-2">
+          {([['Untergrenze', t.floor], ['Zielpreis', t.target], ['Summe VB', t.vb]] as const).map(([l, v]) => (
+            <Button key={l} size="sm" onClick={() => setAsk(String(v))}>{l} · {eur(v)}</Button>
+          ))}
+        </div>
+
+        {value > 0 && (
+          <div>
+            <PriceLadder floor={t.floor} target={t.target} vb={t.vb} offer={value} format={eur} />
+            {verdict && (
+              <Pill tone={verdict === 'unter-limit' ? 'rose' : verdict === 'ok' ? 'amber' : 'green'}>{VERDICT_LABEL[verdict]}</Pill>
+            )}
+          </div>
+        )}
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Interessent">
+            <Select value={leadId} onChange={(e) => setLeadId(e.target.value)}>
+              <option value="">– keiner –</option>
+              {db.leads.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </Select>
+          </Field>
+          <Field label="Anfrage über">
+            <Select value={portalId} onChange={(e) => setPortalId(e.target.value)}>
+              <option value="">– unbekannt –</option>
+              {db.settings.portals.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </Select>
+          </Field>
+        </div>
+
+        <Field label="Notiz"><Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Was wurde besprochen, bis wann gilt es …" /></Field>
+
+        <div className="flex justify-end gap-2 border-t border-line pt-4">
+          <Button onClick={onClose}>Abbrechen</Button>
+          <Button variant="primary" disabled={value <= 0}
+            onClick={() => { createQuote({ label, tankIds: tanks.map((x) => x.id), askPrice: value, leadId: leadId || null, portalId: portalId || null, note }); onClose() }}>
+            Angebot speichern
+          </Button>
         </div>
       </div>
     </Modal>

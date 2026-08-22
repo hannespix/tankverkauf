@@ -1,4 +1,4 @@
-import type { Ad, AdScope, DB, Lead, Tank, TankStatus } from '../types'
+import type { Ad, AdScope, DB, Lead, Quote, Tank, TankStatus } from '../types'
 import { STATUS_LABEL } from '../types'
 import { generateAd, portalOf } from './ads'
 import { newId, store } from './store'
@@ -130,6 +130,104 @@ export function removeLead(lead: Lead) {
     },
     { kind: 'lead', text: `Interessent gelöscht: ${lead.name}` },
   )
+}
+
+// ------------------------------------------------------------------- quotes
+
+/** Turn a selection of tanks into an offer, keeping the price ladder intact. */
+export function createQuote(input: {
+  label: string
+  tankIds: string[]
+  askPrice: number
+  leadId: string | null
+  portalId: string | null
+  note: string
+}): string {
+  const id = newId('Q')
+  store.mutate(
+    (db) => {
+      db.quotes.unshift({
+        id,
+        label: input.label || 'Angebot',
+        leadId: input.leadId,
+        portalId: input.portalId,
+        tankIds: input.tankIds,
+        askPrice: input.askPrice,
+        buyerOffer: null,
+        status: 'entwurf',
+        validUntil: null,
+        note: input.note,
+        createdAt: now(),
+        updatedAt: now(),
+      })
+      // Tanks in an open offer are no longer simply "available".
+      for (const tid of input.tankIds) {
+        const t = db.tanks.find((x) => x.id === tid)
+        if (t && t.status === 'verfuegbar') {
+          t.status = 'kontakt'
+          t.leadId = input.leadId ?? t.leadId
+          t.updatedAt = now()
+        }
+      }
+      if (input.leadId) {
+        const l = db.leads.find((x) => x.id === input.leadId)
+        if (l && (l.stage === 'neu' || l.stage === 'kontakt')) l.stage = 'angebot'
+      }
+    },
+    { kind: 'deal', text: `Angebot erstellt: ${input.label} über ${input.askPrice} €` },
+  )
+  return id
+}
+
+export function patchQuote(id: string, patch: Partial<Quote>, label?: string) {
+  store.mutate(
+    (db) => {
+      const q = db.quotes.find((x) => x.id === id)
+      if (!q) return
+      Object.assign(q, patch, { updatedAt: now() })
+    },
+    label ? { kind: 'deal', text: label } : undefined,
+  )
+}
+
+export function removeQuote(id: string) {
+  store.mutate(
+    (db) => {
+      const q = db.quotes.find((x) => x.id === id)
+      if (!q) return
+      db.quotes = db.quotes.filter((x) => x.id !== id)
+      // Release tanks that no other open offer still claims.
+      for (const tid of q.tankIds) {
+        const stillOffered = db.quotes.some(
+          (o) => o.tankIds.includes(tid) && o.status !== 'abgelehnt',
+        )
+        const t = db.tanks.find((x) => x.id === tid)
+        if (t && !stillOffered && t.status === 'kontakt') {
+          t.status = 'verfuegbar'
+          t.updatedAt = now()
+        }
+      }
+    },
+    { kind: 'deal', text: 'Angebot gelöscht' },
+  )
+}
+
+/** Accepted offer becomes a booked sale at the price that was actually agreed. */
+export function quoteToDeal(quoteId: string): string | null {
+  const db = store.getSnapshot().db
+  const q = db.quotes.find((x) => x.id === quoteId)
+  if (!q) return null
+  const price = q.buyerOffer ?? q.askPrice
+  const dealId = createDeal({
+    label: q.label,
+    tankIds: q.tankIds,
+    price,
+    leadId: q.leadId,
+    date: new Date().toISOString().slice(0, 10),
+    note: q.note,
+  })
+  patchQuote(quoteId, { status: 'angenommen' }, `Angebot angenommen: ${q.label}`)
+  return dealId
 }
 
 // -------------------------------------------------------------------- deals

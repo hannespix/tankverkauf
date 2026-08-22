@@ -67,6 +67,7 @@ function migrate(raw: unknown): DB {
     updatedAt: db.updatedAt ?? new Date().toISOString(),
     tanks: db.tanks ?? clone(seed.tanks),
     leads: db.leads ?? [],
+    quotes: db.quotes ?? [],
     deals: db.deals ?? clone(seed.deals),
     ads,
     settings,
@@ -313,6 +314,7 @@ class TankStore {
     this.mutate((draft) => {
       draft.tanks = db.tanks
       draft.leads = db.leads
+      draft.quotes = db.quotes ?? []
       draft.deals = db.deals
       draft.ads = db.ads
       draft.settings = db.settings
