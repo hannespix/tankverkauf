@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Button, Card, Modal, cx } from './components/ui'
 import {
-  IconCloud, IconGauge, IconHandshake, IconLock, IconMegaphone, IconMoon,
-  IconSun, IconTank, IconUsers, IconWarn,
+  IconCloud, IconCog, IconGauge, IconHandshake, IconLock, IconMegaphone, IconMoon,
+  IconSpark, IconSun, IconTank, IconUsers, IconWarn,
 } from './components/icons'
 import { store, useStore } from './lib/store'
 import { dateTimeDE } from './lib/format'
 import Overview from './views/Overview'
+import Quotes from './views/Quotes'
 import Tanks from './views/Tanks'
 import Leads from './views/Leads'
 import Deals from './views/Deals'
@@ -14,16 +15,20 @@ import Ads from './views/Ads'
 import Settings from './views/Settings'
 import { Setup, Unlock } from './views/Unlock'
 
-export type View = 'overview' | 'tanks' | 'leads' | 'deals' | 'ads' | 'settings'
+export type View = 'overview' | 'tanks' | 'leads' | 'quotes' | 'deals' | 'ads' | 'settings'
 
 const NAV: { id: View; label: string; short: string; icon: React.ReactNode }[] = [
   { id: 'overview', label: 'Übersicht', short: 'Start', icon: <IconGauge /> },
   { id: 'tanks', label: 'Tanks', short: 'Tanks', icon: <IconTank /> },
   { id: 'leads', label: 'Interessenten', short: 'Leute', icon: <IconUsers /> },
+  { id: 'quotes', label: 'Angebote', short: 'Angebote', icon: <IconSpark /> },
   { id: 'deals', label: 'Verkäufe', short: 'Verkauf', icon: <IconHandshake /> },
   { id: 'ads', label: 'Anzeigen', short: 'Anzeigen', icon: <IconMegaphone /> },
   { id: 'settings', label: 'Einstellungen', short: 'Mehr', icon: <IconLock /> },
 ]
+
+/** Settings live in the phone header instead, to keep the tab bar readable. */
+const TABS = NAV.filter((n) => n.id !== 'settings')
 
 const THEME_KEY = 'tankverkauf.theme'
 
@@ -49,7 +54,7 @@ export default function App() {
   if (mode === 'setup') return <Setup />
   if (mode === 'locked') return <Unlock />
 
-  const Current = { overview: Overview, tanks: Tanks, leads: Leads, deals: Deals, ads: Ads, settings: Settings }[view]
+  const Current = { overview: Overview, tanks: Tanks, leads: Leads, quotes: Quotes, deals: Deals, ads: Ads, settings: Settings }[view]
 
   return (
     <div className="min-h-dvh lg:flex">
@@ -89,6 +94,11 @@ export default function App() {
           </div>
           <div className="flex items-center gap-1">
             <SyncBadge compact />
+            <button type="button" onClick={() => setView('settings')} aria-label="Einstellungen"
+              className={cx('flex h-9 w-9 items-center justify-center rounded-lg transition hover:bg-surface-3',
+                view === 'settings' ? 'text-primary' : 'text-muted hover:text-ink')}>
+              <IconCog />
+            </button>
             <button type="button" onClick={() => setDark(!dark)} aria-label="Design wechseln"
               className="flex h-9 w-9 items-center justify-center rounded-lg text-muted hover:bg-surface-3 hover:text-ink">
               {dark ? <IconSun /> : <IconMoon />}
@@ -110,7 +120,7 @@ export default function App() {
 
       {/* Mobile tab bar */}
       <nav className="no-print fixed inset-x-0 bottom-0 z-30 grid grid-cols-6 border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
-        {NAV.map((n) => (
+        {TABS.map((n) => (
           <button key={n.id} type="button" onClick={() => setView(n.id)}
             className={cx('flex min-w-0 flex-col items-center gap-0.5 px-0.5 py-2 transition', view === n.id ? 'text-primary' : 'text-muted')}>
             {n.icon}

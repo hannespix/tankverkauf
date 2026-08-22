@@ -98,3 +98,41 @@ export function progress(db: DB) {
     countPct: all.count ? sold.count / all.count : 0,
   }
 }
+
+/** Everything a quote is worth, measured against the tanks it bundles. */
+export interface QuoteMetrics extends Totals {
+  askPrice: number
+  buyerOffer: number | null
+  /** Discount of the asking price against the sum of individual VB. */
+  discount: number
+  discountPct: number
+  /** How the decisive number compares to the sum of the floors. */
+  verdict: OfferVerdict
+  /** The number to judge: the buyer's offer if there is one, otherwise our ask. */
+  decisive: number
+}
+
+export function quoteMetrics(db: DB, tankIds: string[], askPrice: number, buyerOffer: number | null): QuoteMetrics {
+  const tanks = tankIds.map((id) => db.tanks.find((t) => t.id === id)).filter((t): t is Tank => Boolean(t))
+  const base = totals(tanks)
+  const decisive = buyerOffer ?? askPrice
+  const discount = base.vb - askPrice
+  return {
+    ...base,
+    askPrice,
+    buyerOffer,
+    discount,
+    discountPct: base.vb ? discount / base.vb : 0,
+    decisive,
+    verdict: judgeBundle(base, decisive),
+  }
+}
+
+/** Same ladder as a single tank, but against the summed prices of the bundle. */
+export function judgeBundle(base: Totals, price: number): OfferVerdict {
+  if (!price || price <= 0) return null
+  if (price >= base.vb) return 'ueber-vb'
+  if (price >= base.target) return 'gut'
+  if (price >= base.floor) return 'ok'
+  return 'unter-limit'
+}

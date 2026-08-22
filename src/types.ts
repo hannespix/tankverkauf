@@ -60,6 +60,27 @@ export interface Deal {
   note: string
 }
 
+/** A bundle offered to one interested party, before it becomes a sale. */
+export type QuoteStatus = 'entwurf' | 'gesendet' | 'verhandlung' | 'angenommen' | 'abgelehnt'
+
+export interface Quote {
+  id: string
+  label: string
+  leadId: string | null
+  /** Where the enquiry came from. */
+  portalId: string | null
+  tankIds: string[]
+  /** What we are asking for the bundle, brutto. */
+  askPrice: number
+  /** What the buyer put on the table, brutto. */
+  buyerOffer: number | null
+  status: QuoteStatus
+  validUntil: string | null
+  note: string
+  createdAt: string
+  updatedAt: string
+}
+
 export type AdScopeKind = 'paket' | 'maker' | 'tank' | 'restposten' | 'custom'
 
 export interface AdScope {
@@ -143,6 +164,7 @@ export interface DB {
   updatedAt: string
   tanks: Tank[]
   leads: Lead[]
+  quotes: Quote[]
   deals: Deal[]
   ads: Ad[]
   settings: Settings
@@ -154,6 +176,14 @@ export const STATUS_LABEL: Record<TankStatus, string> = {
   kontakt: 'Im Kontakt',
   reserviert: 'Reserviert',
   verkauft: 'Verkauft',
+}
+
+export const QUOTE_STATUS_LABEL: Record<QuoteStatus, string> = {
+  entwurf: 'Entwurf',
+  gesendet: 'Gesendet',
+  verhandlung: 'In Verhandlung',
+  angenommen: 'Angenommen',
+  abgelehnt: 'Abgelehnt',
 }
 
 export const STAGE_LABEL: Record<LeadStage, string> = {

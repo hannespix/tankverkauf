@@ -182,7 +182,7 @@ export function PriceLadder({
   ]
 
   return (
-    <div className={cx('w-full', compact ? 'pt-1 pb-4' : 'pt-2 pb-6')}>
+    <div className={cx('w-full', compact ? 'pt-1 pb-5' : 'pt-2 pb-11')}>
       <div className="relative h-1.5 rounded-full bg-c-track">
         {/* Acceptable band: floor → VB */}
         <div
@@ -203,7 +203,7 @@ export function PriceLadder({
                 offer >= target ? 'bg-c-verfuegbar' : offer >= floor ? 'bg-c-kontakt' : 'bg-rose',
               )}
             />
-            <span className="tnum mt-1 text-[10px] font-extrabold whitespace-nowrap">{format(offer)}</span>
+            <span className={cx('tnum text-[10px] font-extrabold whitespace-nowrap', compact ? 'mt-1' : 'mt-6')}>{format(offer)}</span>
           </div>
         )}
       </div>

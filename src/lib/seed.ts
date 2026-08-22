@@ -37,6 +37,7 @@ export const SEED: DB = {
   updatedAt: '2026-01-15T09:00:00.000Z',
   tanks: TANKS,
   leads: [],
+  quotes: [],
   deals: [
     {
       id: 'D-01',
