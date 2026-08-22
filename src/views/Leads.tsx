@@ -245,7 +245,7 @@ function ParseModal({ onClose }: { onClose: () => void }) {
     <Modal open onClose={onClose} title="Anfrage übernehmen" wide>
       <div className="space-y-4">
         <p className="text-sm text-muted">
-          Kopier die Nachricht aus Kleinanzeigen hier hinein. Name, Telefonnummer, E-Mail und der gefragte Tank werden erkannt — du prüfst nur noch nach.
+          Kopier die Nachricht aus Kleinanzeigen hier hinein. Name, Telefonnummer, E-Mail und die gefragte Position werden erkannt — du prüfst nur noch nach.
         </p>
         <Textarea rows={7} value={text} onChange={(e) => { setText(e.target.value); setAttachBroad(false); setAi(null); setAiError(null) }} autoFocus
           placeholder={'Hallo,\nist der Raumspar-Koffertank 1650 l noch zu haben? Ich würde ihn nächste Woche abholen.\nTel. 0176 12345678\nViele Grüße\nMax Mustermann'} />

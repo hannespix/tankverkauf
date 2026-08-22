@@ -204,7 +204,7 @@ export default function Tanks() {
       </Card>
 
       {rows.length === 0 ? (
-        <Card><EmptyState title="Keine Tanks gefunden" hint="Suche oder Filter anpassen." /></Card>
+        <Card><EmptyState title="Keine Positionen gefunden" hint="Suche oder Filter anpassen." /></Card>
       ) : (
         <>
           {/* Desktop table */}
