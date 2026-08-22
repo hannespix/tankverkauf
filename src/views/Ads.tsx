@@ -1,0 +1,276 @@
+import { useMemo, useState } from 'react'
+import { Button, Card, CopyButton, EmptyState, Field, Input, Modal, Pill, SectionTitle, Select, Textarea, cx, type Tone } from '../components/ui'
+import { IconLink, IconMegaphone, IconPlus, IconRefresh, IconTrash, IconWarn } from '../components/icons'
+import { bumpAd, createAd, markAdPublished, patchAd, refreshAd, removeAd } from '../lib/actions'
+import { LIMITS, SCOPE_LABEL, adDrift, generateAd } from '../lib/ads'
+import { dateDE, eur, num, relativeDE } from '../lib/format'
+import { useStore } from '../lib/store'
+import { byMaker, isOpen } from '../lib/stats'
+import type { Ad, AdScope, AdScopeKind, AdStatus, Maker } from '../types'
+
+const POST_URL = 'https://www.kleinanzeigen.de/p-anzeige-aufgeben.html'
+const STATUS_TONE: Record<AdStatus, Tone> = { entwurf: 'neutral', online: 'green', offline: 'amber' }
+const STATUS_LABEL: Record<AdStatus, string> = { entwurf: 'Entwurf', online: 'Online', offline: 'Offline' }
+
+export default function Ads() {
+  const { db } = useStore()
+  const readOnly = false
+  const [creating, setCreating] = useState(false)
+  const [openId, setOpenId] = useState<string | null>(null)
+
+  const online = db.ads.filter((a) => a.status === 'online')
+  const stale = online.filter((a) => adDrift(db, a).stale)
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <SectionTitle
+          title="Anzeigen"
+          hint="Der Text wird immer aus dem aktuellen Bestand erzeugt. Verkaufst du einen Tank, meldet sich die betroffene Anzeige."
+          action={!readOnly && <Button variant="primary" onClick={() => setCreating(true)}><IconPlus />Anzeige erstellen</Button>}
+        />
+
+        <div className="rounded-xl border border-line bg-surface-2 p-3.5 text-[13px] leading-relaxed text-muted">
+          <strong className="text-ink">Warum kein Auto-Upload?</strong> Kleinanzeigen bietet privaten Verkäufern keine
+          offizielle Schnittstelle an — Anzeigen lassen sich nur über die Website einstellen. Deshalb macht dieses Tool den
+          Weg so kurz wie möglich: Text erzeugen, drei Felder einzeln kopieren, im Formular einfügen. Fertig.
+        </div>
+
+        {stale.length > 0 && (
+          <div className="mt-3 flex items-start gap-2.5 rounded-xl border border-amber/50 bg-amber-soft/50 p-3 text-sm">
+            <IconWarn className="mt-0.5 shrink-0 text-amber" />
+            <span>
+              <strong>{stale.length} Anzeige{stale.length > 1 ? 'n' : ''} nicht mehr aktuell.</strong> Der Bestand hat sich
+              geändert, seit der Text zuletzt erzeugt wurde.
+            </span>
+          </div>
+        )}
+
+        {db.ads.length === 0 && (
+          <EmptyState
+            title="Noch keine Anzeige angelegt"
+            hint="Erzeug eine Komplettpaket-Anzeige, eine pro Hersteller oder für einen einzelnen Tank."
+            action={!readOnly && <Button variant="primary" onClick={() => setCreating(true)}><IconMegaphone />Erste Anzeige</Button>}
+          />
+        )}
+      </Card>
+
+      <div className="space-y-3">
+        {db.ads.map((ad) => {
+          const drift = adDrift(db, ad)
+          const bumpDays = ad.bumpedAt ? Math.floor((Date.now() - new Date(ad.bumpedAt).getTime()) / 86_400_000) : null
+          const needsBump = ad.status === 'online' && bumpDays !== null && bumpDays >= db.settings.ad.bumpAfterDays
+          return (
+            <Card key={ad.id}>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Pill tone={STATUS_TONE[ad.status]}>{STATUS_LABEL[ad.status]}</Pill>
+                    <Pill tone="neutral">{SCOPE_LABEL[ad.scope.kind]}</Pill>
+                    {drift.stale && <Pill tone="amber"><IconWarn className="h-3 w-3" />Text veraltet</Pill>}
+                    {needsBump && <Pill tone="sky">seit {bumpDays} Tagen nicht hochgeholt</Pill>}
+                  </div>
+                  <h3 className="mt-2 font-bold">{ad.title || <span className="text-faint">ohne Titel</span>}</h3>
+                  <p className="tnum mt-0.5 text-[13px] text-muted">
+                    {eur(ad.price)} {ad.priceType} · {ad.tankIds.length} Tank{ad.tankIds.length === 1 ? '' : 's'}
+                    {ad.publishedAt && ` · online seit ${dateDE(ad.publishedAt)}`}
+                    {ad.bumpedAt && ` · hochgeholt ${relativeDE(ad.bumpedAt)}`}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {ad.url && (
+                    <a href={ad.url} target="_blank" rel="noreferrer noopener"
+                      className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-line bg-surface-2 px-3.5 text-sm font-semibold transition hover:bg-surface-3">
+                      <IconLink />Anzeige öffnen
+                    </a>
+                  )}
+                  <Button variant="primary" onClick={() => setOpenId(ad.id)}>Text & Aktionen</Button>
+                </div>
+              </div>
+
+              {drift.stale && (
+                <div className="mt-3 rounded-xl border border-amber/40 bg-amber-soft/40 p-3 text-[13px]">
+                  <strong>Seit dem letzten Erzeugen geändert:</strong>
+                  <ul className="mt-1 list-inside list-disc space-y-0.5 text-muted">
+                    {drift.soldSince.length > 0 && (
+                      <li>{drift.soldSince.length} beworbene{drift.soldSince.length === 1 ? 'r Tank ist' : ' Tanks sind'} inzwischen verkauft
+                        {' '}({drift.soldSince.map((t) => `${t.maker} ${num(t.litres)} l`).join(', ')})</li>
+                    )}
+                    {drift.countThen !== drift.countNow && <li>Anzahl im Angebot: {drift.countThen} → {drift.countNow}</li>}
+                    {drift.priceChanged && <li>Preis: {eur(drift.priceChanged.from)} → {eur(drift.priceChanged.to)}</li>}
+                  </ul>
+                  {!readOnly && (
+                    <Button size="sm" variant="primary" className="mt-2.5" onClick={() => refreshAd(ad.id)}>
+                      <IconRefresh />Text neu erzeugen
+                    </Button>
+                  )}
+                </div>
+              )}
+            </Card>
+          )
+        })}
+      </div>
+
+      {creating && <CreateModal onClose={() => setCreating(false)} onCreated={(id) => { setCreating(false); setOpenId(id) }} />}
+      {openId && <AdModal id={openId} onClose={() => setOpenId(null)} readOnly={readOnly} />}
+    </div>
+  )
+}
+
+function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
+  const { db } = useStore()
+  const [kind, setKind] = useState<AdScopeKind>('paket')
+  const [maker, setMaker] = useState<Maker>(byMaker(db.tanks.filter(isOpen))[0]?.maker ?? 'Möschle')
+  const [tankId, setTankId] = useState(db.tanks.find(isOpen)?.id ?? '')
+
+  const scope: AdScope = kind === 'maker' ? { kind, maker } : kind === 'tank' ? { kind, tankId } : { kind }
+  const preview = useMemo(() => generateAd(db, scope), [db, scope])
+
+  return (
+    <Modal open onClose={onClose} title="Anzeige erstellen" wide>
+      <div className="space-y-4">
+        <Field label="Was soll beworben werden?">
+          <Select value={kind} onChange={(e) => setKind(e.target.value as AdScopeKind)}>
+            <option value="paket">Komplettpaket — alle verfügbaren Tanks</option>
+            <option value="maker">Hersteller-Bundle — alle Tanks einer Marke</option>
+            <option value="tank">Einzelner Tank</option>
+            <option value="restposten">Restposten — Kurzfassung</option>
+          </Select>
+        </Field>
+
+        {kind === 'maker' && (
+          <Field label="Hersteller">
+            <Select value={maker} onChange={(e) => setMaker(e.target.value as Maker)}>
+              {byMaker(db.tanks.filter(isOpen)).map((g) => (
+                <option key={g.maker} value={g.maker}>{g.maker} ({g.tanks.length} Tanks)</option>
+              ))}
+            </Select>
+          </Field>
+        )}
+
+        {kind === 'tank' && (
+          <Field label="Tank">
+            <Select value={tankId} onChange={(e) => setTankId(e.target.value)}>
+              {db.tanks.filter(isOpen).map((t) => (
+                <option key={t.id} value={t.id}>{t.maker === 'Sonstige' ? t.type : `${t.maker} ${t.type}`} · {num(t.litres)} l · {eur(t.vb)}</option>
+              ))}
+            </Select>
+          </Field>
+        )}
+
+        <div className="rounded-xl border border-line bg-surface-2 p-3">
+          <div className="text-[11px] font-bold text-muted uppercase">Vorschau</div>
+          <div className="mt-1 font-bold">{preview.title}</div>
+          <pre className="mt-2 max-h-52 overflow-y-auto text-[13px] leading-relaxed whitespace-pre-wrap text-muted">{preview.body}</pre>
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-line pt-4">
+          <Button onClick={onClose}>Abbrechen</Button>
+          <Button variant="primary" onClick={() => onCreated(createAd(db, scope))}>Anzeige anlegen</Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+function AdModal({ id, onClose, readOnly }: { id: string; onClose: () => void; readOnly: boolean }) {
+  const { db } = useStore()
+  const ad = db.ads.find((a) => a.id === id)
+  if (!ad) return null
+  const drift = adDrift(db, ad)
+
+  return (
+    <Modal open onClose={onClose} title="Anzeigentext" wide>
+      <div className="space-y-4">
+        {drift.stale && !readOnly && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber/50 bg-amber-soft/50 p-3 text-sm">
+            <span><strong>Der Bestand hat sich geändert.</strong> Text neu erzeugen?</span>
+            <Button size="sm" variant="primary" onClick={() => refreshAd(ad.id)}><IconRefresh />Aktualisieren</Button>
+          </div>
+        )}
+
+        <FieldWithCopy
+          label="Titel" value={ad.title} limit={LIMITS.title} readOnly={readOnly}
+          onChange={(v) => patchAd(ad.id, { title: v })}
+        />
+
+        <div>
+          <div className="mb-1 flex items-end justify-between">
+            <span className="text-[13px] font-semibold text-muted">Beschreibung</span>
+            <span className="flex items-center gap-2">
+              <Counter value={ad.body.length} limit={LIMITS.body} />
+              <CopyButton text={ad.body} />
+            </span>
+          </div>
+          <Textarea rows={14} value={ad.body} readOnly={readOnly} onChange={(e) => patchAd(ad.id, { body: e.target.value })} className="font-mono text-[13px]" />
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div>
+            <div className="mb-1 flex items-end justify-between">
+              <span className="text-[13px] font-semibold text-muted">Preis</span>
+              <CopyButton text={String(ad.price)} label="€" />
+            </div>
+            <Input type="number" className="tnum font-bold" value={ad.price} readOnly={readOnly} onChange={(e) => patchAd(ad.id, { price: Number(e.target.value) || 0 })} />
+          </div>
+          <Field label="Preistyp">
+            <Select value={ad.priceType} disabled={readOnly} onChange={(e) => patchAd(ad.id, { priceType: e.target.value as Ad['priceType'] })}>
+              <option value="VB">VB (Verhandlungsbasis)</option>
+              <option value="Festpreis">Festpreis</option>
+            </Select>
+          </Field>
+          <Field label="Status">
+            <Select value={ad.status} disabled={readOnly} onChange={(e) => patchAd(ad.id, { status: e.target.value as AdStatus }, `Anzeige: ${STATUS_LABEL[e.target.value as AdStatus]}`)}>
+              {(['entwurf', 'online', 'offline'] as AdStatus[]).map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
+            </Select>
+          </Field>
+        </div>
+
+        <Field label="Link zur Anzeige" hint="Nach dem Einstellen die URL hier einfügen — dann kommst du mit einem Klick zum Bearbeiten.">
+          <Input value={ad.url} readOnly={readOnly} onChange={(e) => patchAd(ad.id, { url: e.target.value })} placeholder="https://www.kleinanzeigen.de/s-anzeige/…" inputMode="url" />
+        </Field>
+
+        {!readOnly && (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-4">
+            <Button variant="danger" onClick={() => { if (confirm('Anzeige löschen?')) { removeAd(ad.id); onClose() } }}><IconTrash />Löschen</Button>
+            <div className="flex flex-wrap gap-2">
+              <a href={POST_URL} target="_blank" rel="noreferrer noopener"
+                className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-line bg-surface-2 px-3.5 text-sm font-semibold transition hover:bg-surface-3">
+                <IconLink />Kleinanzeigen öffnen
+              </a>
+              {ad.status === 'online' ? (
+                <Button onClick={() => bumpAd(ad.id)}><IconRefresh />Hochgeholt</Button>
+              ) : (
+                <Button variant="primary" onClick={() => markAdPublished(ad.id)}>Als online markieren</Button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </Modal>
+  )
+}
+
+function FieldWithCopy({ label, value, limit, readOnly, onChange }: { label: string; value: string; limit: number; readOnly: boolean; onChange: (v: string) => void }) {
+  return (
+    <div>
+      <div className="mb-1 flex items-end justify-between">
+        <span className="text-[13px] font-semibold text-muted">{label}</span>
+        <span className="flex items-center gap-2">
+          <Counter value={value.length} limit={limit} />
+          <CopyButton text={value} />
+        </span>
+      </div>
+      <Input value={value} readOnly={readOnly} onChange={(e) => onChange(e.target.value)} className="font-semibold" />
+    </div>
+  )
+}
+
+function Counter({ value, limit }: { value: number; limit: number }) {
+  const over = value > limit
+  return (
+    <span className={cx('tnum text-xs font-bold', over ? 'text-rose' : value > limit * 0.9 ? 'text-amber' : 'text-faint')}>
+      {value}/{limit}
+    </span>
+  )
+}

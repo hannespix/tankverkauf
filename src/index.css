@@ -1,0 +1,141 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Steel and cellar: a cool neutral base with a forest-green primary and brass accents. */
+:root {
+  --bg: #f4f7f4;
+  --bg-grad: radial-gradient(1200px 600px at 15% -10%, #e3ede5 0%, transparent 60%);
+  --surface: #ffffff;
+  --surface-2: #f8faf8;
+  --surface-3: #eef3ef;
+  --border: #dde5df;
+  --border-strong: #c6d2c9;
+  --text: #0f1714;
+  --muted: #5d6b63;
+  --faint: #8a978f;
+  --primary: #15803d;
+  --primary-soft: #dcf5e4;
+  --primary-text: #ffffff;
+  --amber: #c2410c;
+  --amber-soft: #fdeee6;
+  --rose: #be123c;
+  --rose-soft: #ffe4e9;
+  --sky: #1d4ed8;
+  --sky-soft: #e4eaff;
+  --shadow: 0 1px 2px rgb(15 23 20 / 0.05), 0 8px 24px -12px rgb(15 23 20 / 0.12);
+
+  /* Chart fills — validated with the dataviz palette checker against #ffffff.
+     Status is a reserved palette: it always ships with a direct label, never colour alone. */
+  --c-verfuegbar: #047857;
+  --c-kontakt: #c2410c;
+  --c-reserviert: #1d4ed8;
+  --c-verkauft: #9aa8a1;
+  --c-series: #047857;
+  --c-track: #e7ede9;
+}
+
+.dark {
+  --bg: #080c0a;
+  --bg-grad: radial-gradient(1200px 600px at 15% -10%, #12211a 0%, transparent 60%);
+  --surface: #101714;
+  --surface-2: #151e1a;
+  --surface-3: #1b2621;
+  --border: #223029;
+  --border-strong: #31443a;
+  --text: #e9f1eb;
+  --muted: #93a69a;
+  --faint: #6d8176;
+  --primary: #34d399;
+  --primary-soft: #10291f;
+  --primary-text: #04140c;
+  --amber: #e8a33d;
+  --amber-soft: #2b1f11;
+  --rose: #fb7185;
+  --rose-soft: #2c1219;
+  --sky: #5cb3ec;
+  --sky-soft: #0e2233;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 12px 32px -16px rgb(0 0 0 / 0.7);
+
+  /* Re-stepped for the dark surface #101714 — not an automatic flip. */
+  --c-verfuegbar: #0d9c6e;
+  --c-kontakt: #c98209;
+  --c-reserviert: #1f8fce;
+  --c-verkauft: #55665d;
+  --c-series: #0d9c6e;
+  --c-track: #1d2823;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+  --color-ink: var(--text);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-primary: var(--primary);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-text: var(--primary-text);
+  --color-amber: var(--amber);
+  --color-amber-soft: var(--amber-soft);
+  --color-rose: var(--rose);
+  --color-rose-soft: var(--rose-soft);
+  --color-sky: var(--sky);
+  --color-sky-soft: var(--sky-soft);
+  --color-c-verfuegbar: var(--c-verfuegbar);
+  --color-c-kontakt: var(--c-kontakt);
+  --color-c-reserviert: var(--c-reserviert);
+  --color-c-verkauft: var(--c-verkauft);
+  --color-c-series: var(--c-series);
+  --color-c-track: var(--c-track);
+  --font-sans: 'Inter var', 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --shadow-card: var(--shadow);
+}
+
+html {
+  color-scheme: light;
+  -webkit-text-size-adjust: 100%;
+}
+html.dark { color-scheme: dark; }
+
+body {
+  margin: 0;
+  background-color: var(--bg);
+  background-image: var(--bg-grad);
+  background-attachment: fixed;
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: 'cv11', 'ss01';
+}
+
+/* Numbers must line up in tables — every figure column uses this. */
+.tnum { font-variant-numeric: tabular-nums; }
+
+::selection { background: var(--primary); color: var(--primary-text); }
+
+* { scrollbar-color: var(--border-strong) transparent; scrollbar-width: thin; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; border: 3px solid transparent; background-clip: content-box; }
+*::-webkit-scrollbar-track { background: transparent; }
+
+input, select, textarea, button { font: inherit; color: inherit; }
+
+/* iOS zooms in on focus for anything under 16px. */
+@media (max-width: 700px) {
+  input, select, textarea { font-size: 16px !important; }
+}
+
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.animate-rise { animation: rise 0.24s cubic-bezier(0.2, 0.7, 0.3, 1) both; }
+
+@keyframes pulse-ring { 0% { opacity: 0.7; transform: scale(0.9); } 70% { opacity: 0; transform: scale(1.6); } 100% { opacity: 0; } }
+.animate-ring { animation: pulse-ring 1.8s ease-out infinite; }
+
+@media print {
+  .no-print { display: none !important; }
+  body { background: #fff; }
+}

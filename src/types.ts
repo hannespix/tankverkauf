@@ -1,0 +1,156 @@
+/** Domain model for the Tankverkauf dashboard. Everything is stored brutto (incl. VAT). */
+
+export type TankStatus = 'verfuegbar' | 'kontakt' | 'reserviert' | 'verkauft'
+export type Maker = 'Speidel' | 'Möschle' | 'Clemens' | 'Sonstige'
+
+export interface Tank {
+  id: string
+  maker: Maker
+  /** Edelstahltank, Transporttank, Immervolltank … */
+  type: string
+  litres: number
+  /** Verhandlungsbasis brutto — the public asking price. */
+  vb: number
+  /** Zielpreis brutto — what we realistically want. */
+  target: number
+  /** Untergrenze brutto — never go below without a deliberate decision. */
+  floor: number
+  status: TankStatus
+  leadId: string | null
+  dealId: string | null
+  /** Current offer on the table, brutto. */
+  offer: number | null
+  pickup: string | null
+  note: string
+  tags: string[]
+  updatedAt: string
+}
+
+export type LeadStage = 'neu' | 'kontakt' | 'angebot' | 'reserviert' | 'gewonnen' | 'verloren'
+export type LeadSource = 'kleinanzeigen' | 'telefon' | 'email' | 'empfehlung' | 'vorort' | 'sonstige'
+
+export interface Lead {
+  id: string
+  name: string
+  phone: string
+  email: string
+  location: string
+  source: LeadSource
+  stage: LeadStage
+  /** Tanks this lead is interested in. */
+  tankIds: string[]
+  budget: number | null
+  lastContact: string | null
+  nextFollowUp: string | null
+  note: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Deal {
+  id: string
+  label: string
+  leadId: string | null
+  tankIds: string[]
+  /** Total brutto for the whole bundle. */
+  price: number
+  date: string
+  paid: boolean
+  pickedUp: boolean
+  note: string
+}
+
+export type AdScopeKind = 'paket' | 'maker' | 'tank' | 'restposten' | 'custom'
+
+export interface AdScope {
+  kind: AdScopeKind
+  maker?: Maker
+  tankId?: string
+}
+
+export type AdStatus = 'entwurf' | 'online' | 'offline'
+
+export interface Ad {
+  id: string
+  title: string
+  body: string
+  price: number
+  priceType: 'VB' | 'Festpreis'
+  url: string
+  scope: AdScope
+  /** Tanks covered by the ad at the time it was last published. */
+  tankIds: string[]
+  status: AdStatus
+  publishedAt: string | null
+  bumpedAt: string | null
+  views: number | null
+  /** Fingerprint of the inventory the published text was generated from. */
+  stamp: string
+  note: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Settings {
+  vatRate: number
+  packagePrice: number
+  packageTarget: number
+  packageFloor: number
+  seller: {
+    name: string
+    location: string
+    plz: string
+    contact: string
+    pickupInfo: string
+  }
+  ad: {
+    signature: string
+    /** Remind me to bump an ad after this many days online. */
+    bumpAfterDays: number
+  }
+}
+
+export type ActivityKind = 'tank' | 'lead' | 'deal' | 'ad' | 'sync' | 'settings'
+
+export interface Activity {
+  id: string
+  at: string
+  kind: ActivityKind
+  text: string
+}
+
+export interface DB {
+  schema: number
+  updatedAt: string
+  tanks: Tank[]
+  leads: Lead[]
+  deals: Deal[]
+  ads: Ad[]
+  settings: Settings
+  activity: Activity[]
+}
+
+export const STATUS_LABEL: Record<TankStatus, string> = {
+  verfuegbar: 'Verfügbar',
+  kontakt: 'Im Kontakt',
+  reserviert: 'Reserviert',
+  verkauft: 'Verkauft',
+}
+
+export const STAGE_LABEL: Record<LeadStage, string> = {
+  neu: 'Neu',
+  kontakt: 'Kontakt',
+  angebot: 'Angebot',
+  reserviert: 'Reserviert',
+  gewonnen: 'Gewonnen',
+  verloren: 'Verloren',
+}
+
+export const SOURCE_LABEL: Record<LeadSource, string> = {
+  kleinanzeigen: 'Kleinanzeigen',
+  telefon: 'Telefon',
+  email: 'E-Mail',
+  empfehlung: 'Empfehlung',
+  vorort: 'Vor Ort',
+  sonstige: 'Sonstige',
+}
