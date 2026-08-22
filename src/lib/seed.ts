@@ -140,7 +140,7 @@ export const SEED: DB = {
       owner: '',
       repo: 'tankverkauf',
       branch: 'main',
-      path: 'katalog/katalog.json',
+      path: 'public/katalog/katalog.json',
       intro: 'Wegen Betriebsaufgabe geben wir unsere komplette Kellerausstattung ab. Markieren Sie, was für Sie infrage kommt, und schicken Sie uns Ihr Angebot.',
     },
     ad: {

@@ -69,6 +69,11 @@ function migrate(raw: unknown): DB {
   }
   // The catalogue almost always lives under the same account as the data repo,
   // and an empty owner silently disables publishing — so fill it in.
+  // The first version wrote to the repo root, which GitHub Pages never serves —
+  // only what the build copies into dist/ ends up online.
+  if (settings.catalog?.path === 'katalog/katalog.json') {
+    settings.catalog = { ...settings.catalog, path: 'public/katalog/katalog.json' }
+  }
   if (!settings.catalog?.owner) {
     settings.catalog = { ...clone(seed.settings.catalog), ...(settings.catalog ?? {}), owner: loadConfig().owner }
   }
