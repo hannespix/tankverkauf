@@ -134,7 +134,7 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
         {!key && (
           <p className="rounded-xl border border-amber/50 bg-amber-soft/50 p-3 text-[13px]">
             <strong className="text-amber">Kein API-Schlüssel hinterlegt.</strong> Ohne den kann die Nachricht nicht
-            gelesen werden — einzutragen in den Einstellungen unter „Nachrichten mit KI lesen".
+            gelesen werden — einzutragen in den Einstellungen unter „Nachrichten mit KI lesen“.
           </p>
         )}
 

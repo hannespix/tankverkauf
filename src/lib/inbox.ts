@@ -150,7 +150,7 @@ export function checkProposals(raw: RawProposal[], text: string, db: DB): { prop
     }
     const short = quote.replace(/\s+/g, ' ').slice(0, 40).toLowerCase()
     if (short.length > 12 && !hay.replace(/\s+/g, ' ').includes(short)) {
-      dropped.push(`${p.kind}: das Zitat „${quote.slice(0, 40)}…" steht so nicht in der Nachricht`)
+      dropped.push(`${p.kind}: das Zitat „${quote.slice(0, 40)}…“ steht so nicht in der Nachricht`)
       continue
     }
 
@@ -219,7 +219,7 @@ export function checkProposals(raw: RawProposal[], text: string, db: DB): { prop
         }
         const stage = p.stage as Lead['stage']
         if (!['kontakt', 'angebot', 'verloren'].includes(stage)) {
-          dropped.push(`Phase „${p.stage}" darf nicht aus einer Nachricht kommen`)
+          dropped.push(`Phase „${p.stage}“ darf nicht aus einer Nachricht kommen`)
           continue
         }
         base.stage = stage
@@ -260,7 +260,7 @@ export function checkProposals(raw: RawProposal[], text: string, db: DB): { prop
           base.pick = { count, what, from }
           base.tankIds = []
           base.title = `${count} × ${what} anhängen`
-          base.effect = `Aus ${from.length} gleichen Positionen werden die ${count} niedrigsten freien genommen. Sie stehen danach auf „im Kontakt" und sind für andere Käufer weg.`
+          base.effect = `Aus ${from.length} gleichen Positionen werden die ${count} niedrigsten freien genommen. Sie stehen danach auf „im Kontakt“ und sind für andere Käufer weg.`
           base.proven = false
           base.warning = 'Die Nachricht nennt keine bestimmte Nummer — bitte nachsehen, ob die Anzahl stimmt.'
         } else if (good.length === 0) {
@@ -270,7 +270,7 @@ export function checkProposals(raw: RawProposal[], text: string, db: DB): { prop
           base.tankIds = good.map((t) => t.id)
           const held = good.filter((t) => t.leadId && t.leadId !== base.leadId)
           base.title = `${good.length === 1 ? itemLabel(good[0]) : `${good.length} Positionen`} anhängen`
-          base.effect = 'Sie stehen danach auf „im Kontakt" und sind für andere Käufer weg.'
+          base.effect = 'Sie stehen danach auf „im Kontakt“ und sind für andere Käufer weg.'
           if (held.length > 0) {
             base.warning = `${held.map((t) => t.id).join(', ')} ${held.length === 1 ? 'hängt' : 'hängen'} schon bei jemand anderem.`
           }
@@ -348,12 +348,12 @@ export function checkProposals(raw: RawProposal[], text: string, db: DB): { prop
 function publicEffect(db: DB, tanks: Tank[]): string {
   const ids = new Set(tanks.map((t) => t.id))
   const hit = db.settings.bundles.filter((b) => b.active && [...b.ids, ...b.giftIds].some((id) => ids.has(id)))
-  const parts = ['Käufer sehen „reserviert". Sichtbar in etwa einer Minute.']
+  const parts = ['Käufer sehen „reserviert“. Sichtbar in etwa einer Minute.']
   for (const b of hit) {
     const left = b.ids.filter((id) => !ids.has(id)).length
     parts.push(left < Math.max(1, b.minItems)
-      ? `Das Paket „${b.label}" verschwindet dadurch von der Käuferseite.`
-      : `Das Paket „${b.label}" wird kleiner und der Preis rechnet sich neu.`)
+      ? `Das Paket „${b.label}“ verschwindet dadurch von der Käuferseite.`
+      : `Das Paket „${b.label}“ wird kleiner und der Preis rechnet sich neu.`)
   }
   return parts.join(' ')
 }
@@ -363,7 +363,7 @@ export function askFor(db: DB, tankIds: string[]): number {
   return totals(db.tanks.filter((t) => tankIds.includes(t.id))).vb
 }
 
-/** Aus „4 × Barriquefass" werden die vier niedrigsten freien Nummern. */
+/** Aus „4 × Barriquefass“ werden die vier niedrigsten freien Nummern. */
 export function resolvePick(db: DB, pick: NonNullable<Proposal['pick']>): string[] {
   return db.tanks
     .filter((t) => pick.from.includes(t.id) && isOpen(t) && !t.leadId)

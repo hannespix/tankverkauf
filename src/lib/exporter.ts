@@ -261,7 +261,7 @@ export async function importXlsx(file: File): Promise<ImportResult> {
     const floor = cFloor === -1 ? Math.round(vb * 0.72) : toNum(row[cFloor]) || Math.round(vb * 0.72)
     const { maker, type, dropped } = splitMaker(label)
     if (dropped && !warnings.some((w) => w.includes(dropped))) {
-      warnings.push(`„${dropped}" aus der Datei wurde nicht übernommen — an diesen Tanks ist kein Typenschild. Sie kommen als „Sonstige" herein.`)
+      warnings.push(`„${dropped}“ aus der Datei wurde nicht übernommen — an diesen Tanks ist kein Typenschild. Sie kommen als „Sonstige“ herein.`)
     }
 
     if (cTarget === -1 || cFloor === -1) {

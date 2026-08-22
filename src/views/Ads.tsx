@@ -81,7 +81,7 @@ export default function Ads() {
             <span className="min-w-0 flex-1">
               <strong>{uncovered.count} Positionen stehen in keiner Anzeige:</strong>{' '}
               {uncovered.categories.map((c) => `${c.n} × ${c.label}`).join(', ')}. Das Komplettpaket nimmt nur Kategorien,
-              die in den Einstellungen als Paketbestandteil markiert sind. Der Zuschnitt „Gesamtanzeige" nimmt alles auf
+              die in den Einstellungen als Paketbestandteil markiert sind. Der Zuschnitt „Gesamtanzeige“ nimmt alles auf
               einmal — sonst braucht es je Kategorie eine eigene Anzeige.
             </span>
             <Button size="sm" onClick={() => setCreating(true)}><IconPlus />Anzeige dafür</Button>
@@ -461,7 +461,7 @@ function AdPhotos({ ad }: { ad: Ad }) {
       </p>
       {missing > 0 && (
         <p className="mt-1.5 text-[13px] font-semibold text-amber">
-          {missing} {missing === 1 ? 'Position hat' : 'Positionen haben'} noch kein Foto — im Bestand über „ohne Foto" zu finden.
+          {missing} {missing === 1 ? 'Position hat' : 'Positionen haben'} noch kein Foto — im Bestand über „ohne Foto“ zu finden.
         </p>
       )}
       {error && <p className="mt-1.5 text-[13px] font-semibold text-rose">{error}</p>}

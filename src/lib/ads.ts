@@ -180,7 +180,7 @@ function pickupBlock(db: DB, withPlace = true): string {
 
 /**
  * Der Fingerabdruck deckt den fertigen Text ab, nicht nur Positionen und Preise.
- * Vorher blieb „Text veraltet" aus, sobald sich etwas änderte, das zwar im Text
+ * Vorher blieb „Text veraltet“ aus, sobald sich etwas änderte, das zwar im Text
  * steht, aber nicht in der Positionsliste — ein umbenannter Hersteller etwa, und
  * genau das steht bei den 29 Dekofässern noch an.
  */
@@ -275,7 +275,7 @@ function buildAd(db: DB, scope: AdScope, portal: Portal | null): GeneratedAd {
         const hi = Math.max(...prices)
         // Fällt der Preis aus den Zeilen, wandert er als Spanne in die Überschrift.
         // Eine Anzeige ohne jede Preisangabe bekommt keine ernsthafte Anfrage.
-        // „1 Stück · 390 € je Stück" — „je Stück" gehört nur dorthin, wo es von
+        // „1 Stück · 390 € je Stück“ — „je Stück“ gehört nur dorthin, wo es von
         // mehreren wirklich eines meint.
         const span = withPrice ? '' : ` · ${lo === hi ? eur(lo) : `${num(lo)}–${eur(hi)}`}${list.length > 1 ? ' je Stück' : ''}`
         out.push(`${catName(cat).toUpperCase()} — ${list.length} Stück${withVolume && tt.litres > 0 ? `, ${num(tt.litres)} l` : ''}${span}`)
@@ -312,7 +312,7 @@ function buildAd(db: DB, scope: AdScope, portal: Portal | null): GeneratedAd {
     // hier "Edelstahltanks, Dekofässer, Kellertechnik" — sobald eine Gattung
     // ausverkauft ist, wäre das eine Einladung unter falschen Angaben.
     const catList = [...byCat.keys()].map(catName).join(', ')
-    // „1 Positionen" — dieselbe Regel wie bei „je" in den Aufzählungszeilen.
+    // „1 Positionen“ — dieselbe Regel wie bei „je“ in den Aufzählungszeilen.
     const posWord = t.count === 1 ? 'Position' : 'Positionen'
     const titles = [
       // Ohne Gattungen bliebe ein hängender Doppelpunkt stehen — der Fall tritt

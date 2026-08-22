@@ -1,6 +1,6 @@
 import { StrictMode, useEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { Button, Card, EmptyState, Input, Textarea, cx } from './components/ui'
+import { Button, Card, EmptyState, Input, Modal, Textarea, cx } from './components/ui'
 import { IconCheck, IconClose, IconSearch, IconSun, IconMoon } from './components/icons'
 import { dims as fmtDims, eur, num } from './lib/format'
 import { OFFER_MARK, PACKAGE_MARK, REQUEST_MARK } from './lib/ads'
@@ -69,6 +69,7 @@ function App() {
   // steht der Käufer vor 58 Zeilen und sucht, was er gerade angeklickt hat.
   const [onlyBundle, setOnlyBundle] = useState<string | null>(null)
   const [lightbox, setLightbox] = useState<{ photos: string[]; index: number; title: string } | null>(null)
+  const [privacy, setPrivacy] = useState(false)
   const auswahl = useRef<HTMLDivElement>(null)
   const liste = useRef<HTMLDivElement>(null)
 
@@ -668,10 +669,45 @@ function idRanges(ids: string[]): string {
         </div>
       )}
 
-      <p className={cx('text-center text-xs text-faint', chosen.length > 0 ? 'pb-28' : 'pb-8')}>
-        Stand: {new Date(catalog.updatedAt).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })} ·
-        {' '}Zwischenverkauf vorbehalten
-      </p>
+      <footer className={cx('space-y-2 text-center text-xs text-faint', chosen.length > 0 ? 'pb-28' : 'pb-8')}>
+        <p>
+          Stand: {new Date(catalog.updatedAt).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })} ·
+          {' '}Zwischenverkauf vorbehalten
+        </p>
+        {/*
+          Der Katalog bietet gewerblich Ware an — damit ist er ein geschäftsmäßiger
+          Dienst nach § 5 DDG und braucht ein Impressum, das leicht erkennbar und
+          ständig verfügbar ist. Der Verweis auf das bestehende Impressum genügt;
+          er muss aber wörtlich "Impressum" heißen, sonst findet ihn niemand.
+        */}
+        <p className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+          {catalog.imprintUrl && (
+            <a href={catalog.imprintUrl} target="_blank" rel="noreferrer noopener" className="underline underline-offset-2 hover:text-ink">
+              Impressum
+            </a>
+          )}
+          {catalog.privacy && (
+            <button type="button" onClick={() => setPrivacy(true)} className="underline underline-offset-2 hover:text-ink">
+              Datenschutz
+            </button>
+          )}
+        </p>
+      </footer>
+
+      {privacy && catalog.privacy && (
+        <Modal open onClose={() => setPrivacy(false)} title="Datenschutz">
+          <div className="space-y-3 p-5 text-[13px] leading-relaxed text-muted">
+            {catalog.privacy.split('\n').filter(Boolean).map((para, i) => <p key={i}>{para}</p>)}
+            {catalog.imprintUrl && (
+              <p>
+                <a href={catalog.imprintUrl} target="_blank" rel="noreferrer noopener" className="font-semibold text-ink underline underline-offset-2">
+                  Zum Impressum
+                </a>
+              </p>
+            )}
+          </div>
+        </Modal>
+      )}
     </Shell>
   )
 }
