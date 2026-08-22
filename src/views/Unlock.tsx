@@ -37,7 +37,7 @@ export function Unlock() {
           <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-soft text-primary">
             <IconLock className="h-7 w-7" />
           </div>
-          <h1 className="text-xl font-extrabold tracking-tight">Tankverkauf entsperren</h1>
+          <h1 className="text-xl font-extrabold tracking-tight">Werkzeug entsperren</h1>
           <p className="mt-1 text-sm text-muted">Gib deine PIN ein, um auf die Daten zuzugreifen.</p>
         </div>
 
@@ -113,7 +113,7 @@ export function Setup() {
           <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-soft text-primary">
             <IconTank className="h-7 w-7" />
           </div>
-          <h1 className="text-xl font-extrabold tracking-tight">Tankverkauf einrichten</h1>
+          <h1 className="text-xl font-extrabold tracking-tight">Werkzeug einrichten</h1>
           <p className="mt-1 text-sm text-muted">Einmal pro Gerät. Dauert zwei Minuten.</p>
         </div>
 

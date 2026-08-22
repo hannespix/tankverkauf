@@ -19,7 +19,7 @@ export type View = 'overview' | 'tanks' | 'leads' | 'quotes' | 'deals' | 'ads' |
 
 const NAV: { id: View; label: string; short: string; icon: React.ReactNode }[] = [
   { id: 'overview', label: 'Übersicht', short: 'Start', icon: <IconGauge /> },
-  { id: 'tanks', label: 'Tanks', short: 'Tanks', icon: <IconTank /> },
+  { id: 'tanks', label: 'Bestand', short: 'Bestand', icon: <IconTank /> },
   { id: 'leads', label: 'Interessenten', short: 'Leute', icon: <IconUsers /> },
   { id: 'quotes', label: 'Angebote', short: 'Angebote', icon: <IconSpark /> },
   { id: 'deals', label: 'Verkäufe', short: 'Verkauf', icon: <IconHandshake /> },
@@ -46,9 +46,14 @@ function useTheme() {
 }
 
 export default function App() {
-  const { mode } = useStore()
+  const { mode, db } = useStore()
   const [view, setView] = useState<View>('overview')
   const [dark, setDark] = useTheme()
+
+  // The tab title is written into index.html at build time and would otherwise
+  // keep saying "Tankverkauf" whatever the setting says.
+  const title = db.settings.appName || 'Betriebsauflösung'
+  useEffect(() => { document.title = db.settings.seller.name ? `${title} · ${db.settings.seller.name}` : title }, [title, db.settings.seller.name])
 
   if (mode === 'boot') return <Booting />
   if (mode === 'setup') return <Setup />
@@ -63,8 +68,8 @@ export default function App() {
         <div className="flex items-center gap-2.5 px-2 py-3">
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-text"><IconTank /></span>
           <div className="leading-tight">
-            <div className="text-sm font-extrabold tracking-tight">Tankverkauf</div>
-            <div className="text-[11px] text-muted">Weingut Pix</div>
+            <div className="text-sm font-extrabold tracking-tight">{db.settings.appName || 'Betriebsauflösung'}</div>
+            {db.settings.seller.name && <div className="text-[11px] text-muted">{db.settings.seller.name}</div>}
           </div>
         </div>
         <nav className="mt-2 flex flex-col gap-0.5">
@@ -142,7 +147,7 @@ function Booting() {
           <IconTank />
           <span className="animate-ring absolute inset-0 rounded-xl border-2 border-primary" />
         </span>
-        <span className="text-sm font-semibold">Tankverkauf wird geladen …</span>
+        <span className="text-sm font-semibold">Wird geladen …</span>
       </div>
     </div>
   )
@@ -189,7 +194,7 @@ function ConflictDialog() {
             gearbeitet. Beide Stände lassen sich nicht automatisch zusammenführen.
           </p>
           <p className="mt-2 text-[13px] text-muted">
-            Stand auf GitHub: {dateTimeDE(conflict.remote.updatedAt)} · {conflict.remote.tanks.length} Tanks,
+            Stand auf GitHub: {dateTimeDE(conflict.remote.updatedAt)} · {conflict.remote.tanks.length} Positionen,
             {' '}{conflict.remote.leads.length} Interessenten, {conflict.remote.deals.length} Verkäufe.
           </p>
         </Card>

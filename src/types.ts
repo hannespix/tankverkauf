@@ -165,6 +165,8 @@ export interface Ad {
 }
 
 export interface Settings {
+  /** Name of the whole thing, shown in the header and the browser tab. */
+  appName: string
   vatRate: number
   categories: CategoryDef[]
   portals: Portal[]

@@ -3,6 +3,9 @@ import { STATUS_LABEL, STAGE_LABEL, SOURCE_LABEL } from '../types'
 import { netOf, vatOf } from './format'
 import { isOpen, progress, totals } from './stats'
 
+/** Export files carry the configured name, not a hardcoded one. */
+const fileBase = (db: DB) => (db.settings.appName || 'Bestand').replace(/[^\wÄÖÜäöüß-]+/g, '_')
+
 const fileStamp = () => new Date().toISOString().slice(0, 10)
 
 function round2(n: number) {
@@ -141,7 +144,7 @@ export async function exportXlsx(db: DB): Promise<void> {
   add('Interessenten', leadRows(db))
   add('Verkäufe', dealRows(db))
   add('Übersicht', summaryRows(db))
-  XLSX.writeFile(wb, `Tankverkauf_${fileStamp()}.xlsx`)
+  XLSX.writeFile(wb, `${fileBase(db)}_${fileStamp()}.xlsx`)
 }
 
 export function exportCsv(db: DB): void {
@@ -153,7 +156,7 @@ export function exportCsv(db: DB): void {
       headers.join(';'),
       ...rows.map((r) => headers.map((h) => `"${String((r as Record<string, unknown>)[h] ?? '').replace(/"/g, '""')}"`).join(';')),
     ].join('\r\n')
-  download(new Blob([csv], { type: 'text/csv;charset=utf-8' }), `Tankverkauf_${fileStamp()}.csv`)
+  download(new Blob([csv], { type: 'text/csv;charset=utf-8' }), `${fileBase(db)}_${fileStamp()}.csv`)
 }
 
 export function exportJson(db: DB): void {

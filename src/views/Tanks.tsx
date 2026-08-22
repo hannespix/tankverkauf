@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import { PriceLadder, STATUS_FILL } from '../components/charts'
-import { PhotoStrip } from '../components/PhotoStrip'
+import { MiniPhoto, PhotoStrip } from '../components/PhotoStrip'
 import { LeadPicker } from '../components/LeadPicker'
 import { TagEditor } from '../components/TagEditor'
 import { Button, Card, EmptyState, Field, Input, Modal, Pill, Select, Textarea, cx, type Tone } from '../components/ui'
@@ -32,6 +32,7 @@ export default function Tanks() {
   const [minL, setMinL] = useState('')
   const [maxL, setMaxL] = useState('')
   const [withOffer, setWithOffer] = useState(false)
+  const [photoSel, setPhotoSel] = useState<'' | 'mit' | 'ohne'>('')
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'id', dir: 1 })
   const [showFilters, setShowFilters] = useState(false)
   const [detail, setDetail] = useState<string | null>(null)
@@ -55,6 +56,8 @@ export default function Tanks() {
       if (leadSel === '__none' ? t.leadId : leadSel && t.leadId !== leadSel) return false
       if (t.litres < lo || t.litres > hi) return false
       if (withOffer && !(t.offer && t.offer > 0)) return false
+      if (photoSel === 'mit' && t.photos.length === 0) return false
+      if (photoSel === 'ohne' && t.photos.length > 0) return false
       if (!needle) return true
       const lead = db.leads.find((l) => l.id === t.leadId)?.name ?? ''
       return [t.id, t.maker, t.type, String(t.litres), t.note, lead].some((v) => v.toLowerCase().includes(needle))
@@ -77,7 +80,7 @@ export default function Tanks() {
       const x = val(a), y = val(b)
       return (x < y ? -1 : x > y ? 1 : 0) * sort.dir
     })
-  }, [db, q, catSel, statusSel, makerSel, typeSel, leadSel, minL, maxL, withOffer, sort])
+  }, [db, q, catSel, statusSel, makerSel, typeSel, leadSel, minL, maxL, withOffer, photoSel, sort])
 
   const pickedTanks = db.tanks.filter((t) => picked.has(t.id))
   // "Alle auswählen" applies to what the filter currently shows, minus what is already sold.
@@ -92,7 +95,7 @@ export default function Tanks() {
   const onlyCat = kinds.size === 1 ? db.settings.categories.find((c) => c.id === [...kinds][0]) : null
   const noun = onlyCat?.label ?? 'Positionen'
   const totalNoun = new Set(db.tanks.map((t) => t.category)).size > 1 ? 'Positionen' : noun
-  const active = catSel.length + statusSel.length + makerSel.length + typeSel.length + (leadSel ? 1 : 0) + (minL ? 1 : 0) + (maxL ? 1 : 0) + (withOffer ? 1 : 0)
+  const active = catSel.length + statusSel.length + makerSel.length + typeSel.length + (leadSel ? 1 : 0) + (minL ? 1 : 0) + (maxL ? 1 : 0) + (withOffer ? 1 : 0) + (photoSel ? 1 : 0)
   const shown = totals(rows)
 
   const toggle = <T,>(arr: T[], v: T, set: (a: T[]) => void) => set(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v])
@@ -110,7 +113,7 @@ export default function Tanks() {
         <div className="flex flex-wrap items-center gap-2 p-3">
           <div className="relative min-w-[200px] flex-1">
             <IconSearch className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-faint" />
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tank, Interessent, Notiz …" className="pl-9" />
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Position, Interessent, Notiz …" className="pl-9" />
           </div>
           <Button variant={showFilters || active ? 'primary' : 'default'} onClick={() => setShowFilters((v) => !v)}>
             <IconFilter />
@@ -145,8 +148,24 @@ export default function Tanks() {
                 <input type="checkbox" checked={withOffer} onChange={(e) => setWithOffer(e.target.checked)} className="h-4 w-4 accent-[var(--primary)]" />
                 nur mit Gebot
               </label>
+              {/* Finding what still needs photographing is the point — "ohne" comes first. */}
+              <span className="flex min-h-11 items-center gap-1.5">
+                {([['', 'Foto egal'], ['ohne', 'ohne Foto'], ['mit', 'mit Foto']] as const).map(([v, label]) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setPhotoSel(v)}
+                    className={cx(
+                      'rounded-full border px-3 py-1.5 text-sm font-semibold transition',
+                      photoSel === v ? 'border-primary bg-primary text-primary-text' : 'border-line hover:border-line-strong',
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </span>
               {active > 0 && (
-                <Button variant="ghost" onClick={() => { setCatSel([]); setStatusSel([]); setMakerSel([]); setTypeSel([]); setLeadSel(''); setMinL(''); setMaxL(''); setWithOffer(false) }}>
+                <Button variant="ghost" onClick={() => { setCatSel([]); setStatusSel([]); setMakerSel([]); setTypeSel([]); setLeadSel(''); setMinL(''); setMaxL(''); setWithOffer(false); setPhotoSel('') }}>
                   Zurücksetzen
                 </Button>
               )}
@@ -205,7 +224,8 @@ export default function Tanks() {
                         className="h-4 w-4 accent-[var(--primary)]"
                       />
                     </th>
-                    {head('id', '#', 'w-14')}
+                    <th className="w-10 px-2.5 py-2 text-left text-[11px] font-bold tracking-wide uppercase">Foto</th>
+                    {head('id', '#', 'w-16 whitespace-nowrap')}
                     {head('maker', 'Hersteller')}
                     {head('type', 'Typ')}
                     {head('litres', 'Liter', 'text-right')}
@@ -228,7 +248,17 @@ export default function Tanks() {
                             onChange={(e) => setPicked((p) => { const n = new Set(p); e.target.checked ? n.add(t.id) : n.delete(t.id); return n })}
                             className="h-4 w-4 accent-[var(--primary)] disabled:opacity-30" aria-label={`${t.id} auswählen`} />
                         </td>
-                        <td className="tnum px-2.5 py-1.5 text-xs text-faint">{t.id}</td>
+                        <td className="px-2.5 py-1.5">
+                          {t.photos.length > 0 ? (
+                            <button type="button" onClick={() => setDetail(t.id)} className="block" aria-label="Fotos ansehen">
+                              <MiniPhoto path={t.photos[0]} className="h-8 w-8" />
+                            </button>
+                          ) : (
+                            /* An empty box says "no picture here" more plainly than a blank cell. */
+                            <span className="block h-8 w-8 rounded-md border border-dashed border-line-strong" title="kein Foto" />
+                          )}
+                        </td>
+                        <td className="tnum px-2.5 py-1.5 text-xs whitespace-nowrap text-faint">{t.id}</td>
                         <td className="px-2.5 py-1.5">
                           <button type="button" onClick={() => setDetail(t.id)} className="text-left font-semibold whitespace-nowrap hover:text-primary hover:underline">
                             {t.maker}
@@ -276,11 +306,16 @@ export default function Tanks() {
               return (
                 <Card key={t.id} className={cx('!p-3.5', t.status === 'verkauft' && 'opacity-60')}>
                   <div className="flex items-start justify-between gap-3">
-                    <button type="button" onClick={() => setDetail(t.id)} className="text-left">
+                    <button type="button" onClick={() => setDetail(t.id)} className="flex min-w-0 flex-1 items-start gap-2.5 text-left">
+                      {t.photos.length > 0
+                        ? <MiniPhoto path={t.photos[0]} className="mt-0.5 h-10 w-10 shrink-0" />
+                        : <span className="mt-0.5 block h-10 w-10 shrink-0 rounded-md border border-dashed border-line-strong" />}
+                      <span className="block min-w-0">
                       <div className="font-bold">{t.maker === 'Sonstige' ? t.type : `${t.maker} ${t.type}`}</div>
                       <div className="tnum text-[13px] text-muted">{t.litres > 0 && `${num(t.litres)} l · `}{eur(t.vb)}{t.litres > 0 && ` · ${centsPerLitre(t.vb, t.litres)}`}</div>
+                      </span>
                     </button>
-                    <span className="flex flex-col items-end gap-1.5">
+                    <span className="flex shrink-0 flex-col items-end gap-1.5">
                       <Pill tone={STATUS_TONE[t.status]}>
                         <span className="h-1.5 w-1.5 rounded-full" style={{ background: STATUS_FILL[t.status] }} />
                         {STATUS_LABEL[t.status]}
