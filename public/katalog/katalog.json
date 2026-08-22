@@ -5,7 +5,7 @@
   "intro": "Wegen Betriebsaufgabe geben wir unsere komplette Kellerausstattung ab. Markieren Sie, was für Sie infrage kommt, und schicken Sie uns Ihr Angebot.",
   "pickupInfo": "Besichtigung und Abholung nach Absprache. Selbstabholung, Verladung mit Stapler möglich.",
   "vatRate": 0.19,
-  "updatedAt": "2026-08-22T15:41:44.122Z",
+  "updatedAt": "2026-08-22T16:18:53.968Z",
   "items": [
     {
       "id": "T-03",
@@ -697,6 +697,78 @@
       "type": "Tonneau",
       "litres": 300,
       "vb": 250,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "M-01",
+      "category": "maschine",
+      "categoryLabel": "Maschinen",
+      "maker": "Schneider",
+      "type": "Exzenterschneckenpumpe SP3 Evario",
+      "litres": 0,
+      "vb": 2950,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "M-02",
+      "category": "maschine",
+      "categoryLabel": "Maschinen",
+      "maker": "Schneider",
+      "type": "Impellerpumpe Phönix 12000",
+      "litres": 0,
+      "vb": 590,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "M-03",
+      "category": "maschine",
+      "categoryLabel": "Maschinen",
+      "maker": "Kiesel",
+      "type": "Schichtenfilter 40 × 40 cm",
+      "litres": 0,
+      "vb": 390,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "M-04",
+      "category": "maschine",
+      "categoryLabel": "Maschinen",
+      "maker": "Kiesel",
+      "type": "Barriquefass-Reiniger",
+      "litres": 0,
+      "vb": 690,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "M-05",
+      "category": "maschine",
+      "categoryLabel": "Maschinen",
+      "maker": "Jakobs",
+      "type": "Heizstab für Zapflochklappe",
+      "litres": 0,
+      "vb": 130,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "M-06",
+      "category": "maschine",
+      "categoryLabel": "Maschinen",
+      "maker": "Jakobs",
+      "type": "Heizstab für Zapflochklappe",
+      "litres": 0,
+      "vb": 130,
       "dims": null,
       "photos": [],
       "reserved": false
