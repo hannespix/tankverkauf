@@ -1,6 +1,6 @@
 import type { Ad, AdScope, DB, Lead, Tank, TankStatus } from '../types'
 import { STATUS_LABEL } from '../types'
-import { generateAd } from './ads'
+import { generateAd, portalOf } from './ads'
 import { newId, store } from './store'
 
 const now = () => new Date().toISOString()
@@ -244,13 +244,20 @@ export function removeDeal(dealId: string) {
 
 // ---------------------------------------------------------------------- ads
 
-export function createAd(db: DB, scope: AdScope): string {
+/** One ad per portal — same inventory, wording tuned to each audience. */
+export function createAdsForPortals(db: DB, scope: AdScope, portalIds: string[]): string[] {
+  return portalIds.map((pid) => createAd(db, scope, pid))
+}
+
+export function createAd(db: DB, scope: AdScope, portalId: string): string {
   const id = newId('AD')
-  const gen = generateAd(db, scope)
+  const portal = portalOf(db, portalId)
+  const gen = generateAd(db, scope, portal)
   store.mutate(
     (draft) => {
       draft.ads.unshift({
         id,
+        portalId,
         title: gen.title,
         body: gen.body,
         price: gen.price,
@@ -268,7 +275,7 @@ export function createAd(db: DB, scope: AdScope): string {
         updatedAt: now(),
       })
     },
-    { kind: 'ad', text: `Anzeige erstellt: ${gen.title.slice(0, 40)}` },
+    { kind: 'ad', text: `Anzeige für ${portal?.name ?? portalId} erstellt` },
   )
   return id
 }
@@ -290,7 +297,7 @@ export function refreshAd(id: string) {
     (db) => {
       const a = db.ads.find((x) => x.id === id)
       if (!a) return
-      const gen = generateAd(db, a.scope)
+      const gen = generateAd(db, a.scope, portalOf(db, a.portalId))
       a.title = gen.title
       a.body = gen.body
       a.price = gen.price
@@ -335,6 +342,27 @@ export function removeAd(id: string) {
 }
 
 // ----------------------------------------------------------------- settings
+
+export function upsertPortal(portal: DB['settings']['portals'][number]) {
+  store.mutate(
+    (db) => {
+      const i = db.settings.portals.findIndex((p) => p.id === portal.id)
+      if (i >= 0) db.settings.portals[i] = portal
+      else db.settings.portals.push(portal)
+    },
+    { kind: 'settings', text: `Portal gespeichert: ${portal.name}` },
+  )
+}
+
+/** Removing a portal leaves its ads intact — they simply fall back to default limits. */
+export function removePortal(portalId: string) {
+  store.mutate(
+    (db) => {
+      db.settings.portals = db.settings.portals.filter((p) => p.id !== portalId)
+    },
+    { kind: 'settings', text: 'Portal entfernt' },
+  )
+}
 
 export function patchSettings(patch: Partial<DB['settings']>, label = 'Einstellungen geändert') {
   store.mutate((db) => {

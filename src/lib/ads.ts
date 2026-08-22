@@ -1,9 +1,17 @@
-import type { Ad, AdScope, DB, Maker, Tank } from '../types'
-import { eur, centsPerLitre, num } from './format'
+import type { Ad, AdScope, DB, Maker, Portal, Tank } from '../types'
+import { eur, eurExact, centsPerLitre, netOf, num } from './format'
 import { isOpen, totals } from './stats'
 
-/** Kleinanzeigen enforces these in the form; showing them live avoids a rejected ad. */
-export const LIMITS = { title: 65, body: 4000 }
+/** Fallback when a portal was deleted but an ad still points at it. */
+export const FALLBACK_LIMITS = { title: 65, body: 4000 }
+
+export function portalOf(db: DB, portalId: string): Portal | null {
+  return db.settings.portals.find((p) => p.id === portalId) ?? null
+}
+
+export function limitsOf(portal: Portal | null) {
+  return portal ? { title: portal.titleLimit, body: portal.bodyLimit } : FALLBACK_LIMITS
+}
 
 export interface GeneratedAd {
   title: string
@@ -68,14 +76,23 @@ export function stampOf(tanks: Tank[], price: number): string {
   return `${price}|${ids}`
 }
 
-function priceBlock(db: DB, sum: number, packagePrice: number, litresTotal: number): string {
+function priceBlock(db: DB, sum: number, packagePrice: number, litresTotal: number, fach: boolean): string {
   const saving = sum - packagePrice
-  return [
+  const vatPct = Math.round(db.settings.vatRate * 100)
+  const lines = [
     'PREIS',
-    `Komplettabnahme: ${eur(packagePrice)} VB (brutto inkl. ${Math.round(db.settings.vatRate * 100)} % MwSt.)`,
+    `Komplettabnahme: ${eur(packagePrice)} VB (brutto inkl. ${vatPct} % MwSt.)`,
+  ]
+  if (fach) {
+    // A business buyer budgets net and needs the VAT shown separately to deduct it.
+    lines.push(`Netto ${eurExact(netOf(packagePrice, db.settings.vatRate))} zzgl. ${vatPct} % MwSt.`)
+  }
+  lines.push(
     `Das entspricht ${centsPerLitre(packagePrice, litresTotal)} — gegenüber Einzelabgabe (${eur(sum)}) ${eur(saving)} günstiger.`,
     'Einzelabgabe ist möglich, Preise siehe Liste oben.',
-  ].join('\n')
+  )
+  if (fach) lines.push('Die Umsatzsteuer wird auf der Rechnung separat ausgewiesen.')
+  return lines.join('\n')
 }
 
 const conditionBlock = [
@@ -90,12 +107,14 @@ function pickupBlock(db: DB): string {
   return ['ABHOLUNG', s.pickupInfo, where ? `Standort: ${where}` : ''].filter(Boolean).join('\n')
 }
 
-export function generateAd(db: DB, scope: AdScope): GeneratedAd {
+export function generateAd(db: DB, scope: AdScope, portal: Portal | null): GeneratedAd {
   const tanks = tanksInScope(db, scope)
   const t = totals(tanks)
   const s = db.settings
   const groups = group(tanks)
   const sellerName = s.seller.name || 'Betriebsauflösung'
+  const lim = limitsOf(portal)
+  const fach = portal?.style === 'fach'
 
   if (scope.kind === 'tank') {
     const tank = tanks[0]
@@ -103,7 +122,7 @@ export function generateAd(db: DB, scope: AdScope): GeneratedAd {
       return { title: '', body: 'Tank nicht gefunden.', price: 0, priceType: 'VB', tankIds: [], stamp: '' }
     }
     const name = tank.maker === 'Sonstige' ? tank.type : `${tank.maker} ${tank.type}`
-    const title = trim(`${name} ${num(tank.litres)} l Edelstahl Weintank`, LIMITS.title)
+    const title = trim(`${name} ${num(tank.litres)} l Edelstahl Weintank`, lim.title)
     const body = [
       `${name} mit ${num(tank.litres)} Litern aus Betriebsauflösung abzugeben.`,
       '',
@@ -121,12 +140,12 @@ export function generateAd(db: DB, scope: AdScope): GeneratedAd {
     ]
       .filter((l) => l !== undefined)
       .join('\n')
-    return { title, body: trim(body, LIMITS.body), price: tank.vb, priceType: 'VB', tankIds: [tank.id], stamp: stampOf(tanks, tank.vb) }
+    return { title, body: trim(body, lim.body), price: tank.vb, priceType: 'VB', tankIds: [tank.id], stamp: stampOf(tanks, tank.vb) }
   }
 
   if (scope.kind === 'maker') {
     const maker = scope.maker ?? 'Sonstige'
-    const title = trim(`${t.count} ${maker} Edelstahltanks ${num(t.litres)} l Weintank Lagertank`, LIMITS.title)
+    const title = trim(`${t.count} ${maker} Edelstahltanks ${num(t.litres)} l Weintank Lagertank`, lim.title)
     const body = [
       `${t.count} ${maker}-Edelstahltanks mit zusammen ${num(t.litres)} Litern aus Betriebsauflösung.`,
       '',
@@ -143,11 +162,11 @@ export function generateAd(db: DB, scope: AdScope): GeneratedAd {
       '',
       s.ad.signature,
     ].join('\n')
-    return { title, body: trim(body, LIMITS.body), price: t.vb, priceType: 'VB', tankIds: tanks.map((x) => x.id), stamp: stampOf(tanks, t.vb) }
+    return { title, body: trim(body, lim.body), price: t.vb, priceType: 'VB', tankIds: tanks.map((x) => x.id), stamp: stampOf(tanks, t.vb) }
   }
 
   if (scope.kind === 'restposten') {
-    const title = trim(`${t.count} Edelstahltanks ${num(t.litres)} l — Betriebsauflösung Weingut`, LIMITS.title)
+    const title = trim(`${t.count} Edelstahltanks ${num(t.litres)} l — Betriebsauflösung Weingut`, lim.title)
     const body = [
       `Wegen Betriebsauflösung: ${t.count} Edelstahltanks, zusammen ${num(t.litres)} Liter.`,
       '',
@@ -156,20 +175,28 @@ export function generateAd(db: DB, scope: AdScope): GeneratedAd {
       `Komplett: ${eur(s.packagePrice)} VB brutto (${centsPerLitre(s.packagePrice, t.litres)}). Einzelabgabe möglich.`,
       s.seller.pickupInfo,
     ].join('\n')
-    return { title, body: trim(body, LIMITS.body), price: s.packagePrice, priceType: 'VB', tankIds: tanks.map((x) => x.id), stamp: stampOf(tanks, s.packagePrice) }
+    return { title, body: trim(body, lim.body), price: s.packagePrice, priceType: 'VB', tankIds: tanks.map((x) => x.id), stamp: stampOf(tanks, s.packagePrice) }
   }
 
   // Komplettpaket
-  const title = trim(`${t.count} Edelstahltanks ${num(t.litres)} l Weintank Lagertank Betriebsauflösung`, LIMITS.title)
+  const makerList = [...new Set(groups.map((g) => g.maker))].filter((m) => m !== 'Sonstige').join(', ')
+  const title = trim(
+    fach
+      ? `Betriebsauflösung: ${t.count} Edelstahltanks, ${num(t.litres)} l gesamt${makerList ? ` — ${makerList}` : ''}`
+      : `${t.count} Edelstahltanks ${num(t.litres)} l Weintank Lagertank Betriebsauflösung`,
+    lim.title,
+  )
   const body = [
-    `${sellerName} — Betriebsauflösung`,
+    fach ? `${sellerName} — Betriebsauflösung, kompletter Edelstahltank-Bestand` : `${sellerName} — Betriebsauflösung`,
     '',
-    `Wegen Aufgabe des Betriebs verkaufe ich meinen kompletten Edelstahltank-Bestand: ${t.count} Tanks mit insgesamt ${num(t.litres)} Litern Volumen.`,
+    fach
+      ? `${t.count} Tanks mit zusammen ${num(t.litres)} Litern aus laufendem Kellerbetrieb. Abgabe komplett oder einzeln.`
+      : `Wegen Aufgabe des Betriebs verkaufe ich meinen kompletten Edelstahltank-Bestand: ${t.count} Tanks mit insgesamt ${num(t.litres)} Litern Volumen.`,
     '',
     'BESTAND',
     ...groups.map(bullet),
     '',
-    priceBlock(db, t.vb, s.packagePrice, t.litres),
+    priceBlock(db, t.vb, s.packagePrice, t.litres, fach),
     '',
     conditionBlock,
     '',
@@ -180,7 +207,7 @@ export function generateAd(db: DB, scope: AdScope): GeneratedAd {
 
   return {
     title,
-    body: trim(body, LIMITS.body),
+    body: trim(body, lim.body),
     price: s.packagePrice,
     priceType: 'VB',
     tankIds: tanks.map((x) => x.id),
@@ -202,7 +229,7 @@ export interface AdDrift {
 
 /** What has changed in reality since this ad was last published. */
 export function adDrift(db: DB, ad: Ad): AdDrift {
-  const fresh = generateAd(db, ad.scope)
+  const fresh = generateAd(db, ad.scope, portalOf(db, ad.portalId))
   const soldSince = ad.tankIds
     .map((id) => db.tanks.find((t) => t.id === id))
     .filter((t): t is Tank => Boolean(t) && t!.status === 'verkauft')

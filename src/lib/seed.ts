@@ -53,6 +53,28 @@ export const SEED: DB = {
   ads: [],
   settings: {
     vatRate: 0.19,
+    portals: [
+      {
+        id: 'kleinanzeigen',
+        name: 'Kleinanzeigen.de',
+        postUrl: 'https://www.kleinanzeigen.de/p-anzeige-aufgeben.html',
+        titleLimit: 65,
+        bodyLimit: 4000,
+        style: 'privat',
+        notes: 'Kostenlos. Kategorie: Business & Gewerbe \u203a Gastronomie & Ladeneinrichtung.',
+        active: true,
+      },
+      {
+        id: 'winzer-service',
+        name: 'Winzer-Service.de',
+        postUrl: 'https://www.winzer-service.de/anzeige-aufgeben-auswahl',
+        titleLimit: 100,
+        bodyLimit: 3000,
+        style: 'fach',
+        notes: 'Kostenpflichtig: Einzelanzeige ab 21 \u20ac, Flatrate 39,98 \u20ac ab zwei Anzeigen. Kategorie: Gebrauchtmaschinenb\u00f6rse \u203a Kellereimaschinen.',
+        active: true,
+      },
+    ],
     packagePrice: 17900,
     packageTarget: 16800,
     packageFloor: 16000,
