@@ -174,7 +174,7 @@ export default function Settings() {
           </div>
         ) : (
           <p className="text-sm text-muted">
-            Dieses Gerät fragt beim Öffnen nach der PIN. Beim nächsten Entsperren lässt sich „Angemeldet bleiben" ankreuzen.
+            Dieses Gerät fragt beim Öffnen nach der PIN. Beim nächsten Entsperren lässt sich „Angemeldet bleiben“ ankreuzen.
           </p>
         )}
         <p className="mt-2 text-xs text-faint">
@@ -282,7 +282,7 @@ export default function Settings() {
               <div className="flex gap-2">
                 <Button size="sm" onClick={() => setEditPortal(portal)}>Bearbeiten</Button>
                 <Button size="sm" variant="danger"
-                  onClick={() => { if (confirm(`Portal „${portal.name}" entfernen? Bestehende Anzeigen bleiben erhalten.`)) removePortal(portal.id) }}>
+                  onClick={() => { if (confirm(`Portal „${portal.name}“ entfernen? Bestehende Anzeigen bleiben erhalten.`)) removePortal(portal.id) }}>
                   <IconTrash />
                 </Button>
               </div>
@@ -333,7 +333,7 @@ export default function Settings() {
           <br />
           <br />
           Das Ziel ist bewusst ein <em>öffentliches</em> Repository — dafür muss dein Token auch dort schreiben dürfen
-          (im Token unter „Repository access" zusätzlich {s.catalog.repo || 'tankverkauf'} auswählen).
+          (im Token unter „Repository access“ zusätzlich {s.catalog.repo || 'tankverkauf'} auswählen).
         </div>
 
         {sameAsCode && (
@@ -360,6 +360,31 @@ export default function Settings() {
           <Textarea rows={2} value={s.catalog.intro} disabled={readOnly} onChange={(e) => patchSettings({ catalog: { ...s.catalog, intro: e.target.value } })} />
         </Field>
 
+        <Field
+          label="Adresse deines Impressums"
+          className="mt-3"
+          hint="Der Link steht in der Fußzeile der Käuferliste, wörtlich beschriftet mit „Impressum“. Ein Verweis auf das Impressum deiner eigenen Seite genügt — es muss denselben Anbieter nennen, der hier verkauft."
+        >
+          <Input
+            value={s.catalog.imprintUrl ?? ''}
+            disabled={readOnly}
+            inputMode="url"
+            placeholder="https://weingut-pix.de/impressum"
+            onChange={(e) => patchSettings({ catalog: { ...s.catalog, imprintUrl: e.target.value.trim() } })}
+          />
+        </Field>
+        {!(s.catalog.imprintUrl ?? '').trim() && (
+          <p className="mt-2 flex items-start gap-2 rounded-xl bg-amber-soft/50 p-3 text-[13px] text-amber">
+            <IconWarn className="mt-0.5 shrink-0" />
+            <span>
+              <strong>Noch kein Impressum verlinkt.</strong> Die Käuferliste bietet gewerblich Ware an und ist damit ein
+              geschäftsmäßiger Dienst nach § 5 DDG — ein Impressum ist Pflicht, ein Verweis auf dein bestehendes genügt.
+              Den Datenschutzhinweis für diese Seite schreibt das Werkzeug beim Veröffentlichen selbst; er steht
+              ebenfalls in der Fußzeile.
+            </span>
+          </p>
+        )}
+
         {s.catalog.owner && (
           <p className="mt-3 text-[13px] text-muted">
             Link zum Weitergeben:{' '}
@@ -381,7 +406,7 @@ export default function Settings() {
         />
         <div className="mb-3 rounded-xl bg-surface-2 p-3 text-[13px] text-muted">
           <strong className="text-ink">Was besser wird:</strong> Weitergeleitete Portal-Mails werden unabhängig vom
-          Format gelesen, und eine reine Rückfrage („hat der Tank einen Kühlmantel?") wird von einer Kaufabsicht
+          Format gelesen, und eine reine Rückfrage („hat der Tank einen Kühlmantel?“) wird von einer Kaufabsicht
           unterschieden.
           <br />
           <br />

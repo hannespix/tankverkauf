@@ -293,6 +293,7 @@ export const SEED: DB = {
       branch: 'main',
       path: 'public/katalog/katalog.json',
       intro: 'Wegen Betriebsaufgabe geben wir unsere komplette Kellerausstattung ab. Markieren Sie, was für Sie infrage kommt, und schicken Sie uns Ihr Angebot.',
+      imprintUrl: '',
     },
     ad: {
       signature: 'Betriebsauflösung Weingut Pix – weitere Tanks auf Anfrage.',

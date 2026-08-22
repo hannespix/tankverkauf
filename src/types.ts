@@ -268,6 +268,13 @@ export interface Settings {
     path: string
     /** Free line shown at the top of the catalogue. */
     intro: string
+    /**
+     * Adresse der eigenen Impressumsseite, z. B. https://weingut-pix.de/impressum.
+     * Der Katalog ist ein geschäftsmäßiger Dienst (§ 5 DDG) — ein klar
+     * beschrifteter Verweis auf das bestehende Impressum genügt, ein fehlendes
+     * nicht. Leer heißt: die Fußzeile weist in den Einstellungen darauf hin.
+     */
+    imprintUrl?: string
   }
   ad: {
     signature: string
@@ -327,6 +334,10 @@ export interface Catalog {
   email: string
   intro: string
   pickupInfo: string
+  /** Verweis auf das Impressum des Verkäufers. Fehlt in älteren Dateien. */
+  imprintUrl?: string
+  /** Datenschutzhinweis für genau diese Seite. Fehlt in älteren Dateien. */
+  privacy?: string
   vatRate: number
   updatedAt: string
   items: CatalogItem[]

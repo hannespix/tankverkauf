@@ -24,6 +24,8 @@ export function buildCatalog(db: DB): Catalog {
     email: db.settings.seller.email,
     intro: db.settings.catalog.intro,
     pickupInfo: db.settings.seller.pickupInfo,
+    imprintUrl: db.settings.catalog.imprintUrl ?? '',
+    privacy: privacyText(db),
     vatRate: db.settings.vatRate,
     updatedAt: new Date().toISOString(),
     items: open.map((t) => ({
@@ -56,6 +58,36 @@ export function buildCatalog(db: DB): Catalog {
     // wären nur eine Zeile, die nichts verspricht.
     tiers: db.settings.tiers.filter((t) => t.discount > 0),
   }
+}
+
+/**
+ * Datenschutzhinweis für genau diese Seite.
+ *
+ * Die Erklärung der eigenen Firmenseite passt hier nicht: der Katalog liegt bei
+ * einem anderen Anbieter (GitHub Pages), und was hier passiert, ist ein anderer
+ * Vorgang. Der Text wird beim Veröffentlichen mitgeschrieben, damit er zu dem
+ * Stand gehört, den der Käufer tatsächlich sieht.
+ *
+ * Was diese Seite wirklich tut, und nur das steht drin: sie wird von GitHub
+ * ausgeliefert (dabei fällt die IP-Adresse an), lädt Schrift und Bilder aus dem
+ * eigenen Bestand, setzt keine Cookies, misst nichts und bindet nichts Fremdes
+ * ein. Die Anfrage entsteht als E-Mail im Programm des Besuchers — abgeschickt
+ * wird sie von ihm, nicht von der Seite.
+ */
+function privacyText(db: DB): string {
+  const s = db.settings.seller
+  const who = [s.name, [s.plz, s.location].filter(Boolean).join(' ')].filter(Boolean).join(', ')
+  return [
+    `Verantwortlich für diese Seite: ${who || 'siehe Impressum'}${s.email ? `, ${s.email}` : ''}. Vollständige Anschrift im Impressum.`,
+    '',
+    'Diese Seite wird von GitHub Inc. (GitHub Pages) ausgeliefert. Beim Aufruf überträgt Ihr Browser technisch bedingt Ihre IP-Adresse an GitHub; GitHub speichert sie in Server-Protokollen. Rechtsgrundlage ist Art. 6 Abs. 1 lit. f DSGVO — ohne diese Übertragung lässt sich keine Seite ausliefern.',
+    '',
+    'Die Seite setzt keine Cookies, misst kein Nutzungsverhalten und bindet keine fremden Inhalte ein. Schrift und Bilder werden von derselben Adresse geladen wie die Seite selbst.',
+    '',
+    'Ihre Auswahl bleibt in Ihrem Browser und wird nirgends gespeichert. Klicken Sie auf „Anfrage senden“, öffnet sich Ihr eigenes E-Mail-Programm mit einem vorbereiteten Text. Abgeschickt wird die Nachricht erst von Ihnen. Was Sie uns dabei schreiben — Name, Adresse, Telefonnummer — verarbeiten wir ausschließlich, um Ihre Anfrage zu beantworten und ein Geschäft abzuwickeln (Art. 6 Abs. 1 lit. b DSGVO), und löschen es, sobald die gesetzlichen Aufbewahrungsfristen abgelaufen sind.',
+    '',
+    'Sie haben das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung der Verarbeitung, Datenübertragbarkeit und Widerspruch sowie das Recht, sich bei einer Aufsichtsbehörde zu beschweren.',
+  ].join('\n')
 }
 
 /** Where the buyer page reads the published file from. */
