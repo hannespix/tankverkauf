@@ -210,7 +210,7 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
   const { db } = useStore()
   const portals = db.settings.portals
   const [kind, setKind] = useState<AdScopeKind>('paket')
-  const [maker, setMaker] = useState<Maker>(byMaker(db.tanks.filter(isOpen))[0]?.maker ?? 'Möschle')
+  const [maker, setMaker] = useState<Maker>(byMaker(db.tanks.filter(isOpen))[0]?.maker ?? 'Sonstige')
   const [tankId, setTankId] = useState(db.tanks.find(isOpen)?.id ?? '')
   const [category, setCategory] = useState(db.settings.categories[0]?.id ?? 'tank')
   const [picked, setPicked] = useState<string[]>(portals.filter((p) => p.active).map((p) => p.id))

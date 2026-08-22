@@ -174,9 +174,12 @@ export function generateAd(db: DB, scope: AdScope, portal: Portal | null): Gener
 
   if (scope.kind === 'maker') {
     const maker = scope.maker ?? 'Sonstige'
-    const title = trim(`${t.count} ${maker} Edelstahltanks ${num(t.litres)} l Weintank Lagertank`, lim.title)
+    // Most tanks here carry no maker's plate at all. "6 Sonstige Edelstahltanks"
+    // would read like a filler word in the headline, so the brand simply drops out.
+    const named = maker && maker !== 'Sonstige' ? `${maker} ` : ''
+    const title = trim(`${t.count} ${named}Edelstahltanks ${num(t.litres)} l Weintank Lagertank`, lim.title)
     const body = [
-      `${t.count} ${maker}-Edelstahltanks mit zusammen ${num(t.litres)} Litern aus Betriebsauflösung.`,
+      `${t.count} ${named ? `${maker}-Edelstahltanks` : 'Edelstahltanks'} mit zusammen ${num(t.litres)} Litern aus Betriebsauflösung.`,
       '',
       'BESTAND',
       ...groups.map((g) => bullet(g, sharedFeatures(tanks))),
@@ -202,7 +205,10 @@ export function generateAd(db: DB, scope: AdScope, portal: Portal | null): Gener
     const shared = sharedFeatures(tanks)
     const perPiece = groups.map((g) => {
       const extra = g.tags.filter((x) => !shared.includes(x))
-      const name = volume ? `${g.type} ${num(g.litres)} l` : g.maker === 'Sonstige' ? g.type : `${g.maker} ${g.type}`
+      // The maker used to drop out whenever a volume was shown. Now that most tanks
+      // carry no plate, the few that do are the only brand value left in the text.
+      const named = g.maker === 'Sonstige' ? g.type : `${g.maker} ${g.type}`
+      const name = volume ? `${named} ${num(g.litres)} l` : named
       return `• ${g.count}× ${name} – je ${eur(g.vb)}${extra.length ? ` (${extra.join(', ')})` : ''}`
     })
 

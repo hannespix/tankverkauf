@@ -82,6 +82,34 @@ export function tagMany(tankIds: string[], tag: string, on: boolean) {
   )
 }
 
+/**
+ * Correct maker and/or type across a whole selection. Exists because a wrong
+ * maker is not a typo you fix once: it sits in every ad, in the catalogue and in
+ * the buyer's mail, and here it was wrong on eleven positions at the same time.
+ * An empty field means "leave this one alone", so type can be set without
+ * touching the maker.
+ */
+export function retypeMany(tankIds: string[], maker: string, type: string) {
+  const m = maker.trim()
+  const t = type.trim()
+  if (!m && !t) return
+  store.mutate(
+    (db) => {
+      for (const id of tankIds) {
+        const tank = db.tanks.find((x) => x.id === id)
+        if (!tank) continue
+        if (m) tank.maker = m
+        if (t) tank.type = t
+        tank.updatedAt = now()
+      }
+    },
+    {
+      kind: 'tank',
+      text: `${[m && `Hersteller: ${m}`, t && `Typ: ${t}`].filter(Boolean).join(', ')} (${tankIds.length} Positionen)`,
+    },
+  )
+}
+
 export function removeTank(tank: Tank) {
   store.mutate(
     (db) => {
