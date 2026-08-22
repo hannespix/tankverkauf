@@ -195,7 +195,7 @@ export async function putBinary(
 }
 
 /** Just the sha, without pulling the whole file down. */
-async function headFile(token: string, cfg: RepoConfig, path: string): Promise<string | null> {
+export async function headFile(token: string, cfg: RepoConfig, path: string): Promise<string | null> {
   const res = await call(token, `/repos/${cfg.owner}/${cfg.repo}/contents/${encodeURI(path)}?ref=${encodeURIComponent(cfg.branch)}`)
   if (!res.ok) return null
   const body = (await res.json()) as { sha?: string }
@@ -209,6 +209,17 @@ export async function getBinary(token: string, cfg: RepoConfig, path: string): P
   })
   if (!res.ok) return null
   return res.blob()
+}
+
+/** File names directly inside a directory. Empty when the directory does not exist. */
+export async function listDir(token: string, cfg: RepoConfig, path: string): Promise<string[]> {
+  const res = await call(token, `/repos/${cfg.owner}/${cfg.repo}/contents/${encodeURI(path)}?ref=${encodeURIComponent(cfg.branch)}`)
+  if (!res.ok) return []
+  const body = (await res.json()) as unknown
+  if (!Array.isArray(body)) return []
+  return (body as { name?: string; type?: string }[])
+    .filter((e) => e.type === 'file' && e.name)
+    .map((e) => e.name!)
 }
 
 export async function deleteBinary(token: string, cfg: RepoConfig, path: string, message: string): Promise<void> {

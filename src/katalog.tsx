@@ -47,6 +47,9 @@ function sources(): string[] {
 function App() {
   const [dark, setDark] = useTheme()
   const [catalog, setCatalog] = useState<Catalog | null>(null)
+  // Photos are published next to the JSON, so they resolve against whichever
+  // of the candidate sources actually answered.
+  const [base, setBase] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [q, setQ] = useState('')
@@ -64,7 +67,10 @@ function App() {
           const res = await fetch(url, { cache: 'no-store' })
           if (!res.ok) continue
           const data = (await res.json()) as Catalog
-          if (alive) setCatalog(data)
+          if (alive) {
+            setBase(new URL(url, location.href).href.replace(/\/[^/]*$/, '/'))
+            setCatalog(data)
+          }
           return
         } catch {
           /* try the next candidate */
@@ -91,7 +97,7 @@ function App() {
       const key = `${i.maker}|${i.type}|${i.litres}|${i.vb}|${i.reserved ? 'r' : 'f'}`
       const lot = g.lots.find((l) => l.key === key)
       if (lot) lot.ids.push(i.id)
-      else g.lots.push({ key, maker: i.maker, type: i.type, litres: i.litres, vb: i.vb, dims: i.dims, reserved: i.reserved, ids: [i.id] })
+      else g.lots.push({ key, maker: i.maker, type: i.type, litres: i.litres, vb: i.vb, dims: i.dims, photo: i.photos[0] ?? null, reserved: i.reserved, ids: [i.id] })
       byCat.set(i.category, g)
     }
     return [...byCat.entries()].map(([id, g]) => ({ id, ...g }))
@@ -220,7 +226,7 @@ function idRanges(ids: string[]): string {
               const taken = lot.ids.filter((id) => picked.has(id)).length
               const many = lot.ids.length > 1
               return (
-                <li key={lot.key} className={cx('flex items-center gap-3 px-4 py-3 transition', taken > 0 && 'bg-primary-soft/40', lot.reserved && 'opacity-70')}>
+                <li key={lot.key} className={cx('flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 transition', taken > 0 && 'bg-primary-soft/40', lot.reserved && 'opacity-70')}>
                   {!many && (
                     <input
                       type="checkbox"
@@ -230,7 +236,13 @@ function idRanges(ids: string[]): string {
                       className="h-5 w-5 shrink-0 accent-[var(--primary)]"
                     />
                   )}
-                  <span className="min-w-0 flex-1">
+                  {lot.photo && (
+                    <a href={base + lot.photo} target="_blank" rel="noreferrer" className="shrink-0" aria-label="Foto vergrößern">
+                      <img src={base + lot.photo} alt="" loading="lazy"
+                        className="h-14 w-14 rounded-lg object-cover ring-1 ring-line sm:h-16 sm:w-16" />
+                    </a>
+                  )}
+                  <span className="min-w-0 flex-1 basis-40">
                     <span className="block font-semibold">{lot.maker === 'Sonstige' ? lot.type : `${lot.maker} ${lot.type}`}</span>
                     <span className="tnum block text-[13px] text-muted">
                       {lot.litres > 0 && `${num(lot.litres)} Liter · `}
@@ -243,16 +255,18 @@ function idRanges(ids: string[]): string {
                       </span>
                     )}
                   </span>
-                  {many && (
-                    <span className="flex shrink-0 items-center gap-1.5">
-                      <Step label="weniger" disabled={taken === 0} onClick={() => setLotCount(lot, taken - 1)}>−</Step>
-                      <span className="tnum w-8 text-center font-bold">{taken}</span>
-                      <Step label="mehr" disabled={taken === lot.ids.length} onClick={() => setLotCount(lot, taken + 1)}>+</Step>
+                  <span className="ml-auto flex shrink-0 items-center gap-3">
+                    {many && (
+                      <span className="flex items-center gap-1.5">
+                        <Step label="weniger" disabled={taken === 0} onClick={() => setLotCount(lot, taken - 1)}>−</Step>
+                        <span className="tnum w-8 text-center font-bold">{taken}</span>
+                        <Step label="mehr" disabled={taken === lot.ids.length} onClick={() => setLotCount(lot, taken + 1)}>+</Step>
+                      </span>
+                    )}
+                    <span className="tnum w-24 text-right font-bold">
+                      {eur(lot.vb)}
+                      {many && <span className="block text-[11px] font-medium text-muted">je Stück</span>}
                     </span>
-                  )}
-                  <span className="tnum w-24 shrink-0 text-right font-bold">
-                    {eur(lot.vb)}
-                    {many && <span className="block text-[11px] font-medium text-muted">je Stück</span>}
                   </span>
                 </li>
               )
@@ -332,6 +346,7 @@ interface Lot {
   litres: number
   vb: number
   dims: CatalogItem['dims']
+  photo: string | null
   reserved: boolean
   ids: string[]
 }

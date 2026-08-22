@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import type { Activity, ActivityKind, DB } from '../types'
 import { SEED } from './seed'
-import { cachedUrl, forgetUrl, photoPath, rememberUrl } from './photos'
+import { blobToBase64, cachedUrl, forgetUrl, photoPath, rememberUrl } from './photos'
 import { buildCatalog, catalogPageUrl } from './catalog'
 import {
   ConflictError,
@@ -9,6 +9,8 @@ import {
   type RemoteFile,
   type RepoConfig,
   getFile,
+  headFile,
+  listDir,
   isConfigured,
   loadConfig,
   putFile,
@@ -363,16 +365,48 @@ class TankStore {
    * Publish the reduced catalogue into the public repo. Deliberately a separate
    * target from the data repo, and the token needs to be allowed to write there.
    */
-  async publishCatalog(): Promise<string> {
+  async publishCatalog(onProgress?: (done: number, total: number) => void): Promise<string> {
     if (!this.token) throw new Error('Nicht angemeldet.')
     const c = this.snapshot.db.settings.catalog
     if (!c.owner || !c.repo || !c.path) throw new Error('Zielrepository für den Katalog ist nicht eingetragen.')
     const cfg: RepoConfig = { owner: c.owner, repo: c.repo, branch: c.branch || 'main', path: c.path }
     const catalog = buildCatalog(this.snapshot.db)
+
+    // Photos live in the private data repo, which a buyer cannot read, so they are
+    // copied next to the published file. Only the ones not there yet — republishing
+    // stays cheap once the pictures are across.
+    const dir = c.path.replace(/\/[^/]+$/, '')
+    const wanted = [...new Set(catalog.items.flatMap((i) => i.photos))]
+    let moved = 0
+    onProgress?.(0, wanted.length)
+    for (const [i, photo] of wanted.entries()) {
+      const at: RepoConfig = { ...cfg, path: dir ? `${dir}/${photo}` : photo }
+      const already = await headFile(this.token, at, at.path).catch(() => null)
+      if (!already) {
+        const blob = await getBinary(this.token, this.snapshot.config, photo)
+        if (blob) {
+          await putBinary(this.token, at, at.path, await blobToBase64(blob), `Foto für den Katalog: ${photo}`)
+          moved += 1
+        }
+      }
+      onProgress?.(i + 1, wanted.length)
+    }
+
+    // A photo taken off a position must disappear from the public copy too —
+    // otherwise removing it here would leave it reachable at its old address.
+    const photoDir = dir ? `${dir}/fotos` : 'fotos'
+    const keep = new Set(wanted.map((w) => w.replace(/^.*\//, '')))
+    let removed = 0
+    for (const name of await listDir(this.token, cfg, photoDir).catch(() => [])) {
+      if (keep.has(name)) continue
+      await deleteBinary(this.token, { ...cfg, path: `${photoDir}/${name}` }, `${photoDir}/${name}`, `Foto nicht mehr im Katalog: ${name}`)
+      removed += 1
+    }
+
     const text = `${JSON.stringify(catalog, null, 2)}\n`
     const existing = await getFile(this.token, cfg).catch(() => null)
     await putFile(this.token, cfg, text, existing?.sha ?? null, `Katalog aktualisiert (${catalog.items.length} Positionen)`)
-    this.mutate(() => {}, { kind: 'settings', text: `Katalog veröffentlicht: ${catalog.items.length} Positionen` })
+    this.mutate(() => {}, { kind: 'settings', text: `Katalog veröffentlicht: ${catalog.items.length} Positionen, ${moved} neue Fotos${removed ? `, ${removed} entfernt` : ''}` })
     return catalogPageUrl(c)
   }
 

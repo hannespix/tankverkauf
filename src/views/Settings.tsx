@@ -26,7 +26,11 @@ export default function Settings() {
     setPublishing(true)
     setNote(null)
     try {
-      const url = await store.publishCatalog()
+      // The first publish with pictures copies every photo across one by one and
+      // can take a couple of minutes — without a count it looks like it hung.
+      const url = await store.publishCatalog((done, total) => {
+        setNote(total > 0 && done < total ? `Fotos werden übertragen … ${done} von ${total}` : null)
+      })
       setNote(`Liste veröffentlicht. Sie ist unter ${url} erreichbar — je nach GitHub-Zwischenspeicher nach ein bis zwei Minuten.`)
     } catch (err) {
       setNote(err instanceof Error ? err.message : 'Veröffentlichen fehlgeschlagen.')

@@ -59,3 +59,11 @@ export function forgetUrl(path: string) {
 }
 
 export const photoPath = (tankId: string, stamp: string) => `fotos/${tankId}-${stamp}.jpg`
+
+/** Re-encode a blob fetched from the private repo so it can be written to another one. */
+export async function blobToBase64(blob: Blob): Promise<string> {
+  const bytes = new Uint8Array(await blob.arrayBuffer())
+  let bin = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  return btoa(bin)
+}

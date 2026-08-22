@@ -216,6 +216,8 @@ export interface CatalogItem {
   vb: number
   /** Outer size in cm — decides whether it fits through the buyer's door. */
   dims: Dims | null
+  /** Paths relative to this file, published alongside it. Empty when none exist. */
+  photos: string[]
   /** Already promised to someone. Buyers may still register a backup interest. */
   reserved: boolean
 }
