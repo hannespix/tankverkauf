@@ -60,12 +60,14 @@ function migrate(raw: unknown): DB {
     settings.portals = clone(seed.settings.portals)
   }
   const fallbackPortal = settings.portals[0].id
+  // Items stored before barrels existed are all tanks.
+  const tanks = (db.tanks ?? clone(seed.tanks)).map((t) => ({ ...t, category: t.category ?? 'tank' }))
   const ads = (db.ads ?? []).map((a) => ({ ...a, portalId: a.portalId ?? fallbackPortal }))
 
   return {
     schema: 1,
     updatedAt: db.updatedAt ?? new Date().toISOString(),
-    tanks: db.tanks ?? clone(seed.tanks),
+    tanks,
     leads: db.leads ?? [],
     quotes: db.quotes ?? [],
     deals: db.deals ?? clone(seed.deals),

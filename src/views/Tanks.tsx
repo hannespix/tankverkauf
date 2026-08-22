@@ -6,7 +6,7 @@ import { addTank, createDeal, createQuote, patchTank, removeTank, setTankOffer, 
 import { centsPerLitre, eur, num, todayISO } from '../lib/format'
 import { useStore } from '../lib/store'
 import { VERDICT_LABEL, judgeBundle, judgeOffer, totals } from '../lib/stats'
-import { STATUS_LABEL, type Maker, type Tank, type TankStatus } from '../types'
+import { CATEGORY_LABEL, STATUS_LABEL, type Category, type Maker, type Tank, type TankStatus } from '../types'
 
 const STATUSES: TankStatus[] = ['verfuegbar', 'kontakt', 'reserviert', 'verkauft']
 const MAKERS: Maker[] = ['Speidel', 'Möschle', 'Clemens', 'Sonstige']
@@ -21,6 +21,7 @@ export default function Tanks() {
   const readOnly = false
 
   const [q, setQ] = useState('')
+  const [catSel, setCatSel] = useState<Category[]>([])
   const [statusSel, setStatusSel] = useState<TankStatus[]>([])
   const [makerSel, setMakerSel] = useState<Maker[]>([])
   const [minL, setMinL] = useState('')
@@ -39,6 +40,7 @@ export default function Tanks() {
     const lo = Number(minL) || 0
     const hi = Number(maxL) || Infinity
     const list = db.tanks.filter((t) => {
+      if (catSel.length && !catSel.includes(t.category)) return false
       if (statusSel.length && !statusSel.includes(t.status)) return false
       if (makerSel.length && !makerSel.includes(t.maker)) return false
       if (t.litres < lo || t.litres > hi) return false
@@ -61,13 +63,17 @@ export default function Tanks() {
       const x = val(a), y = val(b)
       return (x < y ? -1 : x > y ? 1 : 0) * sort.dir
     })
-  }, [db, q, statusSel, makerSel, minL, maxL, withOffer, sort])
+  }, [db, q, catSel, statusSel, makerSel, minL, maxL, withOffer, sort])
 
   const pickedTanks = db.tanks.filter((t) => picked.has(t.id))
   // "Alle auswählen" applies to what the filter currently shows, minus what is already sold.
   const selectable = rows.filter((t) => t.status !== 'verkauft')
   const pickedTotals = totals(pickedTanks)
-  const active = statusSel.length + makerSel.length + (minL ? 1 : 0) + (maxL ? 1 : 0) + (withOffer ? 1 : 0)
+  // With barrels in the same list, "Tanks" is only right when nothing else is shown.
+  const kinds = new Set(rows.map((t) => t.category))
+  const noun = kinds.size === 1 ? (kinds.has('fass') ? 'Fässer' : 'Tanks') : 'Positionen'
+  const totalNoun = db.tanks.some((t) => t.category === 'fass') ? 'Positionen' : 'Tanks'
+  const active = catSel.length + statusSel.length + makerSel.length + (minL ? 1 : 0) + (maxL ? 1 : 0) + (withOffer ? 1 : 0)
   const shown = totals(rows)
 
   const toggle = <T,>(arr: T[], v: T, set: (a: T[]) => void) => set(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v])
@@ -101,6 +107,7 @@ export default function Tanks() {
 
         {showFilters && (
           <div className="animate-rise space-y-3 border-t border-line bg-surface-2 p-3">
+            <ChipRow label="Art" items={(['tank', 'fass'] as Category[]).map((c) => ({ v: c, l: CATEGORY_LABEL[c] }))} sel={catSel} onToggle={(v) => toggle(catSel, v, setCatSel)} />
             <ChipRow label="Status" items={STATUSES.map((s) => ({ v: s, l: STATUS_LABEL[s] }))} sel={statusSel} onToggle={(v) => toggle(statusSel, v, setStatusSel)} />
             <ChipRow label="Hersteller" items={MAKERS.map((m) => ({ v: m, l: m }))} sel={makerSel} onToggle={(v) => toggle(makerSel, v, setMakerSel)} />
             <div className="flex flex-wrap items-end gap-3">
@@ -111,7 +118,7 @@ export default function Tanks() {
                 nur mit Gebot
               </label>
               {active > 0 && (
-                <Button variant="ghost" onClick={() => { setStatusSel([]); setMakerSel([]); setMinL(''); setMaxL(''); setWithOffer(false) }}>
+                <Button variant="ghost" onClick={() => { setCatSel([]); setStatusSel([]); setMakerSel([]); setMinL(''); setMaxL(''); setWithOffer(false) }}>
                   Zurücksetzen
                 </Button>
               )}
@@ -122,7 +129,7 @@ export default function Tanks() {
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-4 py-2.5 text-[13px]">
           <span className="flex flex-wrap items-center gap-2 text-muted">
             <span>
-              <strong className="tnum text-ink">{rows.length}</strong> von {db.tanks.length} Tanks · <span className="tnum">{num(shown.litres)} l</span> · <span className="tnum">{eur(shown.vb)}</span> VB
+              <strong className="tnum text-ink">{rows.length}</strong> {noun} von {db.tanks.length} {totalNoun} · <span className="tnum">{num(shown.litres)} l</span> · <span className="tnum">{eur(shown.vb)}</span> VB
             </span>
             {selectable.length > 0 && (
               <Button size="sm" variant="ghost" onClick={() => setPicked(new Set(selectable.map((t) => t.id)))}>

@@ -1,10 +1,14 @@
 /** Domain model for the Tankverkauf dashboard. Everything is stored brutto (incl. VAT). */
 
 export type TankStatus = 'verfuegbar' | 'kontakt' | 'reserviert' | 'verkauft'
+
+/** Tanks and barrels sell to different people and must not share a package price. */
+export type Category = 'tank' | 'fass'
 export type Maker = 'Speidel' | 'Möschle' | 'Clemens' | 'Sonstige'
 
 export interface Tank {
   id: string
+  category: Category
   maker: Maker
   /** Edelstahltank, Transporttank, Immervolltank … */
   type: string
@@ -81,12 +85,13 @@ export interface Quote {
   updatedAt: string
 }
 
-export type AdScopeKind = 'paket' | 'maker' | 'tank' | 'restposten' | 'custom'
+export type AdScopeKind = 'paket' | 'faesser' | 'maker' | 'tank' | 'restposten' | 'custom'
 
 export interface AdScope {
   kind: AdScopeKind
   maker?: Maker
   tankId?: string
+  category?: Category
 }
 
 export type AdStatus = 'entwurf' | 'online' | 'offline'
@@ -169,6 +174,11 @@ export interface DB {
   ads: Ad[]
   settings: Settings
   activity: Activity[]
+}
+
+export const CATEGORY_LABEL: Record<Category, string> = {
+  tank: 'Edelstahltanks',
+  fass: 'Holzfässer',
 }
 
 export const STATUS_LABEL: Record<TankStatus, string> = {

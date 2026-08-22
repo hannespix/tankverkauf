@@ -171,7 +171,8 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
       <div className="space-y-4">
         <Field label="Was soll beworben werden?">
           <Select value={kind} onChange={(e) => setKind(e.target.value as AdScopeKind)}>
-            <option value="paket">Komplettpaket — alle verfügbaren Tanks</option>
+            <option value="paket">Tank-Komplettpaket — alle verfügbaren Edelstahltanks</option>
+            <option value="faesser">Holzfässer — Barriques und Tonneaus</option>
             <option value="maker">Hersteller-Bundle — alle Tanks einer Marke</option>
             <option value="tank">Einzelner Tank</option>
             <option value="restposten">Restposten — Kurzfassung</option>

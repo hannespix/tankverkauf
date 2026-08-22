@@ -30,10 +30,14 @@ export function setTankOffer(tank: Tank, offer: number | null) {
 export function addTank(partial: Partial<Tank>) {
   store.mutate(
     (db) => {
-      const maxN = db.tanks.reduce((m, t) => Math.max(m, Number(t.id.replace(/\D/g, '')) || 0), 0)
+      const cat = partial.category ?? 'tank'
+      const maxN = db.tanks
+        .filter((t) => t.category === cat)
+        .reduce((m, t) => Math.max(m, Number(t.id.replace(/\D/g, '')) || 0), 0)
       const vb = partial.vb ?? 0
       db.tanks.push({
-        id: `T-${String(maxN + 1).padStart(2, '0')}`,
+        id: `${partial.category === 'fass' ? 'F' : 'T'}-${String(maxN + 1).padStart(2, '0')}`,
+        category: partial.category ?? 'tank',
         maker: partial.maker ?? 'Sonstige',
         type: partial.type ?? 'Edelstahltank',
         litres: partial.litres ?? 0,
