@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import type { Activity, ActivityKind, DB } from '../types'
 import { SEED } from './seed'
+import { cachedUrl, forgetUrl, photoPath, rememberUrl } from './photos'
 import {
   ConflictError,
   GitHubError,
@@ -10,6 +11,9 @@ import {
   isConfigured,
   loadConfig,
   putFile,
+  putBinary,
+  getBinary,
+  deleteBinary,
   repoMeta,
   saveConfig,
   verifyToken,
@@ -61,7 +65,11 @@ function migrate(raw: unknown): DB {
   }
   const fallbackPortal = settings.portals[0].id
   // Items stored before barrels existed are all tanks.
-  const tanks = (db.tanks ?? clone(seed.tanks)).map((t) => ({ ...t, category: t.category ?? 'tank' }))
+  const tanks = (db.tanks ?? clone(seed.tanks)).map((t) => ({
+    ...t,
+    category: t.category ?? 'tank',
+    photos: t.photos ?? [],
+  }))
   const ads = (db.ads ?? []).map((a) => ({ ...a, portalId: a.portalId ?? fallbackPortal }))
 
   return {
@@ -302,6 +310,37 @@ class TankStore {
       this.emit({ conflict: null, sync: 'idle', dirty: true, error: null })
       await this.flush('Konflikt gelöst – lokale Version behalten')
     }
+  }
+
+  /** Upload a prepared photo and attach it to an item. */
+  async addPhoto(tankId: string, base64: string): Promise<void> {
+    if (!this.token) throw new Error('Nicht angemeldet — Fotos brauchen eine Verbindung zu GitHub.')
+    const stamp = Math.random().toString(36).slice(2, 8)
+    const path = photoPath(tankId, stamp)
+    await putBinary(this.token, this.snapshot.config, path, base64, `Foto zu ${tankId}`)
+    this.mutate((db) => {
+      const t = db.tanks.find((x) => x.id === tankId)
+      if (t) t.photos = [...t.photos, path]
+    }, { kind: 'tank', text: `Foto zu ${tankId} hinzugefügt` })
+  }
+
+  async removePhoto(tankId: string, path: string): Promise<void> {
+    if (!this.token) return
+    await deleteBinary(this.token, this.snapshot.config, path, `Foto zu ${tankId} entfernt`)
+    forgetUrl(path)
+    this.mutate((db) => {
+      const t = db.tanks.find((x) => x.id === tankId)
+      if (t) t.photos = t.photos.filter((x) => x !== path)
+    }, { kind: 'tank', text: `Foto zu ${tankId} entfernt` })
+  }
+
+  /** Resolves to an object URL, fetching the blob once and caching it. */
+  async photoUrl(path: string): Promise<string | null> {
+    const hit = cachedUrl(path)
+    if (hit) return hit
+    if (!this.token) return null
+    const blob = await getBinary(this.token, this.snapshot.config, path)
+    return blob ? rememberUrl(path, blob) : null
   }
 
   async updateConfig(cfg: RepoConfig) {

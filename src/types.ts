@@ -27,6 +27,8 @@ export interface Tank {
   pickup: string | null
   note: string
   tags: string[]
+  /** Paths inside the data repo, e.g. fotos/T-12-a1b2.jpg */
+  photos: string[]
   updatedAt: string
 }
 

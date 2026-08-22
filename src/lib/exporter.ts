@@ -262,6 +262,7 @@ export async function importXlsx(file: File): Promise<ImportResult> {
         pickup: null,
         note: '',
         tags: [],
+        photos: [],
         updatedAt: now,
       })
     }
