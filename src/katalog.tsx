@@ -285,6 +285,13 @@ function idRanges(ids: string[]): string {
           {catalog.location && ` · Standort ${catalog.location}`}
           {' · '}Preise brutto inkl. {Math.round(catalog.vatRate * 100)} % MwSt.
         </p>
+        {/* Einmal deutlich, nicht in jeder der 58 Zeilen. Ein "VB" hinter jedem Preis
+            wäre nicht nur Rauschen, es lüde auch dazu ein, den bereits gerechneten
+            Paketpreis ein zweites Mal zu verhandeln. */}
+        <p className="mt-2 text-[13px] text-muted">
+          <strong className="text-ink">Alle Einzelpreise sind Verhandlungsbasis (VB).</strong> Nennen Sie uns Ihr Angebot —
+          die Paketpreise unten sind bereits gerechnet.
+        </p>
       </Card>
 
       <Card pad={false} className="rise-in" style={{ '--d': '40ms' } as React.CSSProperties}>
@@ -572,7 +579,11 @@ function idRanges(ids: string[]): string {
               </p>
             )}
 
-            <div className="mt-4 grid gap-3 sm:grid-cols-[10rem_1fr]">
+            <p className="mt-4 text-[13px] text-muted">
+              Die Einzelpreise sind VB. Wenn Ihnen etwas anderes vorschwebt, schreiben Sie Ihr Angebot dazu —
+              wir melden uns auf jeden Fall.
+            </p>
+            <div className="mt-2 grid gap-3 sm:grid-cols-[10rem_1fr]">
               <label className="block">
                 <span className="mb-1 block text-[13px] font-semibold text-muted">Ihr Angebot (€)</span>
                 <Input type="number" value={offer} onChange={(e) => setOffer(e.target.value)} placeholder="optional" className="tnum" />

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Button, Card, Field, Input, Modal, Pill, SectionTitle, Select, Textarea, cx } from '../components/ui'
+import { Button, Card, Field, Input, Modal, Pill, SectionTitle, Select, Textarea, Toggle, cx } from '../components/ui'
 import { IconCheck, IconCloud, IconDownload, IconLock, IconPlus, IconRefresh, IconTrash, IconUpload, IconWarn } from '../components/icons'
 import { addMissingSeedBundles, addMissingSeedDims, addMissingSeedItems, addMissingSeedNotes, bundlesInSeed, measuredInSeed, missingFromSeed, notesInSeed, patchSettings, removeCategory, removePortal, upsertCategory, upsertPortal } from '../lib/actions'
 import { exportCsv, exportJson, exportXlsx, importXlsx } from '../lib/exporter'
@@ -8,7 +8,7 @@ import { store, useStore } from '../lib/store'
 import { clearVault, forgetDevice, rememberedUntil } from '../lib/vault'
 import { AI_MODELS } from '../lib/ai'
 import { BundleEditor } from '../components/BundleEditor'
-import { catalogPageUrl } from '../lib/catalog'
+import { catalogPageUrl, catalogStamp } from '../lib/catalog'
 import { STYLE_LABEL, type CategoryDef, type DB, type Portal, type PortalStyle } from '../types'
 
 export default function Settings() {
@@ -24,6 +24,8 @@ export default function Settings() {
   const unmeasured = measuredInSeed(db)
   const openNotes = notesInSeed(db)
   const openBundles = bundlesInSeed(db)
+  // Ob die veröffentlichte Liste noch dem entspricht, was hier steht.
+  const catalogBehind = !!db.settings.catalog.owner && catalogStamp(db) !== db.settings.publishedStamp
   // The repository serving this page is the one whose code gets deployed. Publishing
   // the catalogue there means the token may rewrite the page itself.
   const servedFrom = location.hostname.match(/^([^.]+)\.github\.io$/)?.[1] ?? ''
@@ -296,12 +298,30 @@ export default function Settings() {
             <span className="flex flex-wrap items-center justify-end gap-2">
               {!s.catalog.owner && <span className="text-[13px] font-semibold text-amber">Benutzer fehlt</span>}
               {!s.seller.email && <span className="text-[13px] font-semibold text-amber">E-Mail fehlt</span>}
+              {s.catalog.owner && (
+                catalogBehind
+                  ? <Pill tone="amber">nicht auf dem Stand</Pill>
+                  : <Pill tone="green">aktuell{s.publishedAt ? ` · ${relativeDE(s.publishedAt)}` : ''}</Pill>
+              )}
               <Button variant="primary" disabled={readOnly || publishing || !s.catalog.owner} onClick={() => void publish()}>
                 <IconCloud />{publishing ? 'Wird veröffentlicht …' : 'Jetzt veröffentlichen'}
               </Button>
             </span>
           }
         />
+
+        <div className="mb-3">
+          <Toggle
+            checked={s.autoPublish}
+            onChange={(v) => patchSettings({ autoPublish: v }, v ? 'Katalog wird automatisch veröffentlicht' : 'Automatisches Veröffentlichen aus')}
+            label="Nach jeder Änderung von selbst veröffentlichen"
+          />
+          <p className="mt-1.5 text-[13px] text-muted">
+            {s.autoPublish
+              ? 'Ändert sich etwas, das die Käufer sehen, geht die Liste rund zwanzig Sekunden später von selbst raus. Zielpreise, Untergrenzen und Notizen stehen nicht im Katalog und lösen deshalb nichts aus. Sichtbar wird es, sobald die Seite neu gebaut ist — das dauert noch etwa eine Minute.'
+              : 'Aus. Die Liste bleibt auf dem Stand des letzten Veröffentlichens, bis du den Knopf drückst.'}
+          </p>
+        </div>
 
         <div className="mb-3 rounded-xl border border-line bg-surface-2 p-3.5 text-[13px] leading-relaxed text-muted">
           <strong className="text-ink">Was veröffentlicht wird:</strong> Kategorie, Hersteller, Bezeichnung, Volumen und

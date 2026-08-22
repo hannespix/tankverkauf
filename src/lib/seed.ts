@@ -159,6 +159,12 @@ export const SEED: DB = {
         active: true,
       },
     ],
+    // Der Katalog geht von selbst raus. Ohne das muss man nach jeder Preisänderung
+    // daran denken, und die veröffentlichte Liste läuft unbemerkt hinterher.
+    autoPublish: true,
+    publishedStamp: '',
+    publishedPhotos: '',
+    publishedAt: '',
     packagePrice: 17900,
     packageTarget: 15200,
     packageFloor: 12800,

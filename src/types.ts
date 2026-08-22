@@ -220,6 +220,14 @@ export interface Settings {
   bundles: Bundle[]
   /** Automatischer Mengenrabatt je Kategorie. */
   tiers: PriceTier[]
+  /** Nach jeder gespeicherten Änderung von selbst veröffentlichen. */
+  autoPublish: boolean
+  /** Fingerabdruck des zuletzt veröffentlichten Katalogs — leer heißt "nie". */
+  publishedStamp: string
+  /** Fingerabdruck der zuletzt vollständig übertragenen Bilder. */
+  publishedPhotos: string
+  /** Wann zuletzt veröffentlicht wurde. */
+  publishedAt: string
   seller: {
     name: string
     location: string
