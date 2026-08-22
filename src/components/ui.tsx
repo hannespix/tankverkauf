@@ -5,9 +5,13 @@ export const cx = (...parts: (string | false | null | undefined)[]) => parts.fil
 
 // ------------------------------------------------------------------- layout
 
-export function Card({ children, className = '', pad = true }: { children: ReactNode; className?: string; pad?: boolean }) {
+export function Card({
+  children, className = '', pad = true, style,
+}: { children: ReactNode; className?: string; pad?: boolean; style?: React.CSSProperties }) {
   return (
-    <div className={cx('rounded-2xl border border-line bg-surface shadow-card', pad && 'p-4 sm:p-5', className)}>{children}</div>
+    <div style={style} className={cx('rounded-2xl border border-line bg-surface shadow-card', pad && 'p-4 sm:p-5', className)}>
+      {children}
+    </div>
   )
 }
 

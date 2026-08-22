@@ -86,7 +86,10 @@ const bullet = (g: Group, shared: string[] = []) => {
   // The size decides whether a buyer can get it through the door and onto a
   // trailer — it belongs on the line itself, not in a footnote.
   const size = fmtDims(g.dims)
-  return `• ${g.count}× ${label(g)} ${num(g.litres)} l${size ? ` · ${size}` : ''} – je ${eur(g.vb)}${extra.length ? ` (${extra.join(', ')})` : ''}`
+  // Eine Pumpe hat kein Volumen. "Impellerpumpe 0 l" stand in jeder Hersteller-
+  // und Restposten-Anzeige und ließ die ganze Liste unseriös aussehen.
+  const vol = g.litres > 0 ? ` ${num(g.litres)} l` : ''
+  return `• ${g.count}× ${label(g)}${vol}${size ? ` · ${size}` : ''} – je ${eur(g.vb)}${extra.length ? ` (${extra.join(', ')})` : ''}`
 }
 
 /** A fingerprint that changes whenever the ad's facts change. */
@@ -165,6 +168,15 @@ export function generateAd(db: DB, scope: AdScope, portal: Portal | null): Gener
   const sellerName = s.seller.name || 'Betriebsauflösung'
   const lim = limitsOf(portal)
   const fach = portal?.style === 'fach'
+  // Wie die Ware in Überschrift und Fließtext heißt. Solange nur eine Kategorie im
+  // Zuschnitt steckt, ist es deren Name; bei gemischten Posten bleibt es neutral.
+  // Fest verdrahtet stand hier früher "Edelstahltanks" — über zwei Pumpen und einen
+  // Filter war das schlicht falsch.
+  const kinds = [...new Set(tanks.map((x) => x.category))]
+  const noun = kinds.length === 1
+    ? (db.settings.categories.find((c) => c.id === kinds[0])?.label ?? 'Positionen')
+    : 'Positionen'
+  const hasVolume = kinds.length === 1 && (db.settings.categories.find((c) => c.id === kinds[0])?.hasVolume ?? false)
 
   if (scope.kind === 'tank') {
     const tank = tanks[0]
@@ -174,16 +186,20 @@ export function generateAd(db: DB, scope: AdScope, portal: Portal | null): Gener
     const name = tank.maker === 'Sonstige' ? tank.type : `${tank.maker} ${tank.type}`
     // Without a maker's plate the shape is the name, so the word buyers actually
     // search for has to come from the title instead.
-    const title = trim(`${name} ${num(tank.litres)} l Edelstahl Weintank Lagertank`, lim.title)
+    // Dieselbe Regel wie in der Liste: kein Volumen, keine Literangabe — und die
+    // Suchbegriffe für Tanks gehören auch nur an einen Tank.
+    const vol = tank.litres > 0 ? ` ${num(tank.litres)} l` : ''
+    const search = tank.category === 'tank' ? ' Edelstahl Weintank Lagertank' : ''
+    const title = trim(`${name}${vol}${search}`, lim.title)
     const body = [
-      `${name} mit ${num(tank.litres)} Litern aus Betriebsauflösung abzugeben.`,
+      `${name}${tank.litres > 0 ? ` mit ${num(tank.litres)} Litern` : ''} aus Betriebsauflösung abzugeben.`,
       '',
       'DATEN',
       `• Hersteller/Typ: ${name}`,
-      `• Volumen: ${num(tank.litres)} l`,
+      tank.litres > 0 ? `• Volumen: ${num(tank.litres)} l` : undefined,
       fmtDims(tank.dims) ? `• Maße: ${fmtDims(tank.dims)}` : undefined,
       `• Preis: ${eur(tank.vb)} VB (brutto inkl. ${Math.round(s.vatRate * 100)} % MwSt.)`,
-      `• Preis je Liter: ${centsPerLitre(tank.vb, tank.litres)}`,
+      tank.litres > 0 ? `• Preis je Liter: ${centsPerLitre(tank.vb, tank.litres)}` : undefined,
       '',
       ...featureBlock([tank]),
       conditionFor(tank.category),
@@ -202,9 +218,11 @@ export function generateAd(db: DB, scope: AdScope, portal: Portal | null): Gener
     // Most tanks here carry no maker's plate at all. "6 Sonstige Edelstahltanks"
     // would read like a filler word in the headline, so the brand simply drops out.
     const named = maker && maker !== 'Sonstige' ? `${maker} ` : ''
-    const title = trim(`${t.count} ${named}Edelstahltanks ${num(t.litres)} l Weintank Lagertank`, lim.title)
+    const size = hasVolume && t.litres > 0 ? ` ${num(t.litres)} l` : ''
+    const search = kinds.length === 1 && kinds[0] === 'tank' ? ' Weintank Lagertank' : ''
+    const title = trim(`${t.count} ${named}${noun}${size}${search}`, lim.title)
     const body = [
-      `${t.count} ${named ? `${maker}-Edelstahltanks` : 'Edelstahltanks'} mit zusammen ${num(t.litres)} Litern aus Betriebsauflösung.`,
+      `${t.count} ${named ? `${maker}-${noun}` : noun}${hasVolume && t.litres > 0 ? ` mit zusammen ${num(t.litres)} Litern` : ''} aus Betriebsauflösung.`,
       '',
       'BESTAND',
       ...groups.map((g) => bullet(g, sharedFeatures(tanks))),
@@ -284,9 +302,10 @@ export function generateAd(db: DB, scope: AdScope, portal: Portal | null): Gener
   }
 
   if (scope.kind === 'restposten') {
-    const title = trim(`${t.count} Edelstahltanks ${num(t.litres)} l — Betriebsauflösung Weingut`, lim.title)
+    const size = hasVolume && t.litres > 0 ? ` ${num(t.litres)} l` : ''
+    const title = trim(`${t.count} ${noun}${size} — Betriebsauflösung Weingut`, lim.title)
     const body = [
-      `Wegen Betriebsauflösung: ${t.count} Edelstahltanks, zusammen ${num(t.litres)} Liter.`,
+      `Wegen Betriebsauflösung: ${t.count} ${noun}${hasVolume && t.litres > 0 ? `, zusammen ${num(t.litres)} Liter` : ''}.`,
       '',
       ...groups.map((g) => bullet(g, sharedFeatures(tanks))),
       '',
@@ -298,13 +317,6 @@ export function generateAd(db: DB, scope: AdScope, portal: Portal | null): Gener
 
   // Komplettpaket
   const makerList = [...new Set(groups.map((g) => g.maker))].filter((m) => m !== 'Sonstige').join(', ')
-  // The package holds whatever is marked as belonging to it. Marking the barrels
-  // too used to advertise "61 Edelstahltanks" over a mixed lot — so the noun only
-  // names a kind while there is exactly one, and stays neutral otherwise.
-  const kinds = [...new Set(tanks.map((x) => x.category))]
-  const noun = kinds.length === 1
-    ? `${db.settings.categories.find((c) => c.id === kinds[0])?.label ?? 'Positionen'}`
-    : 'Positionen'
   const volume = t.litres > 0 ? ` ${num(t.litres)} l` : ''
   const title = trim(
     fach
@@ -383,6 +395,13 @@ export interface ParsedMessage {
   offer: number | null
   /** True when the positions were read exactly instead of guessed from prose. */
   exact: boolean
+  /**
+   * Unser eigener Paketpreis, den die Käuferliste mitgeschickt hat — nicht das
+   * Gebot des Käufers. Ohne diese Unterscheidung erschiene jeder, der den
+   * ausgeschriebenen Paketpreis annimmt, als Preisdrücker gegenüber der Summe
+   * der Einzelpreise.
+   */
+  packagePrice: number | null
   /** Set when a guess covers suspiciously many positions, so the form can warn. */
   broadMatch: boolean
 }
@@ -390,6 +409,8 @@ export interface ParsedMessage {
 /** Marker the catalogue puts at the end of an enquiry so nothing has to be guessed. */
 export const REQUEST_MARK = 'Positionen:'
 export const OFFER_MARK = 'Angebot:'
+/** Der Preis, den unsere eigene Käuferliste für diese Auswahl ausgerechnet hat. */
+export const PACKAGE_MARK = 'Paketpreis:'
 
 /** "T-03–T-05, F-01" becomes every id in between, keeping only ones that exist. */
 function expandRanges(list: string, known: Set<string>): string[] {
@@ -451,13 +472,19 @@ export function parseMessage(text: string, db: DB): ParsedMessage {
   // The catalogue writes the exact position numbers — prefer them over any guessing.
   // They arrive collapsed into ranges ("T-03–T-05") to keep the mailto link short.
   const known = new Set(db.tanks.map((t) => t.id))
-  const listed = text.match(new RegExp(`${REQUEST_MARK}\\s*([A-Z]-\\d+(?:\\s*[-–—]\\s*[A-Z]-\\d+)?(?:\\s*,\\s*[A-Z]-\\d+(?:\\s*[-–—]\\s*[A-Z]-\\d+)?)*)`, 'i'))
+  // Die Marke braucht eine linke Wortgrenze, sonst trifft "Angebot:" auch in
+  // "Mein Paketangebot:" und "Positionen:" auch in "Paket-Positionen:" — und das
+  // wäre wieder unser eigener Preis, der als Gebot des Käufers gelesen wird.
+  const mark = (m: string, tail: string) => new RegExp(`(?:^|[^\\wäöüßÄÖÜ-])${m}\\s*${tail}`, 'im')
+  const listed = text.match(mark(REQUEST_MARK, `([A-Z]-\\d+(?:\\s*[-–—]\\s*[A-Z]-\\d+)?(?:\\s*,\\s*[A-Z]-\\d+(?:\\s*[-–—]\\s*[A-Z]-\\d+)?)*)`))
   // Even an exactly stated number must not attach something already sold — the
   // catalogue never offers those, so a range simply reaches past them.
   const exactIds = (listed ? expandRanges(listed[1], known) : [])
     .filter((id) => db.tanks.some((t) => t.id === id && isOpen(t)))
 
-  const offerLine = text.match(new RegExp(`${OFFER_MARK}\\s*([\\d.]+)`, 'i'))
+  const offerLine = text.match(mark(OFFER_MARK, `([\\d.]+)`))
+  const packageLine = text.match(mark(PACKAGE_MARK, `([\\d.]+)`))
+  const packagePrice = packageLine ? Number(packageLine[1].replace(/\./g, '')) || null : null
 
   // An enquiry from our own catalogue quotes OUR prices back at us: "- 4x
   // Barriquefass (225 l) - je 175 EUR" and "Summe der genannten Preise: 2.500 EUR".
@@ -467,6 +494,8 @@ export function parseMessage(text: string, db: DB): ParsedMessage {
     .split(/\r?\n/)
     .filter((l) => !/^\s*[-•]\s*\d+×/.test(l))
     .filter((l) => !/^\s*Summe der genannten Preise/i.test(l))
+    .filter((l) => !/^\s*>*\s*(Paketpreis|Paket|Sie sparen)/i.test(l))
+    .filter((l) => !/^\s*[·•]/.test(l))
     .join('\n')
 
   // With the structured block present the price is stated or it is not stated.
@@ -492,8 +521,9 @@ export function parseMessage(text: string, db: DB): ParsedMessage {
   // called "Angebot: 1100" or, with the block on top, not found at all.
   const prose = body
     .split(/\r?\n/)
-    .filter((l) => !new RegExp(`^\\s*(${REQUEST_MARK}|${OFFER_MARK})`, 'i').test(l))
-    .filter((l) => !/^\s*\(Diese (drei )?Zeilen bitte stehen lassen/i.test(l))
+    .filter((l) => !new RegExp(`^\\s*(${REQUEST_MARK}|${OFFER_MARK}|${PACKAGE_MARK})`, 'i').test(l))
+    .filter((l) => !/^\s*\((Diese (drei )?Zeilen )?[Bb]itte stehen lassen/i.test(l))
+    .filter((l) => !/^\s*[·•]/.test(l))
     .filter((l) => !/^\s*[—–-]\s*[—–-]\s*[—–-]\s*$/.test(l))
     .join('\n')
   const lines = prose.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
@@ -510,5 +540,5 @@ export function parseMessage(text: string, db: DB): ParsedMessage {
 
   const name = (afterGreeting?.[1] ?? standalone ?? '').trim()
 
-  return { name, phone, email, litresMentioned: all, matchedTankIds, offer, exact: exactIds.length > 0, broadMatch }
+  return { name, phone, email, litresMentioned: all, matchedTankIds, offer, packagePrice, exact: exactIds.length > 0, broadMatch }
 }

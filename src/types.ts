@@ -164,6 +164,34 @@ export interface Ad {
   updatedAt: string
 }
 
+/**
+ * Ein geschnürtes Paketangebot. Gespeichert wird die Zusammenstellung und der
+ * Nachlass, nicht der fertige Preis: verkauft sich eine Position daraus, fällt sie
+ * heraus und der Preis rechnet sich neu, statt dass das Angebot falsch wird.
+ */
+export interface Bundle {
+  id: string
+  label: string
+  /** Ein, zwei Sätze für den Käufer. */
+  blurb: string
+  /** Alle Positionen des Angebots. */
+  ids: string[]
+  /** Teilmenge von ids, die ohne Aufpreis mitgeht ("gratis dazu"). */
+  giftIds: string[]
+  /** Nachlass auf die bezahlten Positionen, 0,12 = 12 %. */
+  discount: number
+  /** Unter so vielen verbliebenen Positionen wird das Angebot zurückgezogen. */
+  minItems: number
+  active: boolean
+}
+
+/** Mengenstaffel: ab so vielen Positionen einer Kategorie so viel Nachlass. */
+export interface PriceTier {
+  category: string
+  minCount: number
+  discount: number
+}
+
 export interface Settings {
   /** Name of the whole thing, shown in the header and the browser tab. */
   appName: string
@@ -181,6 +209,10 @@ export interface Settings {
   packagePrice: number
   packageTarget: number
   packageFloor: number
+  /** Geschnürte Pakete für die Käuferseite. */
+  bundles: Bundle[]
+  /** Automatischer Mengenrabatt je Kategorie. */
+  tiers: PriceTier[]
   seller: {
     name: string
     location: string
@@ -232,6 +264,25 @@ export interface CatalogItem {
   reserved: boolean
 }
 
+/**
+ * Ein Paket, wie es der Käufer sieht: gegen den heutigen Bestand aufgelöst und
+ * ausgerechnet. Der konfigurierte Nachlass bleibt in der privaten Datenbank —
+ * veröffentlicht wird nur, was das Paket kostet, und das steht ohnehin dran.
+ */
+export interface CatalogBundle {
+  id: string
+  label: string
+  blurb: string
+  /** Bezahlte Positionen. */
+  ids: string[]
+  /** Positionen ohne Aufpreis. */
+  giftIds: string[]
+  /** Summe der Einzelpreise aller enthaltenen Positionen. */
+  full: number
+  /** Preis des Pakets. */
+  price: number
+}
+
 export interface Catalog {
   seller: string
   location: string
@@ -241,6 +292,10 @@ export interface Catalog {
   vatRate: number
   updatedAt: string
   items: CatalogItem[]
+  /** Fertig geschnürte Angebote. Fehlt in älteren veröffentlichten Dateien. */
+  bundles: CatalogBundle[]
+  /** Mengenstaffel je Kategorie. Fehlt in älteren veröffentlichten Dateien. */
+  tiers: PriceTier[]
 }
 
 export interface DB {
