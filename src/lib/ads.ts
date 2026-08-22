@@ -442,12 +442,28 @@ export function parseMessage(text: string, db: DB): ParsedMessage {
   // They arrive collapsed into ranges ("T-03–T-05") to keep the mailto link short.
   const known = new Set(db.tanks.map((t) => t.id))
   const listed = text.match(new RegExp(`${REQUEST_MARK}\\s*([A-Z]-\\d+(?:\\s*[-–—]\\s*[A-Z]-\\d+)?(?:\\s*,\\s*[A-Z]-\\d+(?:\\s*[-–—]\\s*[A-Z]-\\d+)?)*)`, 'i'))
-  const exactIds = listed ? expandRanges(listed[1], known) : []
+  // Even an exactly stated number must not attach something already sold — the
+  // catalogue never offers those, so a range simply reaches past them.
+  const exactIds = (listed ? expandRanges(listed[1], known) : [])
+    .filter((id) => db.tanks.some((t) => t.id === id && isOpen(t)))
 
   const offerLine = text.match(new RegExp(`${OFFER_MARK}\\s*([\\d.]+)`, 'i'))
-  // Without the structured block the price has to come out of the prose, where a
-  // currency word is the only thing that tells it apart from a volume.
-  const prosePrice = body.match(/(\d{1,3}(?:[.\s]\d{3})+|\d{2,6})\s*(?:€|EUR\b|Euro\b)/i)
+
+  // An enquiry from our own catalogue quotes OUR prices back at us: "- 4x
+  // Barriquefass (225 l) - je 175 EUR" and "Summe der genannten Preise: 2.500 EUR".
+  // Scanning those for a price read 175 as the buyer's offer on a 2.500 EUR
+  // enquiry — and presented it as exactly read. Our own lines are cut out first.
+  const buyerWrote = body
+    .split(/\r?\n/)
+    .filter((l) => !/^\s*[-•]\s*\d+×/.test(l))
+    .filter((l) => !/^\s*Summe der genannten Preise/i.test(l))
+    .join('\n')
+
+  // With the structured block present the price is stated or it is not stated.
+  // Guessing one from the prose can only go wrong there.
+  const prosePrice = exactIds.length
+    ? null
+    : buyerWrote.match(/(\d{1,3}(?:[.\s]\d{3})+|\d{2,6})\s*(?:€|EUR\b|Euro\b)/i)
   const offer = offerLine
     ? Number(offerLine[1].replace(/\./g, '')) || null
     : prosePrice
