@@ -5,7 +5,7 @@
   "intro": "Wegen Betriebsaufgabe geben wir unsere komplette Kellerausstattung ab. Markieren Sie, was für Sie infrage kommt, und schicken Sie uns Ihr Angebot.",
   "pickupInfo": "Besichtigung und Abholung nach Absprache. Selbstabholung, Verladung mit Stapler möglich.",
   "vatRate": 0.19,
-  "updatedAt": "2026-08-22T17:35:59.756Z",
+  "updatedAt": "2026-08-22T18:44:49.751Z",
   "items": [
     {
       "id": "T-03",
@@ -19,7 +19,9 @@
         "dia": 85,
         "h": 138
       },
-      "photos": [],
+      "photos": [
+        "fotos/T-03-xetnot.jpg"
+      ],
       "reserved": false
     },
     {
@@ -34,7 +36,9 @@
         "dia": 85,
         "h": 158
       },
-      "photos": [],
+      "photos": [
+        "fotos/T-04-matews.jpg"
+      ],
       "reserved": false
     },
     {
@@ -49,7 +53,9 @@
         "dia": 85,
         "h": 158
       },
-      "photos": [],
+      "photos": [
+        "fotos/T-05-zbk7qv.jpg"
+      ],
       "reserved": false
     },
     {
@@ -64,7 +70,9 @@
         "dia": 135,
         "h": 120
       },
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-mf53iy.jpg"
+      ],
       "reserved": false
     },
     {
@@ -79,7 +87,9 @@
         "dia": 135,
         "h": 120
       },
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-mf53iy.jpg"
+      ],
       "reserved": false
     },
     {
@@ -127,7 +137,10 @@
       "litres": 1800,
       "vb": 1300,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/T-11-uch67g.jpg",
+        "fotos/T-11-yoe8ai.jpg"
+      ],
       "reserved": false
     },
     {
@@ -143,7 +156,10 @@
         "d": 125,
         "h": 192
       },
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-pb7t6y.jpg",
+        "fotos/gruppe-09h2c9.jpg"
+      ],
       "reserved": false
     },
     {
@@ -159,7 +175,10 @@
         "d": 125,
         "h": 192
       },
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-pb7t6y.jpg",
+        "fotos/gruppe-09h2c9.jpg"
+      ],
       "reserved": false
     },
     {
@@ -175,7 +194,10 @@
         "d": 132,
         "h": 85
       },
-      "photos": [],
+      "photos": [
+        "fotos/T-14-rdppst.jpg",
+        "fotos/T-14-atxo7w.jpg"
+      ],
       "reserved": false
     },
     {
@@ -191,7 +213,9 @@
         "d": 132,
         "h": 100
       },
-      "photos": [],
+      "photos": [
+        "fotos/T-15-112lm1.jpg"
+      ],
       "reserved": false
     },
     {
@@ -207,7 +231,9 @@
         "d": 132,
         "h": 115
       },
-      "photos": [],
+      "photos": [
+        "fotos/T-16-mthx9d.jpg"
+      ],
       "reserved": false
     },
     {
@@ -223,7 +249,9 @@
         "d": 132,
         "h": 147
       },
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-09h2c9.jpg"
+      ],
       "reserved": false
     },
     {
@@ -239,7 +267,9 @@
         "d": 132,
         "h": 147
       },
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-09h2c9.jpg"
+      ],
       "reserved": false
     },
     {
@@ -255,7 +285,9 @@
         "d": 132,
         "h": 147
       },
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-09h2c9.jpg"
+      ],
       "reserved": false
     },
     {
@@ -270,7 +302,9 @@
         "dia": 136,
         "h": 248
       },
-      "photos": [],
+      "photos": [
+        "fotos/T-20-23s3vb.jpg"
+      ],
       "reserved": false
     },
     {
@@ -285,7 +319,9 @@
         "dia": 136,
         "h": 248
       },
-      "photos": [],
+      "photos": [
+        "fotos/T-21-t6t1qv.jpg"
+      ],
       "reserved": false
     },
     {
@@ -300,7 +336,9 @@
         "dia": 140,
         "h": 251
       },
-      "photos": [],
+      "photos": [
+        "fotos/T-22-662had.jpg"
+      ],
       "reserved": false
     },
     {
@@ -315,7 +353,9 @@
         "dia": 151,
         "h": 253
       },
-      "photos": [],
+      "photos": [
+        "fotos/T-23-rsbdqq.jpg"
+      ],
       "reserved": false
     },
     {
@@ -330,7 +370,9 @@
         "dia": 151,
         "h": 253
       },
-      "photos": [],
+      "photos": [
+        "fotos/T-24-e5sm2o.jpg"
+      ],
       "reserved": false
     },
     {
@@ -342,7 +384,9 @@
       "litres": 225,
       "vb": 175,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-hib7mj.jpg"
+      ],
       "reserved": false
     },
     {
@@ -354,7 +398,9 @@
       "litres": 225,
       "vb": 175,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-hib7mj.jpg"
+      ],
       "reserved": false
     },
     {
@@ -366,7 +412,9 @@
       "litres": 225,
       "vb": 175,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-hib7mj.jpg"
+      ],
       "reserved": false
     },
     {
@@ -378,7 +426,9 @@
       "litres": 225,
       "vb": 175,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-hib7mj.jpg"
+      ],
       "reserved": false
     },
     {
@@ -390,7 +440,9 @@
       "litres": 225,
       "vb": 175,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-hib7mj.jpg"
+      ],
       "reserved": false
     },
     {
@@ -402,7 +454,9 @@
       "litres": 225,
       "vb": 175,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-hib7mj.jpg"
+      ],
       "reserved": false
     },
     {
@@ -414,7 +468,9 @@
       "litres": 225,
       "vb": 175,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-hib7mj.jpg"
+      ],
       "reserved": false
     },
     {
@@ -426,7 +482,9 @@
       "litres": 225,
       "vb": 175,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-hib7mj.jpg"
+      ],
       "reserved": false
     },
     {
@@ -438,7 +496,9 @@
       "litres": 225,
       "vb": 175,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-hib7mj.jpg"
+      ],
       "reserved": false
     },
     {
@@ -450,7 +510,9 @@
       "litres": 225,
       "vb": 175,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-hib7mj.jpg"
+      ],
       "reserved": false
     },
     {
@@ -462,7 +524,9 @@
       "litres": 225,
       "vb": 175,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-hib7mj.jpg"
+      ],
       "reserved": false
     },
     {
@@ -474,7 +538,9 @@
       "litres": 225,
       "vb": 175,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-hib7mj.jpg"
+      ],
       "reserved": false
     },
     {
@@ -486,7 +552,9 @@
       "litres": 225,
       "vb": 175,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-hib7mj.jpg"
+      ],
       "reserved": false
     },
     {
@@ -498,7 +566,9 @@
       "litres": 225,
       "vb": 175,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-hib7mj.jpg"
+      ],
       "reserved": false
     },
     {
@@ -510,7 +580,9 @@
       "litres": 225,
       "vb": 175,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-hib7mj.jpg"
+      ],
       "reserved": false
     },
     {
@@ -522,7 +594,9 @@
       "litres": 225,
       "vb": 175,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-hib7mj.jpg"
+      ],
       "reserved": false
     },
     {
@@ -534,7 +608,9 @@
       "litres": 225,
       "vb": 175,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-hib7mj.jpg"
+      ],
       "reserved": false
     },
     {
@@ -546,7 +622,9 @@
       "litres": 225,
       "vb": 175,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-hib7mj.jpg"
+      ],
       "reserved": false
     },
     {
@@ -558,7 +636,9 @@
       "litres": 225,
       "vb": 175,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-hib7mj.jpg"
+      ],
       "reserved": false
     },
     {
@@ -570,7 +650,9 @@
       "litres": 225,
       "vb": 175,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-hib7mj.jpg"
+      ],
       "reserved": false
     },
     {
@@ -582,7 +664,9 @@
       "litres": 225,
       "vb": 175,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-hib7mj.jpg"
+      ],
       "reserved": false
     },
     {
@@ -594,7 +678,9 @@
       "litres": 225,
       "vb": 175,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-hib7mj.jpg"
+      ],
       "reserved": false
     },
     {
@@ -606,7 +692,9 @@
       "litres": 225,
       "vb": 175,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-hib7mj.jpg"
+      ],
       "reserved": false
     },
     {
@@ -618,7 +706,9 @@
       "litres": 225,
       "vb": 175,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-hib7mj.jpg"
+      ],
       "reserved": false
     },
     {
@@ -630,7 +720,9 @@
       "litres": 225,
       "vb": 175,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-hib7mj.jpg"
+      ],
       "reserved": false
     },
     {
@@ -642,7 +734,9 @@
       "litres": 225,
       "vb": 175,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-hib7mj.jpg"
+      ],
       "reserved": false
     },
     {
@@ -654,7 +748,9 @@
       "litres": 225,
       "vb": 175,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-hib7mj.jpg"
+      ],
       "reserved": false
     },
     {
@@ -666,7 +762,9 @@
       "litres": 225,
       "vb": 175,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-hib7mj.jpg"
+      ],
       "reserved": false
     },
     {
@@ -678,7 +776,9 @@
       "litres": 225,
       "vb": 175,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-hib7mj.jpg"
+      ],
       "reserved": false
     },
     {
@@ -690,7 +790,9 @@
       "litres": 300,
       "vb": 250,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/F-30-x87de9.jpg"
+      ],
       "reserved": false
     },
     {
@@ -702,7 +804,9 @@
       "litres": 300,
       "vb": 250,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/F-31-82t1nd.jpg"
+      ],
       "reserved": false
     },
     {
@@ -714,7 +818,9 @@
       "litres": 0,
       "vb": 2950,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/M-01-re8iuc.jpg"
+      ],
       "reserved": false
     },
     {
@@ -724,9 +830,11 @@
       "maker": "Schneider",
       "type": "Impellerpumpe Phönix 12000",
       "litres": 0,
-      "vb": 590,
+      "vb": 1000,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/M-02-qhvmq4.jpg"
+      ],
       "reserved": false
     },
     {
@@ -738,7 +846,9 @@
       "litres": 0,
       "vb": 390,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/M-03-lnkcv5.jpg"
+      ],
       "reserved": false
     },
     {
@@ -748,9 +858,11 @@
       "maker": "Kiesel",
       "type": "Barriquefass-Reiniger",
       "litres": 0,
-      "vb": 690,
+      "vb": 1200,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/M-04-xioqnn.jpg"
+      ],
       "reserved": false
     },
     {
@@ -762,7 +874,9 @@
       "litres": 0,
       "vb": 130,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-snva7u.jpg"
+      ],
       "reserved": false
     },
     {
@@ -774,7 +888,9 @@
       "litres": 0,
       "vb": 130,
       "dims": null,
-      "photos": [],
+      "photos": [
+        "fotos/gruppe-snva7u.jpg"
+      ],
       "reserved": false
     }
   ]
