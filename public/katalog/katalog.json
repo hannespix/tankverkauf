@@ -5,7 +5,7 @@
   "intro": "Wegen Betriebsaufgabe geben wir unsere komplette Kellerausstattung ab. Markieren Sie, was für Sie infrage kommt, und schicken Sie uns Ihr Angebot.",
   "pickupInfo": "Besichtigung und Abholung nach Absprache. Selbstabholung, Verladung mit Stapler möglich.",
   "vatRate": 0.19,
-  "updatedAt": "2026-08-22T20:34:56.096Z",
+  "updatedAt": "2026-08-22T20:50:51.424Z",
   "items": [
     {
       "id": "T-03",
@@ -894,6 +894,23 @@
       "reserved": false
     }
   ],
+  "categories": [
+    {
+      "id": "tank",
+      "label": "Edelstahltanks",
+      "note": ""
+    },
+    {
+      "id": "fass",
+      "label": "Holzfässer",
+      "note": "Wir geben die Fässer als Dekofässer ab — für Garten und Hof, als Stehtisch, Pflanzkübel, Regentonne oder Möbelprojekt. Original Weinfässer aus dem eigenen Keller, gebraucht und gewachsen im Einsatz, nicht geschliffen und nicht behandelt."
+    },
+    {
+      "id": "maschine",
+      "label": "Maschinen",
+      "note": ""
+    }
+  ],
   "bundles": [
     {
       "id": "startkeller",
@@ -981,6 +998,61 @@
       ],
       "full": 760,
       "price": 500
+    },
+    {
+      "id": "deko-faesser",
+      "label": "Alle Dekofässer, 31 Stück",
+      "blurb": "29 Barriques à 225 l und zwei Tonneaux à 300 l, Eiche, original aus dem Weinkeller. Für Hof, Garten, Gastronomie oder Möbelbau — als Stehtisch, Pflanzkübel oder Regentonne. Wer die Partie geschlossen nimmt, hat einen Termin, eine Fuhre, und die Ecke ist leer.",
+      "ids": [
+        "F-01",
+        "F-02",
+        "F-03",
+        "F-04",
+        "F-05",
+        "F-06",
+        "F-07",
+        "F-08",
+        "F-09",
+        "F-10",
+        "F-11",
+        "F-12",
+        "F-13",
+        "F-14",
+        "F-15",
+        "F-16",
+        "F-17",
+        "F-18",
+        "F-19",
+        "F-20",
+        "F-21",
+        "F-22",
+        "F-23",
+        "F-24",
+        "F-25",
+        "F-26",
+        "F-27",
+        "F-28",
+        "F-29",
+        "F-30",
+        "F-31"
+      ],
+      "giftIds": [],
+      "full": 5575,
+      "price": 4200
+    },
+    {
+      "id": "fasspflege",
+      "label": "Fassreiniger mit zwei Heizstäben",
+      "blurb": "Kiesel-Barriquefass-Reiniger mit eigenem Elektromotor, Rotationsdüse und Anschluss für den Hochdruckreiniger. Die beiden Jakobs-Heizstäbe für die Zapflochklappe gehen ohne Aufpreis mit — für einen Betrieb, der seine Barriques selbst bewirtschaftet.",
+      "ids": [
+        "M-04"
+      ],
+      "giftIds": [
+        "M-05",
+        "M-06"
+      ],
+      "full": 1460,
+      "price": 1200
     }
   ],
   "tiers": [
