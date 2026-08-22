@@ -199,6 +199,8 @@ export interface CatalogItem {
   type: string
   litres: number
   vb: number
+  /** Already promised to someone. Buyers may still register a backup interest. */
+  reserved: boolean
 }
 
 export interface Catalog {
