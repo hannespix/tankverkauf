@@ -74,6 +74,26 @@ und Preis je Liter. Ein Verkauf lässt sich zurücknehmen; die Tanks sind dann w
 
 **Anzeigen** — der Anzeigentext-Generator.
 
+## Öffentliche Liste für Käufer
+
+Unter *Einstellungen → Öffentliche Liste* lässt sich eine reduzierte Fassung des Bestands ins
+öffentliche Repository schreiben. Interessenten öffnen sie unter
+`https://<user>.github.io/tankverkauf/katalog.html`, kreuzen an was sie brauchen — gleiche
+Positionen mit Mengenauswahl statt 29 Häkchen — und schicken daraus eine vorausgefüllte E-Mail.
+Kein Server, kein Konto, kein Login.
+
+**Veröffentlicht werden** Kategorie, Hersteller, Bezeichnung, Volumen und die VB, und nur von
+Positionen, die noch nicht verkauft sind. **Nicht veröffentlicht werden** Zielpreise,
+Untergrenzen, Gebote, Notizen, Interessenten und Fotos. Die Liste wird nach Whitelist gebaut —
+es kann also nichts versehentlich mitrutschen, auch wenn das Datenmodell später wächst.
+
+Damit das Schreiben funktioniert, muss der Token auch für das öffentliche Repository
+freigegeben sein (im Token unter *Repository access* beide auswählen).
+
+> **Nicht aus einer Kleinanzeige heraus verlinken.** Kleinanzeigen erlaubt externe Links nur als
+> weiterführende Information zum dort angebotenen Artikel und untersagt Links auf konkurrierende
+> Angebotsseiten. Nach dem Erstkontakt per Mail oder Messenger verschicken ist unproblematisch.
+
 ## Der Anzeigen-Generator
 
 Vier Vorlagen: **Komplettpaket**, **Hersteller-Bundle**, **Einzeltank**, **Restposten (Kurzfassung)**.

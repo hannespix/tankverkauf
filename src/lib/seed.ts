@@ -133,7 +133,15 @@ export const SEED: DB = {
       location: '',
       plz: '',
       contact: '',
+      email: '',
       pickupInfo: 'Besichtigung und Abholung nach Absprache. Selbstabholung, Verladung mit Stapler möglich.',
+    },
+    catalog: {
+      owner: '',
+      repo: 'tankverkauf',
+      branch: 'main',
+      path: 'katalog/katalog.json',
+      intro: 'Wegen Betriebsaufgabe geben wir unsere komplette Kellerausstattung ab. Markieren Sie, was für Sie infrage kommt, und schicken Sie uns Ihr Angebot.',
     },
     ad: {
       signature: 'Betriebsauflösung Weingut Pix – weitere Tanks auf Anfrage.',

@@ -161,7 +161,18 @@ export interface Settings {
     location: string
     plz: string
     contact: string
+    /** Where buyer requests from the public catalogue are sent. */
+    email: string
     pickupInfo: string
+  }
+  /** Where the public catalogue is published. Empty owner disables it. */
+  catalog: {
+    owner: string
+    repo: string
+    branch: string
+    path: string
+    /** Free line shown at the top of the catalogue. */
+    intro: string
   }
   ad: {
     signature: string
@@ -177,6 +188,28 @@ export interface Activity {
   at: string
   kind: ActivityKind
   text: string
+}
+
+/** The deliberately reduced view of an item that buyers get to see. */
+export interface CatalogItem {
+  id: string
+  category: string
+  categoryLabel: string
+  maker: string
+  type: string
+  litres: number
+  vb: number
+}
+
+export interface Catalog {
+  seller: string
+  location: string
+  email: string
+  intro: string
+  pickupInfo: string
+  vatRate: number
+  updatedAt: string
+  items: CatalogItem[]
 }
 
 export interface DB {
