@@ -43,9 +43,40 @@ export default function Settings() {
     setBusy('import')
     try {
       const { tanks, warnings } = await importXlsx(file)
-      if (!confirm(`${tanks.length} Tanks gefunden. Der aktuelle Bestand wird ersetzt — Interessenten und Verkäufe bleiben erhalten. Fortfahren?`)) return
-      store.mutate((draft) => { draft.tanks = tanks }, { kind: 'settings', text: `Bestand importiert (${tanks.length} Tanks)` })
-      setNote([`${tanks.length} Tanks importiert.`, ...warnings].join(' '))
+      const key = (t: { maker: string; type: string; litres: number }) => `${t.maker}|${t.type}|${t.litres}`
+      const have = new Map(db.tanks.map((t) => [key(t), t]))
+      const neu = tanks.filter((t) => !have.has(key(t)))
+      const bekannt = tanks.length - neu.length
+
+      if (!confirm(
+        `${tanks.length} Positionen in der Datei.\n\n` +
+        `${bekannt} davon sind schon im Bestand — bei denen werden nur die Preise aktualisiert.\n` +
+        `${neu.length} kommen neu dazu.\n\n` +
+        `Nichts wird gelöscht: vorhandene Positionen behalten ihre Nummer, Kategorie, Fotos und Merkmale.`,
+      )) return
+
+      // Never replace the inventory wholesale: ids are referenced by leads, quotes,
+      // deals, ads and photo paths, so overwriting them silently breaks all of those.
+      store.mutate(
+        (draft) => {
+          for (const incoming of tanks) {
+            const existing = draft.tanks.find((t) => key(t) === key(incoming))
+            if (existing) {
+              existing.vb = incoming.vb
+              existing.target = incoming.target
+              existing.floor = incoming.floor
+              existing.updatedAt = new Date().toISOString()
+            } else {
+              const maxN = draft.tanks
+                .filter((t) => t.id.startsWith('T-'))
+                .reduce((m, t) => Math.max(m, Number(t.id.replace(/\D/g, '')) || 0), 0)
+              draft.tanks.push({ ...incoming, id: `T-${String(maxN + 1).padStart(2, '0')}` })
+            }
+          }
+        },
+        { kind: 'settings', text: `Preisliste eingelesen: ${bekannt} aktualisiert, ${neu.length} ergänzt` },
+      )
+      setNote([`${bekannt} Positionen aktualisiert, ${neu.length} ergänzt.`, ...warnings].join(' '))
     } catch (err) {
       setNote(err instanceof Error ? err.message : 'Import fehlgeschlagen.')
     } finally {
@@ -290,14 +321,14 @@ export default function Settings() {
       </Card>
 
       <Card>
-        <SectionTitle title="Export & Import" hint="Excel für die Ablage, JSON als vollständiges Backup." />
+        <SectionTitle title="Export & Import" hint="Excel für die Ablage, JSON als vollständiges Backup. Das Einlesen einer Preisliste aktualisiert Preise und ergänzt Neues, löscht aber nichts." />
         {note && <div className="mb-3 rounded-xl border border-line bg-surface-2 p-3 text-sm">{note}</div>}
         <div className="flex flex-wrap gap-2">
           <Button variant="primary" onClick={() => void exportXlsx(db)}><IconDownload />Excel exportieren</Button>
           <Button onClick={() => exportCsv(db)}><IconDownload />CSV</Button>
           <Button onClick={() => exportJson(db)}><IconDownload />Backup (JSON)</Button>
           <span className="w-px self-stretch bg-line" />
-          <Button disabled={readOnly || busy === 'import'} onClick={() => xlsxRef.current?.click()}><IconUpload />Preisliste importieren</Button>
+          <Button disabled={readOnly || busy === 'import'} onClick={() => xlsxRef.current?.click()}><IconUpload />Preisliste einlesen</Button>
           <Button disabled={readOnly} onClick={() => jsonRef.current?.click()}><IconUpload />Backup einspielen</Button>
         </div>
         <input ref={xlsxRef} type="file" accept=".xlsx,.xls" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void onImportXlsx(f); e.target.value = '' }} />
