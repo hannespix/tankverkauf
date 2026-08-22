@@ -51,6 +51,7 @@ export function addTank(partial: Partial<Tank>) {
         pickup: null,
         note: partial.note ?? '',
         tags: [],
+        photos: [],
         updatedAt: now(),
       })
     },

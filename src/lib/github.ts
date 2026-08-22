@@ -175,3 +175,48 @@ export async function fileHistory(token: string, cfg: RepoConfig, limit = 20): P
   const body = (await res.json()) as { sha: string; commit: { message: string; author: { date: string } } }[]
   return body.map((c) => ({ sha: c.sha, message: c.commit.message, date: c.commit.author.date }))
 }
+
+// ------------------------------------------------------------------ binaries
+
+/** Photos go into the data repo as ordinary files; content must already be base64. */
+export async function putBinary(
+  token: string,
+  cfg: RepoConfig,
+  path: string,
+  base64: string,
+  message: string,
+): Promise<void> {
+  const existing = await headFile(token, cfg, path)
+  const res = await call(token, `/repos/${cfg.owner}/${cfg.repo}/contents/${encodeURI(path)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ message, content: base64, branch: cfg.branch, ...(existing ? { sha: existing } : {}) }),
+  })
+  if (!res.ok) await fail(res, 'Foto konnte nicht hochgeladen werden.')
+}
+
+/** Just the sha, without pulling the whole file down. */
+async function headFile(token: string, cfg: RepoConfig, path: string): Promise<string | null> {
+  const res = await call(token, `/repos/${cfg.owner}/${cfg.repo}/contents/${encodeURI(path)}?ref=${encodeURIComponent(cfg.branch)}`)
+  if (!res.ok) return null
+  const body = (await res.json()) as { sha?: string }
+  return body.sha ?? null
+}
+
+export async function getBinary(token: string, cfg: RepoConfig, path: string): Promise<Blob | null> {
+  // The raw media type avoids base64 round-tripping for anything sizeable.
+  const res = await call(token, `/repos/${cfg.owner}/${cfg.repo}/contents/${encodeURI(path)}?ref=${encodeURIComponent(cfg.branch)}`, {
+    headers: { Accept: 'application/vnd.github.raw' },
+  })
+  if (!res.ok) return null
+  return res.blob()
+}
+
+export async function deleteBinary(token: string, cfg: RepoConfig, path: string, message: string): Promise<void> {
+  const sha = await headFile(token, cfg, path)
+  if (!sha) return
+  const res = await call(token, `/repos/${cfg.owner}/${cfg.repo}/contents/${encodeURI(path)}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ message, sha, branch: cfg.branch }),
+  })
+  if (!res.ok) await fail(res, 'Foto konnte nicht gelöscht werden.')
+}

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { PriceLadder, STATUS_FILL } from '../components/charts'
+import { PhotoStrip } from '../components/PhotoStrip'
 import { Button, Card, EmptyState, Field, Input, Modal, Pill, Select, Textarea, cx, type Tone } from '../components/ui'
 import { IconFilter, IconPlus, IconSearch, IconTrash } from '../components/icons'
 import { addTank, createDeal, createQuote, patchTank, removeTank, setTankOffer, setTankStatus } from '../lib/actions'
@@ -209,6 +210,9 @@ export default function Tanks() {
                           <button type="button" onClick={() => setDetail(t.id)} className="text-left font-semibold whitespace-nowrap hover:text-primary hover:underline">
                             {t.maker}
                           </button>
+                          {t.photos.length > 0 && (
+                            <span className="ml-1.5 align-middle text-[11px] text-faint" title={`${t.photos.length} Foto(s)`}>◉ {t.photos.length}</span>
+                          )}
                         </td>
                         <td className="px-2.5 py-1.5 whitespace-nowrap">{t.type}</td>
                         <td className="tnum px-2.5 py-1.5 text-right font-bold">{num(t.litres)}</td>
@@ -348,6 +352,8 @@ function TankDetail({ id, onClose, readOnly }: { id: string | null; onClose: () 
           </Field>
           <Field label="Abholung"><Input type="date" disabled={readOnly} value={t.pickup ?? ''} onChange={(e) => patchTank(t.id, { pickup: e.target.value || null })} /></Field>
         </div>
+
+        <PhotoStrip tank={t} />
 
         <Field label="Notiz">
           <Textarea rows={3} disabled={readOnly} value={t.note} onChange={(e) => patchTank(t.id, { note: e.target.value })} placeholder="Telefonat, Bedingungen, Zustand …" />
