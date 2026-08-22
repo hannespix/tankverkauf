@@ -79,10 +79,25 @@ const TANKS: DB['tanks'] = [
   { id: 'T-24', category: 'tank', maker: 'Sonstige', type: 'Rundtank', litres: 3700, dims: { dia: 151, h: 253 }, vb: 2100, target: 1806, floor: 1512, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['hochwertige Ausführung'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
 ]
 
+/**
+ * Kellereimaschinen. Wie überall in dieser Datei sind Zielpreis und Untergrenze
+ * die neutralen 86 % / 72 % — die tatsächlich recherchierten Grenzen und die
+ * Verhandlungshinweise gehören in die private db.json, nicht in ein Bundle,
+ * das jeder Käufer herunterladen kann.
+ */
+const MASCHINEN: DB['tanks'] = [
+  { id: 'M-01', category: 'maschine', maker: 'Schneider', type: 'Exzenterschneckenpumpe SP3 Evario', litres: 0, dims: null, vb: 2950, target: 2537, floor: 2124, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Baujahr 2011', 'stufenlos regelbar', 'Frequenzumrichter', 'Funkfernbedienung', 'Trockenlaufschutz', 'Druckwächter'], photos: [], updatedAt: '2026-08-22T16:00:00.000Z' },
+  { id: 'M-02', category: 'maschine', maker: 'Schneider', type: 'Impellerpumpe Phönix 12000', litres: 0, dims: null, vb: 590, target: 507, floor: 425, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Baujahr 2018', '12.000 l/h', 'Links- und Rechtslauf', 'fahrbar'], photos: [], updatedAt: '2026-08-22T16:00:00.000Z' },
+  { id: 'M-03', category: 'maschine', maker: 'Kiesel', type: 'Schichtenfilter 40 × 40 cm', litres: 0, dims: null, vb: 390, target: 335, floor: 281, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['19 Schichten', 'ca. 3 m² Filterfläche', 'ca. 2.000 l/h'], photos: [], updatedAt: '2026-08-22T16:00:00.000Z' },
+  { id: 'M-04', category: 'maschine', maker: 'Kiesel', type: 'Barriquefass-Reiniger', litres: 0, dims: null, vb: 690, target: 593, floor: 497, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Rotationsdüse', 'für Barriquefässer'], photos: [], updatedAt: '2026-08-22T16:00:00.000Z' },
+  { id: 'M-05', category: 'maschine', maker: 'Jakobs', type: 'Heizstab für Zapflochklappe', litres: 0, dims: null, vb: 130, target: 112, floor: 94, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Edelstahl', '230 V'], photos: [], updatedAt: '2026-08-22T16:00:00.000Z' },
+  { id: 'M-06', category: 'maschine', maker: 'Jakobs', type: 'Heizstab für Zapflochklappe', litres: 0, dims: null, vb: 130, target: 112, floor: 94, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Edelstahl', '230 V'], photos: [], updatedAt: '2026-08-22T16:00:00.000Z' },
+]
+
 export const SEED: DB = {
   schema: 1,
   updatedAt: '2026-01-15T09:00:00.000Z',
-  tanks: [...TANKS, ...FAESSER],
+  tanks: [...TANKS, ...FAESSER, ...MASCHINEN],
   leads: [],
   quotes: [],
   deals: [

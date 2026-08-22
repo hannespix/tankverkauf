@@ -31,10 +31,11 @@ export function setTankOffer(tank: Tank, offer: number | null) {
 export function addTank(partial: Partial<Tank>) {
   store.mutate(
     (db) => {
-      // The counter has to run over the PREFIX, not the category: only 'fass' gets 'F',
-      // everything else gets 'T'. Counting per category gave the first Gitterbox T-01 —
-      // the same id as the seed tank T-01, and removeTank would then delete both.
-      const prefix = partial.category === 'fass' ? 'F' : 'T'
+      // The counter has to run over the PREFIX, not the category. Counting per
+      // category gave the first Gitterbox T-01 — the same id as the seed tank T-01,
+      // and removeTank would then delete both. Machines have their own letter so a
+      // position added here can never collide with one arriving from the seed later.
+      const prefix = partial.category === 'fass' ? 'F' : partial.category === 'maschine' ? 'M' : 'T'
       const maxN = db.tanks
         .filter((t) => t.id.startsWith(`${prefix}-`))
         .reduce((m, t) => Math.max(m, Number(t.id.replace(/\D/g, '')) || 0), 0)

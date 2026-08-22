@@ -224,9 +224,9 @@ export default function Tanks() {
                           )}
                         </td>
                         <td className="px-2.5 py-1.5 whitespace-nowrap">{t.type}</td>
-                        <td className="tnum px-2.5 py-1.5 text-right font-bold">{num(t.litres)}</td>
+                        <td className="tnum px-2.5 py-1.5 text-right font-bold">{t.litres > 0 ? num(t.litres) : <span className="text-faint">–</span>}</td>
                         <td className="tnum px-2.5 py-1.5 text-right">{eur(t.vb)}</td>
-                        <td className="tnum px-2.5 py-1.5 text-right text-xs whitespace-nowrap text-muted">{centsPerLitre(t.vb, t.litres)}</td>
+                        <td className="tnum px-2.5 py-1.5 text-right text-xs whitespace-nowrap text-muted">{t.litres > 0 ? centsPerLitre(t.vb, t.litres) : <span className="text-faint">–</span>}</td>
                         <td className="px-2.5 py-1.5">
                           <Select value={t.status} disabled={readOnly} onChange={(e) => setTankStatus(t, e.target.value as TankStatus)} className="min-w-[124px] py-1.5 text-[13px]">
                             {STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
@@ -264,7 +264,7 @@ export default function Tanks() {
                   <div className="flex items-start justify-between gap-3">
                     <button type="button" onClick={() => setDetail(t.id)} className="text-left">
                       <div className="font-bold">{t.maker === 'Sonstige' ? t.type : `${t.maker} ${t.type}`}</div>
-                      <div className="tnum text-[13px] text-muted">{num(t.litres)} l · {eur(t.vb)} · {centsPerLitre(t.vb, t.litres)}</div>
+                      <div className="tnum text-[13px] text-muted">{t.litres > 0 && `${num(t.litres)} l · `}{eur(t.vb)}{t.litres > 0 && ` · ${centsPerLitre(t.vb, t.litres)}`}</div>
                     </button>
                     <span className="flex flex-col items-end gap-1.5">
                       <Pill tone={STATUS_TONE[t.status]}>
@@ -341,7 +341,7 @@ function TankDetail({ id, onClose, readOnly }: { id: string | null; onClose: () 
   const deal = db.deals.find((d) => d.id === t.dealId)
 
   return (
-    <Modal open onClose={onClose} title={`${t.maker === 'Sonstige' ? t.type : `${t.maker} ${t.type}`} · ${num(t.litres)} l`}>
+    <Modal open onClose={onClose} title={`${t.maker === 'Sonstige' ? t.type : `${t.maker} ${t.type}`}${t.litres > 0 ? ` · ${num(t.litres)} l` : ''}`}>
       <div className="space-y-5">
         <div className="grid grid-cols-3 gap-3 text-center">
           {[['Untergrenze', t.floor], ['Zielpreis', t.target], ['VB', t.vb]].map(([l, v]) => (
