@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Button, cx } from './ui'
+import { Button, Modal, cx } from './ui'
 import { IconCamera, IconPlus, IconTrash, IconWarn } from './icons'
 import { prepareImage } from '../lib/photos'
 import { store, useStore } from '../lib/store'
@@ -144,6 +144,7 @@ export function MiniPhoto({ path, className }: { path: string; className?: strin
 function Thumb({ path, onRemove, sharedWith }: { path: string; onRemove: (alle: boolean) => void; sharedWith: number }) {
   const [url, setUrl] = useState<string | null>(null)
   const [full, setFull] = useState(false)
+  const [ask, setAsk] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -179,20 +180,7 @@ function Thumb({ path, onRemove, sharedWith }: { path: string; onRemove: (alle: 
         <button
           type="button"
           aria-label="Foto entfernen"
-          onClick={() => {
-            // A photo hanging on 31 positions has to be removable from all of them
-            // at once — otherwise it means confirming the same dialog 31 times.
-            if (sharedWith > 0) {
-              const alle = confirm(
-                `Dieses Foto hängt an ${sharedWith + 1} Positionen.\n\n` +
-                  'OK  = überall entfernen\n' +
-                  'Abbrechen = nur hier entfernen',
-              )
-              onRemove(alle)
-              return
-            }
-            if (confirm('Foto löschen?')) onRemove(false)
-          }}
+          onClick={() => setAsk(true)}
           // Always visible. Hidden behind hover it was, for practical purposes, not
           // there — nobody moves the mouse over a picture to find out whether a
           // delete button appears.
@@ -201,6 +189,31 @@ function Thumb({ path, onRemove, sharedWith }: { path: string; onRemove: (alle: 
           <IconTrash />
         </button>
       </div>
+
+      {/* Three outcomes, so no confirm(): it has two, and mapping "cancel" onto a
+          deletion left no way out of the dialog at all. */}
+      <Modal open={ask} onClose={() => setAsk(false)} title={sharedWith > 0 ? `Foto an ${sharedWith + 1} Positionen` : 'Foto löschen'}>
+        <div className="space-y-4">
+          {url && <img src={url} alt="" className="max-h-40 rounded-xl object-contain" />}
+          <p className="text-sm text-muted">
+            {sharedWith > 0
+              ? `Dieses Foto hängt an ${sharedWith + 1} Positionen — es wurde einmal hochgeladen und mehrfach zugewiesen.`
+              : 'Das Foto wird von dieser Position entfernt und aus dem Repository gelöscht.'}
+          </p>
+          <div className="flex flex-wrap justify-end gap-2 border-t border-line pt-4">
+            <Button onClick={() => setAsk(false)}>Abbrechen</Button>
+            {/* Kurz genug, dass alle drei nebeneinander passen — sonst rutscht der
+                gefährlichste Knopf allein in eine eigene Zeile und wirkt wie der
+                empfohlene. */}
+            {sharedWith > 0 && (
+              <Button variant="danger" onClick={() => { setAsk(false); onRemove(false) }}>Nur hier</Button>
+            )}
+            <Button variant="danger" onClick={() => { setAsk(false); onRemove(true) }}>
+              {sharedWith > 0 ? `Von allen ${sharedWith + 1}` : 'Löschen'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       {full && url && (
         <div
