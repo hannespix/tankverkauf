@@ -20,6 +20,11 @@ export default function Settings() {
   const remembered = rememberedUntil()
   const missing = missingFromSeed(db)
   const unmeasured = measuredInSeed(db)
+  // The repository serving this page is the one whose code gets deployed. Publishing
+  // the catalogue there means the token may rewrite the page itself.
+  const servedFrom = location.hostname.match(/^([^.]+)\.github\.io$/)?.[1] ?? ''
+  const servedRepo = location.pathname.split('/').filter(Boolean)[0] ?? ''
+  const sameAsCode = !!servedFrom && db.settings.catalog.owner === servedFrom && db.settings.catalog.repo === servedRepo
   const [publishing, setPublishing] = useState(false)
 
   async function publish() {
@@ -291,14 +296,27 @@ export default function Settings() {
 
         <div className="mb-3 rounded-xl border border-line bg-surface-2 p-3.5 text-[13px] leading-relaxed text-muted">
           <strong className="text-ink">Was veröffentlicht wird:</strong> Kategorie, Hersteller, Bezeichnung, Volumen und
-          die VB — nur von Positionen, die noch nicht verkauft sind. <strong className="text-ink">Was nicht:</strong>{' '}
-          Zielpreise, Untergrenzen, Gebote, Notizen, Interessenten und Fotos. Die Liste wird nach Whitelist gebaut, es
-          kann also nichts versehentlich mitrutschen.
+          die VB, die Maße und die Fotos — nur von Positionen, die noch nicht verkauft sind.{' '}
+          <strong className="text-ink">Was nicht:</strong> Zielpreise, Untergrenzen, Gebote, Notizen und Interessenten.
+          Die Liste wird nach Whitelist gebaut, es kann also nichts versehentlich mitrutschen.
           <br />
           <br />
-          Das Ziel ist bewusst das <em>öffentliche</em> Repository — dafür muss dein Token auch dort schreiben dürfen
+          Das Ziel ist bewusst ein <em>öffentliches</em> Repository — dafür muss dein Token auch dort schreiben dürfen
           (im Token unter „Repository access" zusätzlich {s.catalog.repo || 'tankverkauf'} auswählen).
         </div>
+
+        {sameAsCode && (
+          <div className="mt-3 rounded-xl border border-rose/40 bg-rose-soft p-3 text-[13px]">
+            <strong className="text-rose">Der Katalog liegt im selben Repository wie diese Seite.</strong> Dein Token
+            darf damit den Programmcode dieser Seite ändern — also der Seite, auf der du deine PIN eingibst. Käme er
+            abhanden, wäre das der schlimmste denkbare Fall.
+            <br />
+            <br />
+            Besser: ein eigenes, leeres öffentliches Repository nur für den Katalog (etwa{' '}
+            <code className="rounded bg-surface-2 px-1">{s.catalog.repo}-katalog</code>), hier eintragen, und den Token
+            danach neu erzeugen — mit Zugriff nur auf das Daten-Repository und dieses neue.
+          </div>
+        )}
 
         <div className="grid gap-3 sm:grid-cols-4">
           <Field label="Benutzer"><Input value={s.catalog.owner} disabled={readOnly} onChange={(e) => patchSettings({ catalog: { ...s.catalog, owner: e.target.value.trim() } })} placeholder="hannespix" /></Field>
