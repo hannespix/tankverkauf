@@ -135,6 +135,12 @@ function App() {
       message.trim() ? message.trim() : null,
       '',
       'Mit freundlichen Grüßen',
+      '',
+      // Read verbatim by the seller's tool, so nothing has to be guessed from the prose.
+      '— — —',
+      `Positionen: ${chosen.map((i) => i.id).join(', ')}`,
+      offer.trim() ? `Angebot: ${offer.trim()}` : null,
+      '(Diese drei Zeilen bitte stehen lassen, sie beschleunigen die Bearbeitung.)',
     ]
       .filter((l): l is string => l !== null)
       .join('\n')

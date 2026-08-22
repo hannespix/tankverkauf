@@ -335,7 +335,15 @@ export interface ParsedMessage {
   email: string
   litresMentioned: number[]
   matchedTankIds: string[]
+  /** Price the buyer named, if the message carries the structured block. */
+  offer: number | null
+  /** True when the positions were read exactly instead of guessed from prose. */
+  exact: boolean
 }
+
+/** Marker the catalogue puts at the end of an enquiry so nothing has to be guessed. */
+export const REQUEST_MARK = 'Positionen:'
+export const OFFER_MARK = 'Angebot:'
 
 /**
  * Kleinanzeigen has no API for private sellers, so incoming enquiries arrive as
@@ -352,13 +360,36 @@ export function parseMessage(text: string, db: DB): ParsedMessage {
   const bare = [...text.matchAll(/\b(\d\.\d{3})\b/g)].map((m) => Number(m[1].replace('.', '')))
   const all = [...new Set([...litresMentioned, ...bare])]
 
-  const matchedTankIds = db.tanks.filter((t) => all.includes(t.litres) && isOpen(t)).map((t) => t.id)
+  // The catalogue appends the exact position numbers — prefer them over any guessing.
+  const known = new Set(db.tanks.map((t) => t.id))
+  const listed = text.match(new RegExp(`${REQUEST_MARK}\\s*([A-Z]-\\d+(?:\\s*,\\s*[A-Z]-\\d+)*)`, 'i'))
+  const exactIds = listed
+    ? listed[1].split(',').map((x) => x.trim().toUpperCase()).filter((id) => known.has(id))
+    : []
 
-  // Signature heuristic: a short, capitalised line near the end that is not a greeting.
-  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
-  const stop = /^(hallo|hi|guten|sehr|mit freundlichen|viele grüße|liebe|mfg|lg|danke|gruß|grüße)/i
-  const name =
-    [...lines].reverse().find((l) => l.length >= 3 && l.length <= 40 && !stop.test(l) && /^[A-ZÄÖÜ]/.test(l) && !/[.?!:]$/.test(l) && l.split(/\s+/).length <= 4) ?? ''
+  const offerLine = text.match(new RegExp(`${OFFER_MARK}\\s*([\\d.]+)`, 'i'))
+  const offer = offerLine ? Number(offerLine[1].replace(/\./g, '')) || null : null
 
-  return { name, phone, email, litresMentioned: all, matchedTankIds }
+  const matchedTankIds = exactIds.length
+    ? exactIds
+    : db.tanks.filter((t) => all.includes(t.litres) && isOpen(t)).map((t) => t.id)
+
+  // The structured block sits at the very end, exactly where a signature would —
+  // so cut it off before looking for a name, or every enquiry is called "Angebot: 1100".
+  const prose = text.split(/^\s*[—–-]\s*[—–-]\s*[—–-]\s*$/m)[0]
+  const lines = prose.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+
+  // "Viele Grüße, Martin Kessler" — the name rides along on the greeting line.
+  const afterGreeting = prose.match(
+    /(?:mit freundlichen grüßen|viele grüße|beste grüße|liebe grüße|grüße|gruß|mfg|lg)[,\s]+([A-ZÄÖÜ][\wäöüß-]+(?:\s+[A-ZÄÖÜ][\wäöüß-]+){0,2})\s*$/im,
+  )
+
+  const stop = /^(hallo|hi|guten|sehr|mit freundlichen|viele grüße|liebe|mfg|lg|danke|gruß|grüße|ich |positionen|angebot|summe|diese)/i
+  const standalone = [...lines]
+    .reverse()
+    .find((l) => l.length >= 3 && l.length <= 40 && !stop.test(l) && /^[A-ZÄÖÜ]/.test(l) && !/[.?!:€]$/.test(l) && l.split(/\s+/).length <= 4)
+
+  const name = (afterGreeting?.[1] ?? standalone ?? '').trim()
+
+  return { name, phone, email, litresMentioned: all, matchedTankIds, offer, exact: exactIds.length > 0 }
 }
