@@ -62,7 +62,7 @@ export default function Deals() {
 
       {db.deals.length === 0 ? (
         <Card>
-          <EmptyState title="Noch keine Verkäufe gebucht" hint="In der Tankliste mehrere Tanks anhaken und „Als Verkauf buchen“ wählen — auch für Paketverkäufe." />
+          <EmptyState title="Noch keine Verkäufe gebucht" hint="Im Bestand mehrere Positionen anhaken und „Als Verkauf buchen“ wählen — auch für Paketverkäufe." />
         </Card>
       ) : (
         <div className="space-y-3">
@@ -125,7 +125,7 @@ export default function Deals() {
                       </Field>
                       <div className="flex items-end">
                         <Button variant="danger" className="mb-0.5"
-                          onClick={() => { if (confirm(`„${d.label}“ zurücknehmen? Die Tanks werden wieder als verfügbar geführt.`)) removeDeal(d.id) }}>
+                          onClick={() => { if (confirm(`„${d.label}“ zurücknehmen? Die Positionen werden wieder als verfügbar geführt.`)) removeDeal(d.id) }}>
                           <IconTrash />
                         </Button>
                       </div>

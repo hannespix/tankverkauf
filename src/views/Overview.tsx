@@ -80,16 +80,16 @@ export default function Overview({ go }: { go: (v: View) => void }) {
         <Stat label="Reserviert" value={db.tanks.filter((t) => t.status === 'reserviert').length} sub="fest vorgemerkt" />
         <Stat label="Verkauft" value={p.sold.count} sub={`${num(p.sold.litres)} l abgegeben`} />
         <Stat label="Erlös" value={eur(p.revenue)} sub="brutto bisher" tone="green" />
-        <Stat label="Offene Gebote" value={eur(openOffers.reduce((a, t) => a + (t.offer ?? 0), 0))} sub={`${openOffers.length} Tanks mit Gebot`} tone={openOffers.length ? 'amber' : undefined} />
+        <Stat label="Offene Gebote" value={eur(openOffers.reduce((a, t) => a + (t.offer ?? 0), 0))} sub={`${openOffers.length} Positionen mit Gebot`} tone={openOffers.length ? 'amber' : undefined} />
       </section>
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
-          <SectionTitle title="Bestand nach Status" hint={`${p.all.count} Tanks insgesamt · ${num(p.all.litres)} l`} />
+          <SectionTitle title="Bestand nach Status" hint={`${p.all.count} Positionen insgesamt${p.all.litres > 0 ? ` · ${num(p.all.litres)} l` : ''}`} />
           <ShareBar segments={statusSegments} total={p.all.count} unit="" />
 
           <div className="mt-6 border-t border-line pt-5">
-            <SectionTitle title="Offener Warenwert nach Hersteller" hint="Summe der Einzel-VB, nur noch verfügbare Tanks" />
+            <SectionTitle title="Offener Warenwert nach Hersteller" hint="Summe der Einzel-VB, nur noch verfügbare Positionen" />
             {makerRows.length > 0 ? <RankedBars rows={makerRows} format={eur} /> : <p className="text-sm text-muted">Alles verkauft.</p>}
           </div>
         </Card>
@@ -97,8 +97,8 @@ export default function Overview({ go }: { go: (v: View) => void }) {
         <Card>
           <SectionTitle title="Verkaufsfortschritt" />
           <div className="space-y-3 text-sm">
-            <Row label="Ursprünglich" value={`${p.all.count} Tanks · ${num(p.all.litres)} l`} />
-            <Row label="Verkauft" value={`${p.sold.count} Tanks · ${num(p.sold.litres)} l`} />
+            <Row label="Ursprünglich" value={`${p.all.count} Positionen · ${num(p.all.litres)} l`} />
+            <Row label="Verkauft" value={`${p.sold.count} Positionen · ${num(p.sold.litres)} l`} />
             <Row label="Erlös brutto" value={eur(p.revenue)} strong />
             <div className="pt-1">
               <div className="mb-1.5 flex justify-between text-xs font-semibold text-muted">
@@ -110,7 +110,7 @@ export default function Overview({ go }: { go: (v: View) => void }) {
               </div>
             </div>
             <div className="border-t border-line pt-3">
-              <Row label="Noch vorhanden" value={`${p.open.count} Tanks · ${num(p.open.litres)} l`} />
+              <Row label="Noch vorhanden" value={`${p.open.count} Positionen · ${num(p.open.litres)} l`} />
               <Row label="Summe Einzel-VB" value={eur(p.open.vb)} strong />
               <Row label="Summe Zielpreise" value={eur(p.open.target)} />
               <Row label="Summe Untergrenzen" value={eur(p.open.floor)} />

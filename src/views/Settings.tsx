@@ -179,6 +179,9 @@ export default function Settings() {
       <Card>
         <SectionTitle title="Verkäufer & Standort" hint="Fließt in jeden erzeugten Anzeigentext ein." />
         <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Bezeichnung" hint="Steht in der Kopfzeile, im Browser-Tab und auf Exportdateien">
+            <Input value={s.appName} disabled={readOnly} onChange={(e) => patchSettings({ appName: e.target.value })} placeholder="Betriebsauflösung" />
+          </Field>
           <Field label="Name / Betrieb"><Input value={s.seller.name} disabled={readOnly} onChange={(e) => patchSettings({ seller: { ...s.seller, name: e.target.value } })} /></Field>
           <Field label="Ort"><Input value={s.seller.location} disabled={readOnly} onChange={(e) => patchSettings({ seller: { ...s.seller, location: e.target.value } })} placeholder="z. B. Ihringen" /></Field>
           <Field label="PLZ"><Input value={s.seller.plz} disabled={readOnly} onChange={(e) => patchSettings({ seller: { ...s.seller, plz: e.target.value } })} placeholder="79241" /></Field>

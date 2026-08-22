@@ -191,7 +191,7 @@ function AdCard({ ad, portal, onOpen }: { ad: Ad; portal: Portal | null; onOpen:
           <strong>Seit dem letzten Erzeugen geändert:</strong>
           <ul className="mt-1 list-inside list-disc space-y-0.5 text-muted">
             {drift.soldSince.length > 0 && (
-              <li>{drift.soldSince.length} beworbene{drift.soldSince.length === 1 ? 'r Tank ist' : ' Tanks sind'} inzwischen verkauft
+              <li>{drift.soldSince.length} beworbene{drift.soldSince.length === 1 ? ' Position ist' : ' Positionen sind'} inzwischen verkauft
                 {' '}({drift.soldSince.map((t) => (t.litres > 0 ? `${t.maker} ${num(t.litres)} l` : `${t.maker} ${t.type}`)).join(', ')})</li>
             )}
             {drift.countThen !== drift.countNow && <li>Anzahl im Angebot: {drift.countThen} → {drift.countNow}</li>}
@@ -232,7 +232,7 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
           <Select value={kind} onChange={(e) => setKind(e.target.value as AdScopeKind)}>
             <option value="paket">Komplettpaket — alles, was zum Paket gehört</option>
             <option value="kategorie">Ganze Kategorie</option>
-            <option value="maker">Hersteller-Bundle — alle Tanks einer Marke</option>
+            <option value="maker">Hersteller-Bundle — alles einer Marke</option>
             <option value="tank">Einzelner Tank</option>
             <option value="restposten">Restposten — Kurzfassung</option>
           </Select>
@@ -256,7 +256,7 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
           <Field label="Hersteller">
             <Select value={maker} onChange={(e) => setMaker(e.target.value as Maker)}>
               {byMaker(db.tanks.filter(isOpen)).map((g) => (
-                <option key={g.maker} value={g.maker}>{g.maker} ({g.tanks.length} Tanks)</option>
+                <option key={g.maker} value={g.maker}>{g.maker} ({g.tanks.length} Positionen)</option>
               ))}
             </Select>
           </Field>

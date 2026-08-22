@@ -257,7 +257,7 @@ function ParseModal({ onClose }: { onClose: () => void }) {
                   </div>
                 ) : (
                   <>
-                    <span className="text-muted">Passende Tanks: </span>
+                    <span className="text-muted">Passende Positionen: </span>
                     {parsed.matchedTankIds.map((id) => {
                       const t = db.tanks.find((x) => x.id === id)!
                       return <Pill key={id} tone="green" className="mr-1.5">{t.maker === 'Sonstige' ? t.type : t.maker} {num(t.litres)} l</Pill>

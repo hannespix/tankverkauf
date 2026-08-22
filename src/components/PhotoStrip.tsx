@@ -117,6 +117,25 @@ export function PhotoStrip({ tank }: { tank: Tank }) {
   )
 }
 
+/**
+ * A photo in a list row. Same resolver as the big thumbnail — it answers from the
+ * local queue while an upload is still pending, so a picture taken in the cellar
+ * shows up straight away.
+ */
+export function MiniPhoto({ path, className }: { path: string; className?: string }) {
+  const [url, setUrl] = useState<string | null>(null)
+  useEffect(() => {
+    let alive = true
+    void store.photoUrl(path).then((u) => { if (alive) setUrl(u) })
+    return () => { alive = false }
+  }, [path])
+  return (
+    <span className={cx('block overflow-hidden rounded-md bg-surface-2 ring-1 ring-line', className)}>
+      {url && <img src={url} alt="" loading="lazy" className="h-full w-full object-cover" />}
+    </span>
+  )
+}
+
 function Thumb({ path, onRemove }: { path: string; onRemove: () => void }) {
   const [url, setUrl] = useState<string | null>(null)
   const [full, setFull] = useState(false)
