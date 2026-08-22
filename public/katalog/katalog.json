@@ -1,0 +1,705 @@
+{
+  "seller": "Weingut Pix",
+  "location": "",
+  "email": "verkauf@pix-el.de",
+  "intro": "Wegen Betriebsaufgabe geben wir unsere komplette Kellerausstattung ab. Markieren Sie, was für Sie infrage kommt, und schicken Sie uns Ihr Angebot.",
+  "pickupInfo": "Besichtigung und Abholung nach Absprache. Selbstabholung, Verladung mit Stapler möglich.",
+  "vatRate": 0.19,
+  "updatedAt": "2026-08-22T15:37:28.336Z",
+  "items": [
+    {
+      "id": "T-03",
+      "category": "tank",
+      "categoryLabel": "Edelstahltanks",
+      "maker": "Speidel",
+      "type": "Edelstahltank",
+      "litres": 525,
+      "vb": 650,
+      "dims": {
+        "dia": 85,
+        "h": 138
+      },
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "T-04",
+      "category": "tank",
+      "categoryLabel": "Edelstahltanks",
+      "maker": "Speidel",
+      "type": "Edelstahltank",
+      "litres": 625,
+      "vb": 700,
+      "dims": {
+        "dia": 85,
+        "h": 158
+      },
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "T-05",
+      "category": "tank",
+      "categoryLabel": "Edelstahltanks",
+      "maker": "Speidel",
+      "type": "Edelstahltank",
+      "litres": 625,
+      "vb": 700,
+      "dims": {
+        "dia": 85,
+        "h": 158
+      },
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "T-07",
+      "category": "tank",
+      "categoryLabel": "Edelstahltanks",
+      "maker": "Speidel",
+      "type": "Edelstahltank",
+      "litres": 1250,
+      "vb": 900,
+      "dims": {
+        "dia": 135,
+        "h": 120
+      },
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "T-08",
+      "category": "tank",
+      "categoryLabel": "Edelstahltanks",
+      "maker": "Speidel",
+      "type": "Edelstahltank",
+      "litres": 1250,
+      "vb": 900,
+      "dims": {
+        "dia": 135,
+        "h": 120
+      },
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "T-09",
+      "category": "tank",
+      "categoryLabel": "Edelstahltanks",
+      "maker": "Sonstige",
+      "type": "Transporttank",
+      "litres": 1000,
+      "vb": 700,
+      "dims": {
+        "w": 102,
+        "d": 102,
+        "h": 132
+      },
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "T-10",
+      "category": "tank",
+      "categoryLabel": "Edelstahltanks",
+      "maker": "Sonstige",
+      "type": "Transporttank",
+      "litres": 1000,
+      "vb": 700,
+      "dims": {
+        "w": 102,
+        "d": 102,
+        "h": 132
+      },
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "T-11",
+      "category": "tank",
+      "categoryLabel": "Edelstahltanks",
+      "maker": "Sonstige",
+      "type": "Immervolltank",
+      "litres": 1800,
+      "vb": 1300,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "T-12",
+      "category": "tank",
+      "categoryLabel": "Edelstahltanks",
+      "maker": "Clemens",
+      "type": "Edelstahltank",
+      "litres": 2100,
+      "vb": 1250,
+      "dims": {
+        "w": 119,
+        "d": 125,
+        "h": 192
+      },
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "T-13",
+      "category": "tank",
+      "categoryLabel": "Edelstahltanks",
+      "maker": "Clemens",
+      "type": "Edelstahltank",
+      "litres": 2100,
+      "vb": 1250,
+      "dims": {
+        "w": 119,
+        "d": 125,
+        "h": 192
+      },
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "T-14",
+      "category": "tank",
+      "categoryLabel": "Edelstahltanks",
+      "maker": "Möschle",
+      "type": "Edelstahltank",
+      "litres": 800,
+      "vb": 650,
+      "dims": {
+        "w": 95,
+        "d": 132,
+        "h": 85
+      },
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "T-15",
+      "category": "tank",
+      "categoryLabel": "Edelstahltanks",
+      "maker": "Möschle",
+      "type": "Edelstahltank",
+      "litres": 1000,
+      "vb": 750,
+      "dims": {
+        "w": 97,
+        "d": 132,
+        "h": 100
+      },
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "T-16",
+      "category": "tank",
+      "categoryLabel": "Edelstahltanks",
+      "maker": "Möschle",
+      "type": "Edelstahltank",
+      "litres": 1250,
+      "vb": 850,
+      "dims": {
+        "w": 97,
+        "d": 132,
+        "h": 115
+      },
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "T-17",
+      "category": "tank",
+      "categoryLabel": "Edelstahltanks",
+      "maker": "Möschle",
+      "type": "Edelstahltank",
+      "litres": 1650,
+      "vb": 1050,
+      "dims": {
+        "w": 106,
+        "d": 132,
+        "h": 147
+      },
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "T-18",
+      "category": "tank",
+      "categoryLabel": "Edelstahltanks",
+      "maker": "Möschle",
+      "type": "Edelstahltank",
+      "litres": 1650,
+      "vb": 1050,
+      "dims": {
+        "w": 106,
+        "d": 132,
+        "h": 147
+      },
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "T-19",
+      "category": "tank",
+      "categoryLabel": "Edelstahltanks",
+      "maker": "Möschle",
+      "type": "Edelstahltank",
+      "litres": 1650,
+      "vb": 1050,
+      "dims": {
+        "w": 106,
+        "d": 132,
+        "h": 147
+      },
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "T-20",
+      "category": "tank",
+      "categoryLabel": "Edelstahltanks",
+      "maker": "Möschle",
+      "type": "Edelstahltank",
+      "litres": 2800,
+      "vb": 1650,
+      "dims": {
+        "dia": 136,
+        "h": 248
+      },
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "T-21",
+      "category": "tank",
+      "categoryLabel": "Edelstahltanks",
+      "maker": "Möschle",
+      "type": "Edelstahltank",
+      "litres": 2800,
+      "vb": 1650,
+      "dims": {
+        "dia": 136,
+        "h": 248
+      },
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "T-22",
+      "category": "tank",
+      "categoryLabel": "Edelstahltanks",
+      "maker": "Möschle",
+      "type": "Edelstahltank",
+      "litres": 3100,
+      "vb": 1800,
+      "dims": {
+        "dia": 140,
+        "h": 251
+      },
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "T-23",
+      "category": "tank",
+      "categoryLabel": "Edelstahltanks",
+      "maker": "Möschle",
+      "type": "Edelstahltank",
+      "litres": 3700,
+      "vb": 2100,
+      "dims": {
+        "dia": 151,
+        "h": 253
+      },
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "T-24",
+      "category": "tank",
+      "categoryLabel": "Edelstahltanks",
+      "maker": "Möschle",
+      "type": "Edelstahltank",
+      "litres": 3700,
+      "vb": 2100,
+      "dims": {
+        "dia": 151,
+        "h": 253
+      },
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "F-01",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "F-02",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "F-03",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "F-04",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "F-05",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "F-06",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "F-07",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "F-08",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "F-09",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "F-10",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "F-11",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "F-12",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "F-13",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "F-14",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "F-15",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "F-16",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "F-17",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "F-18",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "F-19",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "F-20",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "F-21",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "F-22",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "F-23",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "F-24",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "F-25",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "F-26",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "F-27",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "F-28",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "F-29",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "F-30",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Tonneau",
+      "litres": 300,
+      "vb": 250,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    },
+    {
+      "id": "F-31",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Tonneau",
+      "litres": 300,
+      "vb": 250,
+      "dims": null,
+      "photos": [],
+      "reserved": false
+    }
+  ]
+}
