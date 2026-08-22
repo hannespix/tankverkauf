@@ -45,6 +45,7 @@ export default function App() {
   const [view, setView] = useState<View>('overview')
   const [dark, setDark] = useTheme()
 
+  if (mode === 'boot') return <Booting />
   if (mode === 'setup') return <Setup />
   if (mode === 'locked') return <Unlock />
 
@@ -119,6 +120,20 @@ export default function App() {
       </nav>
 
       <ConflictDialog />
+    </div>
+  )
+}
+
+function Booting() {
+  return (
+    <div className="flex min-h-dvh items-center justify-center">
+      <div className="flex flex-col items-center gap-3 text-muted">
+        <span className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-text">
+          <IconTank />
+          <span className="animate-ring absolute inset-0 rounded-xl border-2 border-primary" />
+        </span>
+        <span className="text-sm font-semibold">Tankverkauf wird geladen …</span>
+      </div>
     </div>
   )
 }

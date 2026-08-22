@@ -72,3 +72,114 @@ export function clearVault() {
 }
 
 export const hasVault = () => loadVault() !== null
+
+// ---------------------------------------------------------------- remember me
+
+/**
+ * "Angemeldet bleiben" without a PIN prompt on every visit.
+ *
+ * The token is encrypted with an AES-GCM key that is generated as
+ * NON-EXTRACTABLE and kept as a live CryptoKey inside IndexedDB. The page can
+ * ask the browser to decrypt with it, but neither our code nor anything that
+ * reads storage can ever get the raw key bytes out — so a copied profile,
+ * a synced backup or a glance at localStorage yields ciphertext, not a token.
+ *
+ * This is convenience-grade, not PIN-grade: anything running as this origin can
+ * still ask the key to decrypt. Hence the expiry and the explicit opt-in.
+ */
+
+const IDB_NAME = 'tankverkauf'
+const IDB_STORE = 'keys'
+const DEVICE_KEY_ID = 'device'
+const REMEMBER_STORAGE = 'tankverkauf.remember.v1'
+
+export const DEFAULT_REMEMBER_DAYS = 30
+
+interface Remembered {
+  iv: string
+  data: string
+  expires: number
+}
+
+function openIdb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, 1)
+    req.onupgradeneeded = () => {
+      if (!req.result.objectStoreNames.contains(IDB_STORE)) req.result.createObjectStore(IDB_STORE)
+    }
+    req.onsuccess = () => resolve(req.result)
+    req.onerror = () => reject(req.error)
+  })
+}
+
+async function deviceKey(createIfMissing: boolean): Promise<CryptoKey | null> {
+  const db = await openIdb()
+  try {
+    const existing = await new Promise<CryptoKey | undefined>((resolve, reject) => {
+      const req = db.transaction(IDB_STORE, 'readonly').objectStore(IDB_STORE).get(DEVICE_KEY_ID)
+      req.onsuccess = () => resolve(req.result as CryptoKey | undefined)
+      req.onerror = () => reject(req.error)
+    })
+    if (existing) return existing
+    if (!createIfMissing) return null
+
+    const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite')
+      tx.objectStore(IDB_STORE).put(key, DEVICE_KEY_ID)
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    })
+    return key
+  } finally {
+    db.close()
+  }
+}
+
+export async function rememberOnDevice(token: string, days = DEFAULT_REMEMBER_DAYS): Promise<boolean> {
+  try {
+    const key = await deviceKey(true)
+    if (!key) return false
+    const iv = crypto.getRandomValues(new Uint8Array(12))
+    const data = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(token))
+    const entry: Remembered = { iv: b64(iv), data: b64(data), expires: Date.now() + days * 86_400_000 }
+    localStorage.setItem(REMEMBER_STORAGE, JSON.stringify(entry))
+    return true
+  } catch {
+    // Private windows and locked-down browsers may refuse IndexedDB — fall back to the PIN.
+    return false
+  }
+}
+
+export async function recallFromDevice(): Promise<string | null> {
+  const raw = localStorage.getItem(REMEMBER_STORAGE)
+  if (!raw) return null
+  try {
+    const entry = JSON.parse(raw) as Remembered
+    if (!entry.expires || Date.now() > entry.expires) {
+      forgetDevice()
+      return null
+    }
+    const key = await deviceKey(false)
+    if (!key) return null
+    const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(entry.iv) as BufferSource }, key, unb64(entry.data) as BufferSource)
+    return new TextDecoder().decode(plain)
+  } catch {
+    return null
+  }
+}
+
+export function forgetDevice() {
+  localStorage.removeItem(REMEMBER_STORAGE)
+}
+
+export function rememberedUntil(): Date | null {
+  const raw = localStorage.getItem(REMEMBER_STORAGE)
+  if (!raw) return null
+  try {
+    const entry = JSON.parse(raw) as Remembered
+    return entry.expires && Date.now() <= entry.expires ? new Date(entry.expires) : null
+  } catch {
+    return null
+  }
+}

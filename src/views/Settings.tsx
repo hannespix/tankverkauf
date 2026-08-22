@@ -5,7 +5,7 @@ import { patchSettings, removePortal, upsertPortal } from '../lib/actions'
 import { exportCsv, exportJson, exportXlsx, importXlsx } from '../lib/exporter'
 import { dateTimeDE, relativeDE } from '../lib/format'
 import { store, useStore } from '../lib/store'
-import { clearVault } from '../lib/vault'
+import { clearVault, forgetDevice, rememberedUntil } from '../lib/vault'
 import { STYLE_LABEL, type DB, type Portal, type PortalStyle } from '../types'
 
 export default function Settings() {
@@ -15,6 +15,7 @@ export default function Settings() {
   const [busy, setBusy] = useState<string | null>(null)
   const [note, setNote] = useState<string | null>(null)
   const [editPortal, setEditPortal] = useState<Portal | null>(null)
+  const remembered = rememberedUntil()
   const xlsxRef = useRef<HTMLInputElement>(null)
   const jsonRef = useRef<HTMLInputElement>(null)
 
@@ -82,13 +83,39 @@ export default function Settings() {
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <Button variant="primary" disabled={!dirty || readOnly} onClick={() => void store.updateConfig(cfg)}><IconCloud />Speichern & verbinden</Button>
           <Button disabled={readOnly} onClick={() => void store.connect()}><IconRefresh />Jetzt neu laden</Button>
-          <Button onClick={() => { if (confirm('Zugang auf diesem Gerät entfernen? Die Daten auf GitHub bleiben unverändert.')) { clearVault(); store.lock(); location.reload() } }}>
-            <IconLock />Zugang entfernen
+          <Button onClick={() => { store.lock(); location.reload() }}>
+            <IconLock />Sperren
+          </Button>
+          <Button variant="danger" onClick={() => { if (confirm('Zugang auf diesem Gerät entfernen? Die Daten auf GitHub bleiben unverändert.')) { clearVault(); store.lock(); location.reload() } }}>
+            Zugang entfernen
           </Button>
           <span className="ml-auto text-[13px] text-muted">
             {lastSyncAt ? <>zuletzt synchronisiert {relativeDE(lastSyncAt)} · {dateTimeDE(lastSyncAt)}</> : 'noch nicht synchronisiert'}
           </span>
         </div>
+      </Card>
+
+      <Card>
+        <SectionTitle title="Anmeldung auf diesem Gerät" />
+        {remembered ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/40 bg-primary-soft p-3 text-sm">
+            <span>
+              <strong className="text-primary">Angemeldet — keine PIN nötig.</strong>{' '}
+              <span className="text-muted">Gilt bis {dateTimeDE(remembered.toISOString())}.</span>
+            </span>
+            <Button size="sm" onClick={() => { forgetDevice(); setNote('Dieses Gerät fragt beim nächsten Öffnen wieder nach der PIN.') }}>
+              Nicht mehr merken
+            </Button>
+          </div>
+        ) : (
+          <p className="text-sm text-muted">
+            Dieses Gerät fragt beim Öffnen nach der PIN. Beim nächsten Entsperren lässt sich „Angemeldet bleiben" ankreuzen.
+          </p>
+        )}
+        <p className="mt-2 text-xs text-faint">
+          Der Token wird dabei mit einem Schlüssel verschlüsselt, den der Browser zwar benutzen, aber nicht herausgeben kann.
+          Das ist bequem, ersetzt aber keine PIN — auf fremden oder geteilten Geräten besser nicht aktivieren.
+        </p>
       </Card>
 
       <Card>
