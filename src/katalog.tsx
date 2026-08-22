@@ -26,8 +26,22 @@ function useTheme() {
   return [dark, setDark] as const
 }
 
-/** The page is deployed next to the catalogue file, so a relative path is enough. */
-const SOURCES = ['katalog/katalog.json', '../katalog/katalog.json']
+/**
+ * Where to look for the published list, in order:
+ *  1. same origin — served from the build, once the deploy after a publish is through
+ *  2. raw.githubusercontent — bridges the minute between publishing and that deploy
+ *  3. the repo root, where the very first version of the publisher wrote to
+ */
+function sources(): string[] {
+  const list = ['katalog/katalog.json']
+  const host = location.hostname.match(/^([^.]+)\.github\.io$/)
+  const repo = location.pathname.split('/').filter(Boolean)[0]
+  if (host && repo) {
+    const base = `https://raw.githubusercontent.com/${host[1]}/${repo}/main`
+    list.push(`${base}/public/katalog/katalog.json`, `${base}/katalog/katalog.json`)
+  }
+  return list
+}
 
 function App() {
   const [dark, setDark] = useTheme()
@@ -44,7 +58,7 @@ function App() {
     void (async () => {
       const params = new URLSearchParams(location.search)
       const override = params.get('src')
-      for (const url of override ? [override] : SOURCES) {
+      for (const url of override ? [override] : sources()) {
         try {
           const res = await fetch(url, { cache: 'no-store' })
           if (!res.ok) continue
