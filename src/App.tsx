@@ -4,6 +4,7 @@ import {
   IconCloud, IconCog, IconGauge, IconHandshake, IconLock, IconMegaphone, IconMoon,
   IconSpark, IconSun, IconTank, IconUsers, IconWarn,
 } from './components/icons'
+import { Inbox, InboxButton } from './components/Inbox'
 import { store, useStore } from './lib/store'
 import { dateTimeDE } from './lib/format'
 import Overview from './views/Overview'
@@ -45,10 +46,54 @@ function useTheme() {
   return [dark, setDark] as const
 }
 
+/**
+ * Text, den eine andere App hierher geteilt hat. Der Weg über die Adresszeile
+ * braucht keinen Service Worker — nur der von Dateien täte das. Was hereinkommt,
+ * wird sofort geparkt: bis die PIN eingegeben ist, wäre es sonst weg.
+ */
+const SHARED_KEY = 'tankverkauf.shared'
+
+function grabShared(): string {
+  const q = new URLSearchParams(location.search)
+  const shared = [q.get('title'), q.get('text'), q.get('url')].filter(Boolean).join('\n').trim()
+  if (shared) {
+    sessionStorage.setItem(SHARED_KEY, shared)
+    history.replaceState(null, '', location.pathname)
+  }
+  return sessionStorage.getItem(SHARED_KEY) ?? ''
+}
+
 export default function App() {
   const { mode, db } = useStore()
   const [view, setView] = useState<View>('overview')
   const [dark, setDark] = useTheme()
+  const [inbox, setInbox] = useState(false)
+  const [shared, setShared] = useState('')
+
+  useEffect(() => {
+    const text = grabShared()
+    if (text) {
+      setShared(text)
+      setInbox(true)
+      sessionStorage.removeItem(SHARED_KEY)
+    }
+  }, [])
+
+  // Am Schreibtisch: einfügen, wo man gerade ist. Am Handy feuert das nur in ein
+  // fokussiertes Feld — dort trägt der Knopf "Aus Zwischenablage".
+  useEffect(() => {
+    if (mode !== 'online' && mode !== 'demo') return
+    const onPaste = (e: ClipboardEvent) => {
+      const el = document.activeElement
+      if (el && /^(INPUT|TEXTAREA)$/.test(el.tagName)) return
+      const text = e.clipboardData?.getData('text')?.trim()
+      if (!text || text.length < 20) return
+      setShared(text)
+      setInbox(true)
+    }
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  }, [mode])
 
   // The tab title is written into index.html at build time and would otherwise
   // keep saying "Tankverkauf" whatever the setting says.
@@ -121,6 +166,12 @@ export default function App() {
         <main className="mx-auto w-full max-w-[1400px] p-3 pb-24 sm:p-4 lg:p-6 lg:pb-6">
           <Current go={setView} />
         </main>
+
+        {/* Von jeder Ansicht aus, in Daumenreichweite — die Leiste hat für einen
+            siebten Reiter keinen Platz mehr, und Einpflegen ist ohnehin eine
+            Handlung und kein Ort. */}
+        <InboxButton onClick={() => { setShared(''); setInbox(true) }} />
+        <Inbox open={inbox} onClose={() => setInbox(false)} initialText={shared || undefined} />
       </div>
 
       {/* Mobile tab bar */}

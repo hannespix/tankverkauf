@@ -1,4 +1,5 @@
 import type { Ad, AdScope, DB, Lead, Quote, Tank, TankStatus } from '../types'
+import { MAX_PER_LEAD, askFor, describe, resolvePick, trimMessage, type Proposal } from './inbox'
 import { STATUS_LABEL } from '../types'
 import { generateAd, portalOf } from './ads'
 import { SEED } from './seed'
@@ -311,6 +312,126 @@ export function addMissingSeedBundles(): number {
     { kind: 'settings', text: `${missing.length} Angebotspakete aus dem Ausgangsbestand ergänzt` },
   )
   return missing.length
+}
+
+/**
+ * Eine eingegangene Nachricht am Interessenten ablegen.
+ *
+ * Der Wortlaut ist der einzige Beleg dafür, warum später etwas reserviert oder
+ * abgesagt wurde. Er hängt am Interessenten und nicht an einem eigenen
+ * Wurzelschlüssel — migrate() baut sein Rückgabeobjekt aus einer festen Liste
+ * und würde alles Neue beim Laden verwerfen.
+ */
+export function noteOnLead(leadId: string, text: string, applied: string[], fromImage = false) {
+  store.mutate(
+    (db) => {
+      const l = db.leads.find((x) => x.id === leadId)
+      if (!l) return
+      const entry = { at: now(), text: trimMessage(text), fromImage: fromImage || undefined, applied }
+      // Gedeckelt, weil db.json bei jedem Speichern vollständig geschrieben wird.
+      l.messages = [entry, ...(l.messages ?? [])].slice(0, MAX_PER_LEAD)
+      l.lastContact = new Date().toISOString().slice(0, 10)
+      l.updatedAt = now()
+    },
+    { kind: 'lead', text: 'Nachricht vermerkt' },
+  )
+}
+
+/** Positionen an einen Interessenten hängen — getrennt vom Anlegen der Person. */
+export function attachTanks(leadId: string, tankIds: string[]) {
+  store.mutate(
+    (db) => {
+      const l = db.leads.find((x) => x.id === leadId)
+      if (!l) return
+      l.tankIds = [...new Set([...l.tankIds, ...tankIds])]
+      l.updatedAt = now()
+      for (const id of tankIds) {
+        const t = db.tanks.find((x) => x.id === id)
+        if (t && t.status === 'verfuegbar') {
+          t.status = 'kontakt'
+          t.leadId = leadId
+          t.updatedAt = now()
+        }
+      }
+    },
+    { kind: 'lead', text: `${tankIds.length} Positionen angehängt` },
+  )
+}
+
+/**
+ * Einen geprüften Vorschlag ausführen. Gibt zurück, welcher Interessent danach
+ * gilt — nachfolgende Vorschläge hängen daran.
+ */
+export function applyProposal(p: Proposal, leadId: string | null, message: string): { leadId: string | null; done: string } {
+  const db = store.getSnapshot().db
+  const target = p.leadId ?? leadId
+
+  switch (p.kind) {
+    case 'lead.neu': {
+      // Ohne tankIds: das Anlegen einer Person darf nicht still den Bestand ändern.
+      const id = addLead({ name: p.name || p.email || 'Unbenannt', email: p.email, phone: p.phone, source: 'kleinanzeigen', stage: 'neu', tankIds: [] })
+      noteOnLead(id, message, [describe(p)])
+      return { leadId: id, done: p.title }
+    }
+    case 'lead.notiz': {
+      if (!target) return { leadId, done: '' }
+      noteOnLead(target, message, [describe(p)])
+      return { leadId: target, done: p.title }
+    }
+    case 'lead.phase': {
+      if (!target || !p.stage) return { leadId, done: '' }
+      patchLead(target, { stage: p.stage }, p.title)
+      return { leadId: target, done: p.title }
+    }
+    case 'positionen': {
+      if (!target) return { leadId, done: '' }
+      const ids = p.pick ? resolvePick(db, p.pick) : p.tankIds
+      if (ids.length === 0) return { leadId: target, done: '' }
+      attachTanks(target, ids)
+      return { leadId: target, done: `${p.title} (${ids.join(', ')})` }
+    }
+    case 'gebot': {
+      if (p.amount == null) return { leadId, done: '' }
+      const quote = target ? db.quotes.find((q) => q.leadId === target && q.status !== 'abgelehnt') : null
+      if (quote) {
+        patchQuote(quote.id, { buyerOffer: p.amount }, `Gebot ${p.amount} € vermerkt`)
+      } else {
+        for (const id of p.tankIds) {
+          const t = db.tanks.find((x) => x.id === id)
+          if (t) setTankOffer(t, p.amount)
+        }
+      }
+      return { leadId: target, done: p.title }
+    }
+    case 'angebot': {
+      if (!target) return { leadId, done: '' }
+      const lead = db.leads.find((l) => l.id === target)
+      const ids = p.tankIds.length ? p.tankIds : (lead?.tankIds ?? [])
+      if (ids.length === 0) return { leadId: target, done: '' }
+      // Der geforderte Preis kommt aus dem Bestand. Ein Preis, den ein
+      // Sprachmodell nennt, hat in einem Angebot nichts verloren.
+      createQuote({
+        label: `Anfrage ${lead?.name ?? ''}`.trim(),
+        tankIds: ids,
+        askPrice: askFor(db, ids),
+        leadId: target,
+        portalId: null,
+        note: '',
+      })
+      return { leadId: target, done: p.title }
+    }
+    case 'reservieren': {
+      for (const id of p.tankIds) {
+        const t = db.tanks.find((x) => x.id === id)
+        if (t) setTankStatus(t, 'reserviert')
+      }
+      if (target) patchLead(target, { stage: 'reserviert' }, 'Phase: reserviert')
+      return { leadId: target, done: p.title }
+    }
+    default:
+      // verkauf.vorbereiten schreibt nichts — die Oberfläche öffnet den Dialog.
+      return { leadId: target, done: '' }
+  }
 }
 
 // ------------------------------------------------------------------- quotes
