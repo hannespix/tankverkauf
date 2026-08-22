@@ -180,3 +180,7 @@ input, select, textarea, button { font: inherit; color: inherit; }
   }
   .lift:hover { transform: none; }
 }
+
+/* Das Bild kommt aus der Mitte heraus, statt einfach dazustehen. */
+@keyframes zoom-in { from { opacity: 0; transform: scale(0.94); } to { opacity: 1; transform: none; } }
+.zoom-in { animation: zoom-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) both; }

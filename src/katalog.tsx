@@ -1,7 +1,7 @@
 import { StrictMode, useEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Button, Card, EmptyState, Input, Textarea, cx } from './components/ui'
-import { IconCheck, IconSearch, IconSun, IconMoon } from './components/icons'
+import { IconCheck, IconClose, IconSearch, IconSun, IconMoon } from './components/icons'
 import { dims as fmtDims, eur, num } from './lib/format'
 import { OFFER_MARK, PACKAGE_MARK, REQUEST_MARK } from './lib/ads'
 import { priceSelection, type Priced } from './lib/bundles'
@@ -68,6 +68,7 @@ function App() {
   // Wird ein Paket übernommen, zeigt die Liste nur noch dessen Positionen. Sonst
   // steht der Käufer vor 58 Zeilen und sucht, was er gerade angeklickt hat.
   const [onlyBundle, setOnlyBundle] = useState<string | null>(null)
+  const [lightbox, setLightbox] = useState<{ photos: string[]; index: number; title: string } | null>(null)
   const auswahl = useRef<HTMLDivElement>(null)
   const liste = useRef<HTMLDivElement>(null)
 
@@ -115,10 +116,15 @@ function App() {
       // 29 identical barrels are one lot with a quantity, not 29 checkboxes.
       const key = lotKey(i)
       const lot = g.lots.find((l) => l.key === key)
-      if (lot) lot.ids.push(i.id)
       // photos fehlt in der allerersten veröffentlichten Datei ganz — ohne ?? []
-      // wirft i.photos[0] mitten im Render und die Seite bleibt weiß.
-      else g.lots.push({ key, maker: i.maker, type: i.type, litres: i.litres, vb: i.vb, dims: i.dims, photo: (i.photos ?? [])[0] ?? null, reserved: i.reserved, ids: [i.id] })
+      // wirft der Zugriff mitten im Render und die Seite bleibt weiß.
+      const pics = i.photos ?? []
+      if (lot) {
+        lot.ids.push(i.id)
+        for (const pic of pics) if (!lot.photos.includes(pic)) lot.photos.push(pic)
+      } else {
+        g.lots.push({ key, maker: i.maker, type: i.type, litres: i.litres, vb: i.vb, dims: i.dims, photos: [...new Set(pics)], reserved: i.reserved, ids: [i.id] })
+      }
       byCat.set(i.category, g)
     }
     return [...byCat.entries()].map(([id, g]) => ({ id, ...g }))
@@ -429,21 +435,27 @@ function idRanges(ids: string[]): string {
                 >
                   {/* Immer ein Bildplatz, auch ohne Bild — sonst verschiebt sich alles
                       dahinter um 64 px, sobald ein Foto fehlt. */}
-                  {lot.photo ? (
-                    <a
-                      href={base + lot.photo}
-                      target="_blank"
-                      rel="noreferrer"
-                      aria-label="Foto vergrößern"
-                      className="tx group block h-14 w-14 overflow-hidden rounded-xl ring-1 ring-line hover:ring-primary sm:h-16 sm:w-16"
+                  {lot.photos.length > 0 ? (
+                    // Kein target="_blank" mehr: das öffnete die nackte JPEG-Datei in
+                    // einem neuen Tab, und zurück kam man nur über die Tableiste.
+                    <button
+                      type="button"
+                      onClick={() => setLightbox({ photos: lot.photos, index: 0, title: lot.maker === 'Sonstige' ? lot.type : `${lot.maker} ${lot.type}` })}
+                      aria-label={`Fotos ansehen: ${lot.type}`}
+                      className="tx press group relative block h-14 w-14 cursor-zoom-in overflow-hidden rounded-xl ring-1 ring-line hover:ring-primary sm:h-16 sm:w-16"
                     >
                       <img
-                        src={base + lot.photo}
+                        src={base + lot.photos[0]}
                         alt=""
                         loading="lazy"
                         className="tx h-full w-full object-cover group-hover:scale-105"
                       />
-                    </a>
+                      {lot.photos.length > 1 && (
+                        <span className="tnum absolute right-1 bottom-1 rounded bg-black/70 px-1 text-[10px] font-bold text-white">
+                          {lot.photos.length}
+                        </span>
+                      )}
+                    </button>
                   ) : (
                     <span className="flex h-14 w-14 items-center justify-center rounded-xl bg-surface-2 text-[11px] text-faint ring-1 ring-line sm:h-16 sm:w-16">
                       kein Bild
@@ -618,6 +630,17 @@ function idRanges(ids: string[]): string {
         </Card>
       )}
 
+      {lightbox && (
+        <Lightbox
+          base={base}
+          title={lightbox.title}
+          photos={lightbox.photos}
+          index={lightbox.index}
+          onIndex={(i) => setLightbox((l) => (l ? { ...l, index: i } : l))}
+          onClose={() => setLightbox(null)}
+        />
+      )}
+
       {chosen.length > 0 && (
         // Die Auswahlübersicht steht am Ende der Seite — am Handy zwanzig Zeilen
         // unter dem Sichtfeld. Diese Leiste zeigt dieselbe Zahl immer, ohne dass
@@ -653,6 +676,146 @@ function idRanges(ids: string[]): string {
   )
 }
 
+/**
+ * Bildansicht.
+ *
+ * Vorher öffnete ein Klick die nackte JPEG-Datei in einem neuen Browsertab — auf
+ * dem Handy kam man nur über die Tableiste zurück. Hier führen vier Wege heraus:
+ * das Kreuz, der Rand, Escape und die Zurück-Taste des Browsers. Der letzte ist
+ * der wichtigste, weil am Handy jeder ihn zuerst probiert.
+ */
+function Lightbox({
+  base, photos, index, title, onIndex, onClose,
+}: {
+  base: string
+  photos: string[]
+  index: number
+  title: string
+  onIndex: (i: number) => void
+  onClose: () => void
+}) {
+  const many = photos.length > 1
+  const closeRef = useRef<HTMLButtonElement>(null)
+  const touchX = useRef<number | null>(null)
+  // Ein Wisch endet in manchen Browsern auch als Klick. Ohne diese Sperre schlösse
+  // das Weiterwischen das Bild, statt zum nächsten zu gehen.
+  const swiped = useRef(false)
+
+  const step = (d: number) => onIndex((index + d + photos.length) % photos.length)
+
+  // Die Tastatur hängt an den aktuellen Handlern und darf mitwandern.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+      if (e.key === 'ArrowRight') step(1)
+      if (e.key === 'ArrowLeft') step(-1)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  })
+
+  // Verlaufseintrag, Bildlaufsperre und Fokus dagegen genau einmal. Ohne leere
+  // Abhängigkeitsliste liefe das bei jedem Rerender neu — und das history.back()
+  // im Aufräumen schlösse das Bild beim ersten Weiterblättern wieder.
+  const close = useRef(onClose)
+  close.current = onClose
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    closeRef.current?.focus()
+
+    // Damit die Zurück-Taste das Bild schließt statt die Seite zu verlassen — am
+    // Handy probiert das jeder zuerst.
+    history.pushState({ lightbox: true }, '')
+    const onPop = () => close.current()
+    window.addEventListener('popstate', onPop)
+    return () => {
+      window.removeEventListener('popstate', onPop)
+      document.body.style.overflow = prev
+      // Nur zurückräumen, wenn der Eintrag noch steht: beim Schließen über die
+      // Zurück-Taste hat der Browser ihn schon selbst entfernt.
+      if ((history.state as { lightbox?: boolean } | null)?.lightbox) history.back()
+    }
+  }, [])
+
+  return (
+    <div
+      className="fixed inset-0 z-[70] flex flex-col bg-black/92 backdrop-blur-sm"
+      // Klick, nicht Mousedown: ein Wisch erzeugt keinen Klick, ein Ziehen zum
+      // Markieren auch nicht.
+      onClick={() => { if (!swiped.current) onClose() }}
+      onTouchStart={(e) => { touchX.current = e.touches[0].clientX }}
+      onTouchEnd={(e) => {
+        const from = touchX.current
+        touchX.current = null
+        if (from == null) return
+        const dx = e.changedTouches[0].clientX - from
+        if (many && Math.abs(dx) > 60) {
+          swiped.current = true
+          step(dx < 0 ? 1 : -1)
+          setTimeout(() => { swiped.current = false }, 300)
+        }
+      }}
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+    >
+      <div className="flex shrink-0 items-center justify-between gap-3 p-3 text-white">
+        <span className="tnum min-w-0 truncate text-sm font-semibold">
+          {title}
+          {many && <span className="ml-2 font-normal text-white/60">{index + 1} von {photos.length}</span>}
+        </span>
+        <button
+          ref={closeRef}
+          type="button"
+          aria-label="Schließen"
+          onClick={(e) => { e.stopPropagation(); onClose() }}
+          className="tx press flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"
+        >
+          <IconClose />
+        </button>
+      </div>
+
+      <div className="relative flex min-h-0 flex-1 items-center justify-center p-3 pt-0">
+        <img
+          key={photos[index]}
+          src={base + photos[index]}
+          alt={title}
+          className="zoom-in max-h-full max-w-full rounded-xl object-contain"
+        />
+        {many && (
+          <>
+            <Arrow side="left" onClick={() => step(-1)} />
+            <Arrow side="right" onClick={() => step(1)} />
+          </>
+        )}
+      </div>
+
+      {/* Escape steht nur da, wo es eine Escape-Taste gibt. */}
+      <p className="shrink-0 pb-4 text-center text-[13px] text-white/50">
+        Zum Schließen tippen<span className="hidden sm:inline">, Escape drücken</span> oder zurück
+        {many && <span className="hidden sm:inline"> · Pfeiltasten zum Blättern</span>}
+      </p>
+    </div>
+  )
+}
+
+function Arrow({ side, onClick }: { side: 'left' | 'right'; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-label={side === 'left' ? 'Vorheriges Foto' : 'Nächstes Foto'}
+      onClick={(e) => { e.stopPropagation(); onClick() }}
+      className={cx(
+        'tx press absolute top-1/2 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-2xl text-white hover:bg-white/20',
+        side === 'left' ? 'left-2' : 'right-2',
+      )}
+    >
+      {side === 'left' ? '‹' : '›'}
+    </button>
+  )
+}
+
 interface Lot {
   key: string
   maker: string
@@ -660,7 +823,9 @@ interface Lot {
   litres: number
   vb: number
   dims: CatalogItem['dims']
-  photo: string | null
+  /** Alle Bilder des Loses, ohne Dubletten. Vorher stand hier nur das erste —
+   *  zweite Aufnahmen einer Position waren veröffentlicht, aber unerreichbar. */
+  photos: string[]
   reserved: boolean
   ids: string[]
 }
