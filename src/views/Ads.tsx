@@ -192,7 +192,7 @@ function AdCard({ ad, portal, onOpen }: { ad: Ad; portal: Portal | null; onOpen:
           <ul className="mt-1 list-inside list-disc space-y-0.5 text-muted">
             {drift.soldSince.length > 0 && (
               <li>{drift.soldSince.length} beworbene{drift.soldSince.length === 1 ? 'r Tank ist' : ' Tanks sind'} inzwischen verkauft
-                {' '}({drift.soldSince.map((t) => `${t.maker} ${num(t.litres)} l`).join(', ')})</li>
+                {' '}({drift.soldSince.map((t) => (t.litres > 0 ? `${t.maker} ${num(t.litres)} l` : `${t.maker} ${t.type}`)).join(', ')})</li>
             )}
             {drift.countThen !== drift.countNow && <li>Anzahl im Angebot: {drift.countThen} → {drift.countNow}</li>}
             {drift.priceChanged && <li>Preis: {eur(drift.priceChanged.from)} → {eur(drift.priceChanged.to)}</li>}
@@ -266,7 +266,7 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
           <Field label="Tank">
             <Select value={tankId} onChange={(e) => setTankId(e.target.value)}>
               {db.tanks.filter(isOpen).map((t) => (
-                <option key={t.id} value={t.id}>{t.maker === 'Sonstige' ? t.type : `${t.maker} ${t.type}`} · {num(t.litres)} l · {eur(t.vb)}</option>
+                <option key={t.id} value={t.id}>{t.maker === 'Sonstige' ? t.type : `${t.maker} ${t.type}`}{t.litres > 0 && ` · ${num(t.litres)} l`} · {eur(t.vb)}</option>
               ))}
             </Select>
           </Field>

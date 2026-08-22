@@ -3,7 +3,7 @@ import { Button, Card, EmptyState, Field, Input, Pill, SectionTitle, Select, Tex
 import { IconTrash } from '../components/icons'
 import { assignDealLead, patchDeal, removeDeal } from '../lib/actions'
 import { LeadPicker } from '../components/LeadPicker'
-import { centsPerLitre, dateDE, eur, num } from '../lib/format'
+import { itemLabel, centsPerLitre, dateDE, eur, num } from '../lib/format'
 import { useStore } from '../lib/store'
 import { progress } from '../lib/stats'
 
@@ -75,7 +75,7 @@ export default function Deals() {
               <Card key={d.id}>
                 <SectionTitle
                   title={d.label}
-                  hint={`${dateDE(d.date)}${lead ? ` · ${lead.name}` : ''} · ${tanks.length} Tank${tanks.length > 1 ? 's' : ''} · ${num(litres)} l`}
+                  hint={`${dateDE(d.date)}${lead ? ` · ${lead.name}` : ''} · ${tanks.length} Position${tanks.length > 1 ? 'en' : ''}${litres > 0 ? ` · ${num(litres)} l` : ''}`}
                   action={
                     <div className="flex items-center gap-2">
                       <Pill tone={d.paid ? 'green' : 'amber'}>{d.paid ? 'bezahlt' : 'offen'}</Pill>
@@ -104,7 +104,7 @@ export default function Deals() {
                 <ul className="mt-3 flex flex-wrap gap-1.5">
                   {tanks.map((t) => (
                     <li key={t!.id}>
-                      <Pill tone="neutral">{t!.maker === 'Sonstige' ? t!.type : `${t!.maker} ${t!.type}`} · {num(t!.litres)} l</Pill>
+                      <Pill tone="neutral">{itemLabel(t!)}</Pill>
                     </li>
                   ))}
                 </ul>

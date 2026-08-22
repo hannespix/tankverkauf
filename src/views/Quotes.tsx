@@ -4,7 +4,7 @@ import { LeadPicker } from '../components/LeadPicker'
 import { Button, Card, EmptyState, Field, Input, Pill, SectionTitle, Select, Stat, Textarea, cx, type Tone } from '../components/ui'
 import { IconHandshake, IconTrash } from '../components/icons'
 import { patchQuote, quoteToDeal, removeQuote } from '../lib/actions'
-import { centsPerLitre, dateDE, eur, num, todayISO } from '../lib/format'
+import { itemLabel, centsPerLitre, dateDE, eur, num, todayISO } from '../lib/format'
 import { useStore } from '../lib/store'
 import { VERDICT_LABEL, quoteMetrics } from '../lib/stats'
 import { QUOTE_STATUS_LABEL, type Quote, type QuoteStatus } from '../types'
@@ -37,7 +37,7 @@ export default function Quotes() {
     <div className="space-y-4">
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Offene Angebote" value={openQuotes.length} sub={`${db.quotes.length} insgesamt`} />
-        <Stat label="Im Angebot" value={`${num(openLitres)} l`} sub={`${openQuotes.reduce((a, q) => a + q.tankIds.length, 0)} Tanks gebunden`} />
+        <Stat label="Im Angebot" value={`${num(openLitres)} l`} sub={`${openQuotes.reduce((a, q) => a + q.tankIds.length, 0)} Positionen gebunden`} />
         <Stat label="Angebotswert" value={eur(openValue)} sub="offene Angebote, brutto" tone="green" />
         <Stat label="Unter Untergrenze" value={belowFloor.length} sub="genauer ansehen" tone={belowFloor.length ? 'rose' : undefined} />
       </section>
@@ -92,7 +92,7 @@ function QuoteCard({ quote }: { quote: Quote }) {
         hint={[
           lead ? lead.name : 'kein Interessent',
           portal?.name,
-          `${m.count} Tanks · ${num(m.litres)} l`,
+          `${m.count} Position${m.count === 1 ? '' : 'en'}${m.litres > 0 ? ` · ${num(m.litres)} l` : ''}`,
           quote.validUntil ? `gültig bis ${dateDE(quote.validUntil)}` : null,
         ].filter(Boolean).join(' · ')}
         action={
@@ -108,7 +108,7 @@ function QuoteCard({ quote }: { quote: Quote }) {
       />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Figure label="Summe Einzel-VB" value={eur(m.vb)} sub={`${num(m.litres)} l`} />
+        <Figure label="Summe Einzel-VB" value={eur(m.vb)} sub={m.litres > 0 ? `${num(m.litres)} l` : ''} />
         <Figure label="Zielpreis gesamt" value={eur(m.target)} sub="angestrebt" />
         <Figure label="Untergrenze gesamt" value={eur(m.floor)} sub="nicht darunter" tone="rose" />
         <Figure
@@ -136,7 +136,7 @@ function QuoteCard({ quote }: { quote: Quote }) {
           return (
             <li key={id}>
               <Pill tone={t.status === 'verkauft' ? 'neutral' : 'sky'}>
-                {t.maker === 'Sonstige' ? t.type : `${t.maker} ${t.type}`} · {num(t.litres)} l
+                {itemLabel(t)}
               </Pill>
             </li>
           )

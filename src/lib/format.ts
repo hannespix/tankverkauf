@@ -36,6 +36,15 @@ export function widestEdge(d: Dims | null | undefined): number {
   return Math.max(d.dia ?? 0, d.w ?? 0, d.d ?? 0)
 }
 
+/**
+ * "Speidel Lagertank · 1.250 l" für eine Position mit Volumen, sonst nur der Name.
+ * Ohne das stand an jeder Pumpe und jedem Filter ein "· 0 l".
+ */
+export function itemLabel(t: { maker: string; type: string; litres: number }): string {
+  const name = t.maker === 'Sonstige' ? t.type : `${t.maker} ${t.type}`
+  return t.litres > 0 ? `${name} · ${num(t.litres)} l` : name
+}
+
 export function dateDE(iso: string | null | undefined): string {
   if (!iso) return '–'
   const d = new Date(iso)
