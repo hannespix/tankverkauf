@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import type { Activity, ActivityKind, DB } from '../types'
 import { SEED } from './seed'
-import { blobToBase64, cachedUrl, forgetUrl, photoPath, rememberUrl } from './photos'
+import { blobToBase64, forgetUrl, photoPath, rememberUrl, resolveOnce } from './photos'
 import {
   allPending as allPendingPhotos,
   dataUrl as photoDataUrl,
@@ -426,15 +426,19 @@ class TankStore {
     this.emit({ photosPending: (await pendingPhotoPaths()).length })
   }
 
-  /** Resolves to a URL. A photo still queued is shown from the local bytes. */
-  async photoUrl(path: string): Promise<string | null> {
-    const hit = cachedUrl(path)
-    if (hit) return hit
-    const waiting = await getPending(path).catch(() => undefined)
-    if (waiting) return photoDataUrl(waiting.base64)
-    if (!this.token) return null
-    const blob = await getBinary(this.token, this.snapshot.config, path)
-    return blob ? rememberUrl(path, blob) : null
+  /**
+   * Resolves to a URL. A photo still queued is shown from the local bytes.
+   * Routed through resolveOnce so a picture shared by 31 positions is fetched
+   * once — thirty-one parallel fetches used to revoke each other's URLs.
+   */
+  photoUrl(path: string): Promise<string | null> {
+    return resolveOnce(path, async () => {
+      const waiting = await getPending(path).catch(() => undefined)
+      if (waiting) return photoDataUrl(waiting.base64)
+      if (!this.token) return null
+      const blob = await getBinary(this.token, this.snapshot.config, path)
+      return blob ? rememberUrl(path, blob) : null
+    })
   }
 
   /**

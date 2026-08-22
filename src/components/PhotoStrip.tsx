@@ -156,15 +156,17 @@ function Thumb({ path, onRemove }: { path: string; onRemove: () => void }) {
         <button
           type="button"
           onClick={() => url && setFull(true)}
+          // Fixed height, natural width: an overview shot of 29 barrels is wide, and
+          // a square crop would show its middle third and nothing else.
           className={cx(
-            'block h-24 w-24 overflow-hidden rounded-xl border border-line bg-surface-2',
+            'block h-24 w-auto min-w-24 max-w-[15rem] overflow-hidden rounded-xl border border-line bg-surface-2',
             url && 'cursor-zoom-in',
           )}
         >
           {url ? (
-            <img src={url} alt="" className="h-full w-full object-cover" loading="lazy" />
+            <img src={url} alt="" className="h-full w-auto object-contain" loading="lazy" />
           ) : (
-            <span className="flex h-full items-center justify-center text-[11px] text-faint">lädt …</span>
+            <span className="flex h-full w-24 items-center justify-center text-[11px] text-faint">lädt …</span>
           )}
         </button>
         <button
