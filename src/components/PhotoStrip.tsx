@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button, cx } from './ui'
-import { IconPlus, IconTrash, IconWarn } from './icons'
+import { IconCamera, IconPlus, IconTrash, IconWarn } from './icons'
 import { prepareImage } from '../lib/photos'
 import { store, useStore } from '../lib/store'
 import type { Tank } from '../types'
@@ -12,6 +12,7 @@ import type { Tank } from '../types'
 export function PhotoStrip({ tank }: { tank: Tank }) {
   const { mode } = useStore()
   const input = useRef<HTMLInputElement>(null)
+  const camera = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -39,10 +40,18 @@ export function PhotoStrip({ tank }: { tank: Tank }) {
         <span className="text-[13px] font-semibold text-muted">
           Fotos{tank.photos.length > 0 && ` (${tank.photos.length})`}
         </span>
-        <Button size="sm" disabled={busy || offline} onClick={() => input.current?.click()}>
-          <IconPlus />
-          {busy ? 'Lädt hoch …' : 'Foto'}
-        </Button>
+        <span className="flex gap-1.5">
+          {/* Two inputs on purpose: `capture` opens the camera directly, but the
+              browser then ignores `multiple`. One button per intention beats one
+              button that first asks which of the two you meant. */}
+          <Button size="sm" disabled={busy || offline} onClick={() => camera.current?.click()}>
+            <IconCamera />
+            {busy ? 'Lädt hoch …' : 'Kamera'}
+          </Button>
+          <Button size="sm" variant="ghost" disabled={busy || offline} onClick={() => input.current?.click()}>
+            <IconPlus />Auswählen
+          </Button>
+        </span>
       </div>
 
       {offline ? (
@@ -52,7 +61,7 @@ export function PhotoStrip({ tank }: { tank: Tank }) {
       ) : tank.photos.length === 0 ? (
         <button
           type="button"
-          onClick={() => input.current?.click()}
+          onClick={() => camera.current?.click()}
           className="w-full rounded-xl border border-dashed border-line-strong p-4 text-[13px] text-muted transition hover:border-primary hover:text-ink"
         >
           Foto aufnehmen oder auswählen — wird verkleinert und im Daten-Repository abgelegt.
@@ -72,6 +81,17 @@ export function PhotoStrip({ tank }: { tank: Tank }) {
         </p>
       )}
 
+      <input
+        ref={camera}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        hidden
+        onChange={(e) => {
+          void add(e.target.files)
+          e.target.value = ''
+        }}
+      />
       <input
         ref={input}
         type="file"
