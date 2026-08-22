@@ -30,7 +30,7 @@ export default function Overview({ go }: { go: (v: View) => void }) {
 
   const makerRows: BarRow[] = byMaker(openTanks).map((g) => {
     const t = totals(g.tanks)
-    return { key: g.maker, label: g.maker, value: t.vb, detail: `${t.count} Tanks · ${num(t.litres)} l` }
+    return { key: g.maker, label: g.maker, value: t.vb, detail: `${t.count} Positionen${t.litres > 0 ? ` · ${num(t.litres)} l` : ''}` }
   })
 
   const openOffers = open.filter((t) => t.offer != null && t.offer > 0)

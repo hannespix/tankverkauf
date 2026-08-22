@@ -6,7 +6,7 @@ import { TagEditor } from '../components/TagEditor'
 import { Button, Card, EmptyState, Field, Input, Modal, Pill, Select, Textarea, cx, type Tone } from '../components/ui'
 import { IconFilter, IconPlus, IconSearch, IconTrash } from '../components/icons'
 import { addTank, createDeal, createQuote, patchTank, removeTank, retypeMany, setTankOffer, setTankStatus, tagMany } from '../lib/actions'
-import { centsPerLitre, dims as fmtDims, eur, num, todayISO } from '../lib/format'
+import { itemLabel, centsPerLitre, dims as fmtDims, eur, num, todayISO } from '../lib/format'
 import { useStore } from '../lib/store'
 import { VERDICT_LABEL, judgeBundle, judgeOffer, totals } from '../lib/stats'
 import { STATUS_LABEL, type Category, type Maker, type Tank, type TankStatus } from '../types'
@@ -407,7 +407,7 @@ function DealModal({ open, onClose, tanks }: { open: boolean; onClose: () => voi
   const value = Number(price) || 0
   const label = tanks.length === 1
     ? `${tanks[0].maker} ${tanks[0].litres} l`
-    : `Paket ${tanks.length} Tanks (${num(t.litres)} l)`
+    : `Paket ${tanks.length} Positionen${t.litres > 0 ? ` (${num(t.litres)} l)` : ''}`
 
   return (
     <Modal open onClose={onClose} title="Verkauf buchen">
@@ -416,7 +416,7 @@ function DealModal({ open, onClose, tanks }: { open: boolean; onClose: () => voi
           <div className="font-bold">{label}</div>
           <div className="tnum mt-1 text-muted">Summe Einzel-VB {eur(t.vb)} · Ziel {eur(t.target)} · Untergrenze {eur(t.floor)}</div>
           <ul className="mt-2 space-y-0.5 text-[13px] text-muted">
-            {tanks.map((x) => <li key={x.id}>{x.maker === 'Sonstige' ? x.type : `${x.maker} ${x.type}`} · {num(x.litres)} l · {eur(x.vb)}</li>)}
+            {tanks.map((x) => <li key={x.id}>{itemLabel(x)} · {eur(x.vb)}</li>)}
           </ul>
         </div>
 
@@ -523,7 +523,7 @@ function QuoteModal({ open, onClose, tanks }: { open: boolean; onClose: () => vo
   const value = Number(ask) || 0
   const verdict = judgeBundle(t, value)
   const makers = [...new Set(tanks.map((x) => x.maker))]
-  const label = makers.length === 1 ? `${makers[0]}-Paket · ${tanks.length} Tanks` : `Paket ${tanks.length} Tanks (${num(t.litres)} l)`
+  const label = makers.length === 1 ? `${makers[0]}-Paket · ${tanks.length} Positionen` : `Paket ${tanks.length} Positionen${t.litres > 0 ? ` (${num(t.litres)} l)` : ''}`
 
   return (
     <Modal open onClose={onClose} title="Angebot erstellen" wide>
@@ -538,10 +538,10 @@ function QuoteModal({ open, onClose, tanks }: { open: boolean; onClose: () => vo
         </div>
 
         <div className="rounded-xl bg-surface-2 p-3 text-[13px]">
-          <div className="font-bold">{tanks.length} Tanks · {num(t.litres)} l</div>
+          <div className="font-bold">{tanks.length} Positionen{t.litres > 0 && ` · ${num(t.litres)} l`}</div>
           <ul className="mt-1.5 space-y-0.5 text-muted">
             {tanks.map((x) => (
-              <li key={x.id}>{x.maker === 'Sonstige' ? x.type : `${x.maker} ${x.type}`} · {num(x.litres)} l · VB {eur(x.vb)} · Limit {eur(x.floor)}</li>
+              <li key={x.id}>{itemLabel(x)} · VB {eur(x.vb)} · Limit {eur(x.floor)}</li>
             ))}
           </ul>
         </div>

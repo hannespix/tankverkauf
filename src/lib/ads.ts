@@ -121,6 +121,23 @@ const conditionBlock = [
 ].join('\n')
 
 /**
+ * "Dicht, keine Kühlung, Restabläufe" beschreibt einen Tank. An einer Pumpe oder
+ * einem Filter ist derselbe Satz Unsinn — die Einzelanzeige nahm ihn aber für
+ * jede Position, seit es auch Maschinen gibt.
+ */
+function conditionFor(category: string): string {
+  if (category === 'fass') {
+    return [
+      'ZUSTAND',
+      'Original Weinfässer, gebraucht, gewachsen im Einsatz. Holz dicht, Reifen fest.',
+      'Nicht geschliffen und nicht behandelt — genau so, wie sie aus dem Keller kommen.',
+    ].join('\n')
+  }
+  if (category === 'tank') return conditionBlock
+  return ['ZUSTAND', 'Gebraucht, aus laufendem Betrieb. Funktionsfähig, Besichtigung und Prüfung vor Ort möglich.'].join('\n')
+}
+
+/**
  * Features shared by every advertised item become one AUSSTATTUNG block —
  * claiming "stapelbar" for the lot is only honest if it holds for all of them.
  */
@@ -169,7 +186,7 @@ export function generateAd(db: DB, scope: AdScope, portal: Portal | null): Gener
       `• Preis je Liter: ${centsPerLitre(tank.vb, tank.litres)}`,
       '',
       ...featureBlock([tank]),
-      conditionBlock,
+      conditionFor(tank.category),
       '',
       pickupBlock(db),
       '',

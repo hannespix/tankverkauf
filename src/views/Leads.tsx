@@ -3,7 +3,7 @@ import { Button, Card, EmptyState, Field, Input, Modal, Pill, SectionTitle, Sele
 import { IconCheck, IconPlus, IconSpark, IconTrash } from '../components/icons'
 import { addLead, createQuote, patchLead, patchQuote, removeLead } from '../lib/actions'
 import { parseMessage } from '../lib/ads'
-import { dateDE, eur, num, relativeDE, todayISO } from '../lib/format'
+import { itemLabel, dateDE, eur, num, relativeDE, todayISO } from '../lib/format'
 import { totals } from '../lib/stats'
 import { useStore } from '../lib/store'
 import { STAGE_LABEL, SOURCE_LABEL, type Lead, type LeadSource, type LeadStage } from '../types'
@@ -101,7 +101,7 @@ function LeadCard({ lead, onEdit, highlight }: { lead: Lead; onEdit: () => void;
       {tanks.length > 0 && (
         <div className="mt-2.5 text-[13px]">
           <span className="text-muted">Interesse: </span>
-          <strong>{tanks.length === 1 ? `${tanks[0]!.maker} ${num(tanks[0]!.litres)} l` : `${tanks.length} Tanks · ${num(tanks.reduce((a, t) => a + (t?.litres ?? 0), 0))} l`}</strong>
+          <strong>{tanks.length === 1 ? itemLabel(tanks[0]!) : `${tanks.length} Positionen${tanks.reduce((a, t) => a + (t?.litres ?? 0), 0) > 0 ? ` · ${num(tanks.reduce((a, t) => a + (t?.litres ?? 0), 0))} l` : ''}`}</strong>
           <span className="tnum text-muted"> · {eur(sum)} VB</span>
         </div>
       )}
