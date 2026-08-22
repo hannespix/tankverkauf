@@ -1,9 +1,9 @@
 import { useRef, useState } from 'react'
 import { Button, Card, Field, Input, Modal, Pill, SectionTitle, Select, Textarea, cx } from '../components/ui'
 import { IconCheck, IconCloud, IconDownload, IconLock, IconPlus, IconRefresh, IconTrash, IconUpload, IconWarn } from '../components/icons'
-import { addMissingSeedItems, missingFromSeed, patchSettings, removeCategory, removePortal, upsertCategory, upsertPortal } from '../lib/actions'
+import { addMissingSeedDims, addMissingSeedItems, measuredInSeed, missingFromSeed, patchSettings, removeCategory, removePortal, upsertCategory, upsertPortal } from '../lib/actions'
 import { exportCsv, exportJson, exportXlsx, importXlsx } from '../lib/exporter'
-import { dateTimeDE, relativeDE } from '../lib/format'
+import { dateTimeDE, dims as fmtDims, num, relativeDE } from '../lib/format'
 import { store, useStore } from '../lib/store'
 import { clearVault, forgetDevice, rememberedUntil } from '../lib/vault'
 import { catalogPageUrl } from '../lib/catalog'
@@ -19,6 +19,7 @@ export default function Settings() {
   const [editCat, setEditCat] = useState<CategoryDef | null>(null)
   const remembered = rememberedUntil()
   const missing = missingFromSeed(db)
+  const unmeasured = measuredInSeed(db)
   const [publishing, setPublishing] = useState(false)
 
   async function publish() {
@@ -334,6 +335,27 @@ export default function Settings() {
         <input ref={xlsxRef} type="file" accept=".xlsx,.xls" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void onImportXlsx(f); e.target.value = '' }} />
         <input ref={jsonRef} type="file" accept=".json" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void onImportJson(f); e.target.value = '' }} />
       </Card>
+
+      {unmeasured.length > 0 && (
+        <Card className="border-amber/40">
+          <SectionTitle
+            title="Maße liegen bereit"
+            hint="Nachträglich aufgenommene Maße. Übernommen wird nur, wo bei dir noch nichts steht — eigene Eingaben bleiben."
+            action={
+              <Button variant="primary" onClick={() => { const n = addMissingSeedDims(); setNote(`Maße für ${n} Positionen übernommen.`) }}>
+                <IconPlus />Für {unmeasured.length} Positionen übernehmen
+              </Button>
+            }
+          />
+          <ul className="flex flex-wrap gap-1.5">
+            {unmeasured.map(({ tank, dims }) => (
+              <li key={tank.id}>
+                <Pill tone="amber">{tank.maker === 'Sonstige' ? tank.type : `${tank.maker} ${tank.type}`} {num(tank.litres)} l · {fmtDims(dims)}</Pill>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       {missing.length > 0 && (
         <Card className="border-amber/40">

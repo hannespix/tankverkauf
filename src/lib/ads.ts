@@ -1,5 +1,5 @@
 import type { Ad, AdScope, DB, Maker, Portal, Tank } from '../types'
-import { eur, eurExact, centsPerLitre, netOf, num } from './format'
+import { dims as fmtDims, eur, eurExact, centsPerLitre, netOf, num } from './format'
 import { isOpen, totals } from './stats'
 
 /** Fallback when a portal was deleted but an ad still points at it. */
@@ -59,6 +59,8 @@ interface Group {
   vb: number
   /** Features every item in this group shares. */
   tags: string[]
+  /** Same shape and volume means the same measurements — carry them along. */
+  dims: Tank['dims']
 }
 
 function group(tanks: Tank[]): Group[] {
@@ -71,7 +73,7 @@ function group(tanks: Tank[]): Group[] {
       // Only keep features that every item in the group actually has.
       hit.tags = hit.tags.filter((tag) => t.tags.includes(tag))
     } else {
-      map.set(key, { maker: t.maker, type: t.type, litres: t.litres, count: 1, vb: t.vb, tags: [...t.tags] })
+      map.set(key, { maker: t.maker, type: t.type, litres: t.litres, count: 1, vb: t.vb, tags: [...t.tags], dims: t.dims })
     }
   }
   return [...map.values()].sort((a, b) => b.litres - a.litres)
@@ -81,7 +83,10 @@ const label = (g: Group) => (g.maker === 'Sonstige' ? g.type : `${g.maker} ${g.t
 
 const bullet = (g: Group, shared: string[] = []) => {
   const extra = g.tags.filter((t) => !shared.includes(t))
-  return `• ${g.count}× ${label(g)} ${num(g.litres)} l – je ${eur(g.vb)}${extra.length ? ` (${extra.join(', ')})` : ''}`
+  // The size decides whether a buyer can get it through the door and onto a
+  // trailer — it belongs on the line itself, not in a footnote.
+  const size = fmtDims(g.dims)
+  return `• ${g.count}× ${label(g)} ${num(g.litres)} l${size ? ` · ${size}` : ''} – je ${eur(g.vb)}${extra.length ? ` (${extra.join(', ')})` : ''}`
 }
 
 /** A fingerprint that changes whenever the ad's facts change. */
@@ -150,13 +155,16 @@ export function generateAd(db: DB, scope: AdScope, portal: Portal | null): Gener
       return { title: '', body: 'Tank nicht gefunden.', price: 0, priceType: 'VB', tankIds: [], stamp: '' }
     }
     const name = tank.maker === 'Sonstige' ? tank.type : `${tank.maker} ${tank.type}`
-    const title = trim(`${name} ${num(tank.litres)} l Edelstahl Weintank`, lim.title)
+    // Without a maker's plate the shape is the name, so the word buyers actually
+    // search for has to come from the title instead.
+    const title = trim(`${name} ${num(tank.litres)} l Edelstahl Weintank Lagertank`, lim.title)
     const body = [
       `${name} mit ${num(tank.litres)} Litern aus Betriebsauflösung abzugeben.`,
       '',
       'DATEN',
       `• Hersteller/Typ: ${name}`,
       `• Volumen: ${num(tank.litres)} l`,
+      fmtDims(tank.dims) ? `• Maße: ${fmtDims(tank.dims)}` : undefined,
       `• Preis: ${eur(tank.vb)} VB (brutto inkl. ${Math.round(s.vatRate * 100)} % MwSt.)`,
       `• Preis je Liter: ${centsPerLitre(tank.vb, tank.litres)}`,
       '',

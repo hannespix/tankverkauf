@@ -1,3 +1,5 @@
+import type { Dims } from '../types'
+
 const eur0 = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })
 const eur2 = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2 })
 const int = new Intl.NumberFormat('de-DE')
@@ -13,6 +15,26 @@ export const pct = (n: number) => `${dec1.format(n * 100)} %`
 
 export const netOf = (brutto: number, vatRate: number) => brutto / (1 + vatRate)
 export const vatOf = (brutto: number, vatRate: number) => brutto - netOf(brutto, vatRate)
+
+/**
+ * Outer size as a buyer reads it: a cylinder gets a diameter, everything else
+ * gets width x depth x height. Returns null when nothing was measured, so
+ * callers can leave the line out entirely instead of printing an empty one.
+ */
+export function dims(d: Dims | null | undefined): string | null {
+  if (!d) return null
+  // Each number carries its own letter. A trailing "(B x T x H)" reads fine on a
+  // desktop table and orphans onto a third line on a phone.
+  if (d.dia) return d.h ? `Ø ${num(d.dia)} × H ${num(d.h)} cm` : `Ø ${num(d.dia)} cm`
+  const parts = [d.w && `B ${num(d.w)}`, d.d && `T ${num(d.d)}`, d.h && `H ${num(d.h)}`].filter(Boolean)
+  return parts.length ? `${parts.join(' × ')} cm` : null
+}
+
+/** The largest edge — what has to fit through the door. */
+export function widestEdge(d: Dims | null | undefined): number {
+  if (!d) return 0
+  return Math.max(d.dia ?? 0, d.w ?? 0, d.d ?? 0)
+}
 
 export function dateDE(iso: string | null | undefined): string {
   if (!iso) return '–'
