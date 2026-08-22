@@ -14,7 +14,9 @@ export const IconTank = svg(<><rect x="5" y="3" width="14" height="18" rx="4" />
 export const IconUsers = svg(<><circle cx="9" cy="8" r="3.2" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0" /><path d="M16 5.2a3.2 3.2 0 0 1 0 5.9M18 20a6.4 6.4 0 0 0-2.2-4.8" /></>)
 export const IconHandshake = svg(<><path d="m11 17 2 2a1.4 1.4 0 0 0 2-2" /><path d="m13 15 2.5 2.5a1.4 1.4 0 0 0 2-2L13 11" /><path d="M3 10.5 7 7l4 3-2.5 2.5a1.8 1.8 0 0 0 2.5 2.5L14 12" /><path d="M13 7h4l4 3.5" /><path d="m3 10.5 3 5M21 10.5l-3 5" /></>)
 export const IconMegaphone = svg(<><path d="M3 11v2a1 1 0 0 0 1 1h2l9 5V5L6 10H4a1 1 0 0 0-1 1Z" /><path d="M19 9a3.5 3.5 0 0 1 0 6" /><path d="M7 14v5" /></>)
-export const IconCog = svg(<><circle cx="12" cy="12" r="3" /><path d="M12 2.5v2M12 19.5v2M21.5 12h-2M4.5 12h-2M18.7 5.3l-1.4 1.4M6.7 17.3l-1.4 1.4M18.7 18.7l-1.4-1.4M6.7 6.7 5.3 5.3" /></>)
+// A cog needs teeth — without them it is indistinguishable from IconSun,
+// which sits right next to it in the mobile header.
+export const IconCog = svg(<><path d="M10.17 2.58L13.83 2.58L14.46 5.23L15.04 5.47L17.37 4.04L19.96 6.63L18.53 8.96L18.77 9.54L21.42 10.17L21.42 13.83L18.77 14.46L18.53 15.04L19.96 17.37L17.37 19.96L15.04 18.53L14.46 18.77L13.83 21.42L10.17 21.42L9.54 18.77L8.96 18.53L6.63 19.96L4.04 17.37L5.47 15.04L5.23 14.46L2.58 13.83L2.58 10.17L5.23 9.54L5.47 8.96L4.04 6.63L6.63 4.04L8.96 5.47L9.54 5.23Z" /><circle cx="12" cy="12" r="3.1" /></>)
 export const IconSearch = svg(<><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></>)
 export const IconClose = svg(<><path d="m6 6 12 12M18 6 6 18" /></>)
 export const IconCheck = svg(<><path d="m4 12.5 5 5L20 6.5" /></>)

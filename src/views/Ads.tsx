@@ -3,6 +3,7 @@ import { Button, Card, CopyButton, EmptyState, Field, Input, Modal, Pill, Sectio
 import { IconLink, IconMegaphone, IconPlus, IconRefresh, IconTrash, IconWarn } from '../components/icons'
 import { bumpAd, createAdsForPortals, markAdPublished, patchAd, refreshAd, removeAd } from '../lib/actions'
 import { SCOPE_LABEL, adDrift, generateAd, limitsOf, portalOf } from '../lib/ads'
+import { catalogPageUrl } from '../lib/catalog'
 import { dateDE, eur, num, relativeDE } from '../lib/format'
 import { useStore } from '../lib/store'
 import { byMaker, isOpen } from '../lib/stats'
@@ -61,6 +62,8 @@ export default function Ads() {
         )}
       </Card>
 
+      <CatalogLink />
+
       {groups.map(({ portal, ads }) => (
         <section key={portal?.id ?? 'ohne-portal'} className="space-y-3">
           <div className="flex flex-wrap items-baseline justify-between gap-2 px-1">
@@ -95,6 +98,57 @@ export default function Ads() {
       {creating && <CreateModal onClose={() => setCreating(false)} onCreated={(ids) => { setCreating(false); setOpenId(ids[0] ?? null) }} />}
       {openId && <AdModal id={openId} onClose={() => setOpenId(null)} />}
     </div>
+  )
+}
+
+/**
+ * The public list is the thing to send someone after first contact, so it needs
+ * to be one tap away from where the ads are written — not buried in settings.
+ */
+function CatalogLink() {
+  const { db } = useStore()
+  const cfg = db.settings.catalog
+  const open = db.tanks.filter(isOpen).length
+  if (!cfg.owner) return null
+  const url = catalogPageUrl(cfg)
+
+  const share = async () => {
+    const text = `Unsere verfügbaren Positionen aus der Betriebsauflösung: ${url}`
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'Verfügbare Positionen', text, url })
+        return
+      } catch {
+        /* cancelled — fall through to the clipboard */
+      }
+    }
+    await navigator.clipboard.writeText(url).catch(() => undefined)
+  }
+
+  return (
+    <Card>
+      <SectionTitle
+        title="Käuferliste zum Weitergeben"
+        hint={`Zeigt die ${open} noch verfügbaren Positionen. Interessenten kreuzen an und schicken daraus eine Anfrage.`}
+        action={
+          <div className="flex flex-wrap gap-2">
+            <CopyButton text={url} label="Link kopieren" />
+            <Button onClick={() => void share()}><IconLink />Teilen</Button>
+          </div>
+        }
+      />
+      <div className="flex flex-wrap items-center gap-2">
+        <a href={url} target="_blank" rel="noreferrer noopener"
+          className="min-w-0 flex-1 truncate rounded-xl border border-line bg-surface-2 px-3 py-2.5 font-mono text-[13px] text-primary underline">
+          {url}
+        </a>
+      </div>
+      <p className="mt-2 text-xs text-faint">
+        Nicht aus einer Kleinanzeige heraus verlinken — dort sind Links auf eigene Angebotsseiten heikel.
+        Nach dem Erstkontakt per Mail oder Messenger verschicken ist unproblematisch.
+        Der Stand kommt aus dem zuletzt veröffentlichten Katalog (Einstellungen).
+      </p>
+    </Card>
   )
 }
 
