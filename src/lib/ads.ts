@@ -361,6 +361,24 @@ export interface ParsedMessage {
 export const REQUEST_MARK = 'Positionen:'
 export const OFFER_MARK = 'Angebot:'
 
+/** "T-03–T-05, F-01" becomes every id in between, keeping only ones that exist. */
+function expandRanges(list: string, known: Set<string>): string[] {
+  const out: string[] = []
+  for (const part of list.split(',')) {
+    const m = part.trim().toUpperCase().match(/^([A-Z]+)-(\d+)(?:\s*[-–—]\s*([A-Z]+)-(\d+))?$/)
+    if (!m) continue
+    const width = m[2].length
+    const to = m[4] && m[3] === m[1] ? Number(m[4]) : Number(m[2])
+    // A reversed or absurd range would otherwise spin for a very long time.
+    if (to < Number(m[2]) || to - Number(m[2]) > 999) continue
+    for (let n = Number(m[2]); n <= to; n += 1) {
+      const id = `${m[1]}-${String(n).padStart(width, '0')}`
+      if (known.has(id)) out.push(id)
+    }
+  }
+  return [...new Set(out)]
+}
+
 /**
  * Kleinanzeigen has no API for private sellers, so incoming enquiries arrive as
  * text. Pasting one here pulls out the bits worth keeping instead of retyping them.
@@ -400,12 +418,11 @@ export function parseMessage(text: string, db: DB): ParsedMessage {
     .filter((n) => n >= 100 && n <= 20000)
   const all = [...new Set(litresMentioned)]
 
-  // The catalogue appends the exact position numbers — prefer them over any guessing.
+  // The catalogue writes the exact position numbers — prefer them over any guessing.
+  // They arrive collapsed into ranges ("T-03–T-05") to keep the mailto link short.
   const known = new Set(db.tanks.map((t) => t.id))
-  const listed = text.match(new RegExp(`${REQUEST_MARK}\\s*([A-Z]-\\d+(?:\\s*,\\s*[A-Z]-\\d+)*)`, 'i'))
-  const exactIds = listed
-    ? listed[1].split(',').map((x) => x.trim().toUpperCase()).filter((id) => known.has(id))
-    : []
+  const listed = text.match(new RegExp(`${REQUEST_MARK}\\s*([A-Z]-\\d+(?:\\s*[-–—]\\s*[A-Z]-\\d+)?(?:\\s*,\\s*[A-Z]-\\d+(?:\\s*[-–—]\\s*[A-Z]-\\d+)?)*)`, 'i'))
+  const exactIds = listed ? expandRanges(listed[1], known) : []
 
   const offerLine = text.match(new RegExp(`${OFFER_MARK}\\s*([\\d.]+)`, 'i'))
   // Without the structured block the price has to come out of the prose, where a
@@ -423,9 +440,16 @@ export function parseMessage(text: string, db: DB): ParsedMessage {
   // the whole lot to one enquirer, so the form has to ask before that happens.
   const broadMatch = exactIds.length === 0 && guessed.length > 3
 
-  // The structured block sits at the very end, exactly where a signature would —
-  // so cut it off before looking for a name, or every enquiry is called "Angebot: 1100".
-  const prose = body.split(/^\s*[—–-]\s*[—–-]\s*[—–-]\s*$/m)[0]
+  // The structured block used to sit at the end and now sits at the top, and older
+  // enquiries still carry the old layout — so its lines are removed wherever they
+  // are instead of cutting the text at the separator. Otherwise the sender is
+  // called "Angebot: 1100" or, with the block on top, not found at all.
+  const prose = body
+    .split(/\r?\n/)
+    .filter((l) => !new RegExp(`^\\s*(${REQUEST_MARK}|${OFFER_MARK})`, 'i').test(l))
+    .filter((l) => !/^\s*\(Diese (drei )?Zeilen bitte stehen lassen/i.test(l))
+    .filter((l) => !/^\s*[—–-]\s*[—–-]\s*[—–-]\s*$/.test(l))
+    .join('\n')
   const lines = prose.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
 
   // "Viele Grüße, Martin Kessler" — the name rides along on the greeting line.

@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { Card, EmptyState, Input, Textarea, cx } from './components/ui'
 import { IconCheck, IconSearch, IconSun, IconMoon } from './components/icons'
 import { dims as fmtDims, eur, num } from './lib/format'
+import { OFFER_MARK, REQUEST_MARK } from './lib/ads'
 import type { Catalog, CatalogItem } from './types'
 import './index.css'
 
@@ -116,12 +117,47 @@ function App() {
     return [...seen.entries()]
   }, [catalog])
 
+/** "T-03, T-04, T-05" becomes "T-03–T-05" — 52 ids shrink from 340 to 35 characters. */
+function idRanges(ids: string[]): string {
+  const parts = ids
+    .map((id) => [id.replace(/-\d+$/, ''), Number(id.match(/(\d+)$/)?.[1] ?? 0), id] as const)
+    .sort((a, b) => a[0].localeCompare(b[0]) || a[1] - b[1])
+  const out: string[] = []
+  let runStart: (typeof parts)[number] | null = null
+  let prev: (typeof parts)[number] | null = null
+  const flush = () => {
+    if (!runStart || !prev) return
+    out.push(runStart[2] === prev[2] ? runStart[2] : `${runStart[2]}–${prev[2]}`)
+  }
+  for (const cur of parts) {
+    if (prev && cur[0] === prev[0] && cur[1] === prev[1] + 1) { prev = cur; continue }
+    flush()
+    runStart = cur
+    prev = cur
+  }
+  flush()
+  return out.join(', ')
+}
+
   function mailto(): string {
     if (!catalog) return '#'
     const lines = summarise(chosen).map(
       (r) => `- ${r.count}× ${r.name}${r.litres ? ` (${num(r.litres)} l)` : ''} – je ${eur(r.vb)}${r.count > 1 ? `, zusammen ${eur(r.total)}` : ''}${r.reserved ? ' [reserviert — Ersatzinteresse]' : ''}`)
+    // The block goes FIRST. Selecting everything makes the mail 2.642 characters
+    // long, and several mail clients cut a mailto link off at about 2.048 — at the
+    // end, which is exactly where this block used to sit. Losing it turns an exact
+    // enquiry back into guesswork on the very largest order.
+    const mark = [
+      `${REQUEST_MARK} ${idRanges(chosen.map((i) => i.id))}`,
+      offer.trim() ? `${OFFER_MARK} ${offer.trim()}` : null,
+      '(Diese Zeilen bitte stehen lassen, sie beschleunigen die Bearbeitung.)',
+      '— — —',
+      '',
+    ].filter((l): l is string => l !== null)
+
     // null marks "leave this out"; '' is a deliberate blank line and must survive.
     const body = [
+      ...mark,
       'Guten Tag,',
       '',
       'ich interessiere mich für folgende Positionen aus Ihrer Betriebsauflösung:',
@@ -135,12 +171,6 @@ function App() {
       message.trim() ? message.trim() : null,
       '',
       'Mit freundlichen Grüßen',
-      '',
-      // Read verbatim by the seller's tool, so nothing has to be guessed from the prose.
-      '— — —',
-      `Positionen: ${chosen.map((i) => i.id).join(', ')}`,
-      offer.trim() ? `Angebot: ${offer.trim()}` : null,
-      '(Diese drei Zeilen bitte stehen lassen, sie beschleunigen die Bearbeitung.)',
     ]
       .filter((l): l is string => l !== null)
       .join('\n')
