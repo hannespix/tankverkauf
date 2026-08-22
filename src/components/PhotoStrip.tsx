@@ -156,6 +156,14 @@ function Thumb({ path, onRemove, sharedWith }: { path: string; onRemove: (alle: 
     }
   }, [path])
 
+  // Klicken schloss die Großansicht schon, Escape nicht — und danach greift jeder.
+  useEffect(() => {
+    if (!full) return
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setFull(false)
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [full])
+
   return (
     <>
       <div className="group relative shrink-0">
