@@ -5,7 +5,7 @@ import { LeadPicker } from '../components/LeadPicker'
 import { TagEditor } from '../components/TagEditor'
 import { Button, Card, EmptyState, Field, Input, Modal, Pill, Select, Textarea, cx, type Tone } from '../components/ui'
 import { IconFilter, IconPlus, IconSearch, IconTrash } from '../components/icons'
-import { addTank, createDeal, createQuote, patchTank, removeTank, setTankOffer, setTankStatus, tagMany } from '../lib/actions'
+import { addTank, createDeal, createQuote, patchTank, removeTank, retypeMany, setTankOffer, setTankStatus, tagMany } from '../lib/actions'
 import { centsPerLitre, eur, num, todayISO } from '../lib/format'
 import { useStore } from '../lib/store'
 import { VERDICT_LABEL, judgeBundle, judgeOffer, totals } from '../lib/stats'
@@ -38,6 +38,7 @@ export default function Tanks() {
   const [dealOpen, setDealOpen] = useState(false)
   const [quoteOpen, setQuoteOpen] = useState(false)
   const [tagOpen, setTagOpen] = useState(false)
+  const [retypeOpen, setRetypeOpen] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
 
   const rows = useMemo(() => {
@@ -172,6 +173,7 @@ export default function Tanks() {
               <Button size="sm" variant="primary" onClick={() => setQuoteOpen(true)}>Angebot erstellen</Button>
               <Button size="sm" onClick={() => setDealOpen(true)}>Als Verkauf buchen</Button>
               <Button size="sm" onClick={() => setTagOpen(true)}>Merkmal setzen</Button>
+              <Button size="sm" onClick={() => setRetypeOpen(true)}>Hersteller/Typ ändern</Button>
               <Button size="sm" variant="ghost" onClick={() => setPicked(new Set())}>Leeren</Button>
             </span>
           )}
@@ -299,6 +301,17 @@ export default function Tanks() {
       <DealModal open={dealOpen} onClose={() => { setDealOpen(false); setPicked(new Set()) }} tanks={pickedTanks} />
       <QuoteModal open={quoteOpen} onClose={() => { setQuoteOpen(false); setPicked(new Set()) }} tanks={pickedTanks} />
       <BulkTagModal open={tagOpen} onClose={() => setTagOpen(false)} tanks={pickedTanks} />
+      <BulkRetypeModal
+        open={retypeOpen}
+        onClose={() => setRetypeOpen(false)}
+        tanks={pickedTanks}
+        onApplied={(r) => {
+          // A filter still pointing at the old name matches nothing after the rename,
+          // and an empty list under "Keine Tanks gefunden" reads like the tanks are gone.
+          if (r.maker) setMakerSel((sel) => [...new Set(sel.map((m) => (r.makers.includes(m) ? r.maker : m)))])
+          if (r.type) setTypeSel((sel) => [...new Set(sel.map((t) => (r.types.includes(t) ? r.type : t)))])
+        }}
+      />
       <AddTankModal open={addOpen} onClose={() => setAddOpen(false)} />
     </div>
   )
@@ -572,6 +585,81 @@ function QuoteModal({ open, onClose, tanks }: { open: boolean; onClose: () => vo
           <Button variant="primary" disabled={value <= 0}
             onClick={() => { createQuote({ label, tankIds: tanks.map((x) => x.id), askPrice: value, leadId: leadId || null, portalId: portalId || null, note }); onClose() }}>
             Angebot speichern
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+/**
+ * Correct maker and type on a whole selection. A wrong maker is not a local typo:
+ * it rides along into every ad, the public catalogue and the buyer's mail, so it
+ * has to be fixable in one move rather than position by position.
+ */
+function BulkRetypeModal({ open, onClose, tanks, onApplied }: {
+  open: boolean
+  onClose: () => void
+  tanks: Tank[]
+  onApplied: (r: { makers: string[]; types: string[]; maker: string; type: string }) => void
+}) {
+  const { db } = useStore()
+  const [maker, setMaker] = useState('')
+  const [type, setType] = useState('')
+  if (!open) return null
+
+  const m = maker.trim()
+  const t = type.trim()
+  const knownMakers = [...new Set(db.tanks.map((x) => x.maker))].sort((a, b) => a.localeCompare(b, 'de'))
+  const knownTypes = [...new Set(db.tanks.map((x) => x.type))].sort((a, b) => a.localeCompare(b, 'de'))
+  const before = [...new Set(tanks.map((x) => (x.maker === 'Sonstige' ? x.type : `${x.maker} ${x.type}`)))]
+
+  return (
+    <Modal open onClose={onClose} title={`Hersteller/Typ für ${tanks.length} Positionen`}>
+      <div className="space-y-4">
+        <p className="text-sm text-muted">
+          Ändert Hersteller und Bezeichnung auf allen ausgewählten Positionen. Ein leeres Feld bleibt unverändert —
+          so lässt sich die Bezeichnung setzen, ohne den Hersteller anzufassen.
+        </p>
+
+        <div className="rounded-xl bg-surface-2 p-3 text-[13px]">
+          <span className="text-muted">Bisher: </span>
+          {before.slice(0, 4).join(' · ')}
+          {before.length > 4 && ` · und ${before.length - 4} weitere`}
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Hersteller" hint="„Sonstige“, wenn kein Typenschild vorhanden ist">
+            <Input value={maker} onChange={(e) => setMaker(e.target.value)} placeholder="unverändert" list="retype-hersteller" />
+            <datalist id="retype-hersteller">{knownMakers.map((x) => <option key={x} value={x} />)}</datalist>
+          </Field>
+          <Field label="Bezeichnung">
+            <Input value={type} onChange={(e) => setType(e.target.value)} placeholder="unverändert" list="retype-typen" />
+            <datalist id="retype-typen">{knownTypes.map((x) => <option key={x} value={x} />)}</datalist>
+          </Field>
+        </div>
+
+        {(m || t) && (
+          <p className="rounded-xl bg-primary-soft p-3 text-[13px]">
+            Wird zu: <strong>{m === 'Sonstige' || (!m && tanks[0]?.maker === 'Sonstige') ? (t || tanks[0]?.type) : `${m || tanks[0]?.maker} ${t || tanks[0]?.type}`}</strong>
+            {tanks.length > 1 && ` — auf allen ${tanks.length} Positionen`}
+          </p>
+        )}
+
+        <div className="flex flex-wrap justify-end gap-2 border-t border-line pt-4">
+          <Button onClick={onClose}>Abbrechen</Button>
+          <Button
+            variant="primary"
+            disabled={!m && !t}
+            onClick={() => {
+              // Read the old names first — after the mutation they are gone.
+              const r = { makers: [...new Set(tanks.map((x) => x.maker))], types: [...new Set(tanks.map((x) => x.type))], maker: m, type: t }
+              retypeMany(tanks.map((x) => x.id), m, t)
+              onApplied(r)
+              onClose()
+            }}
+          >
+            Bei allen ändern
           </Button>
         </div>
       </div>
