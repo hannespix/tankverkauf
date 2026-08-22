@@ -16,6 +16,7 @@ function tankRows(db: DB) {
     const deal = db.deals.find((d) => d.id === t.dealId)
     return {
       Nr: t.id,
+      Kategorie: t.category === 'fass' ? 'Holzfass' : 'Edelstahltank',
       'Hersteller / Typ': t.maker === 'Sonstige' ? t.type : `${t.maker} ${t.type}`,
       Hersteller: t.maker,
       Volumen: t.litres,
@@ -247,6 +248,7 @@ export async function importXlsx(file: File): Promise<ImportResult> {
       n += 1
       tanks.push({
         id: `T-${String(n).padStart(2, '0')}`,
+        category: 'tank',
         maker,
         type,
         litres,

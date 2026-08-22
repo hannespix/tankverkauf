@@ -14,6 +14,9 @@ export default function Overview({ go }: { go: (v: View) => void }) {
   const { db } = useStore()
   const p = useMemo(() => progress(db), [db])
   const open = db.tanks.filter(isOpen)
+  const openTanks = open.filter((t) => t.category === 'tank')
+  const openBarrels = open.filter((t) => t.category === 'fass')
+  const pkg = totals(openTanks)
 
   const statusSegments: Segment[] = (['verfuegbar', 'kontakt', 'reserviert', 'verkauft'] as TankStatus[]).map((s) => ({
     key: s,
@@ -22,7 +25,7 @@ export default function Overview({ go }: { go: (v: View) => void }) {
     fill: STATUS_FILL[s],
   }))
 
-  const makerRows: BarRow[] = byMaker(open).map((g) => {
+  const makerRows: BarRow[] = byMaker(openTanks).map((g) => {
     const t = totals(g.tanks)
     return { key: g.maker, label: g.maker, value: t.vb, detail: `${t.count} Tanks · ${num(t.litres)} l` }
   })
@@ -38,8 +41,8 @@ export default function Overview({ go }: { go: (v: View) => void }) {
   })
 
   const s = db.settings
-  const pkgPerL = p.open.litres ? centsPerLitre(s.packagePrice, p.open.litres) : '–'
-  const saving = p.open.vb - s.packagePrice
+  const pkgPerL = pkg.litres ? centsPerLitre(s.packagePrice, pkg.litres) : '–'
+  const saving = pkg.vb - s.packagePrice
 
   const todos = [
     dueFollowUps.length > 0 && { icon: <IconClock />, tone: 'amber' as const, text: `${dueFollowUps.length} Wiedervorlage${dueFollowUps.length > 1 ? 'n' : ''} fällig`, go: 'leads' as View },
@@ -67,7 +70,7 @@ export default function Overview({ go }: { go: (v: View) => void }) {
       )}
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-6">
-        <Stat label="Noch da" value={p.open.count} sub={`${num(p.open.litres)} l Volumen`} />
+        <Stat label="Noch da" value={p.open.count} sub={`${openTanks.length} Tanks · ${openBarrels.length} Fässer`} />
         <Stat label="Im Kontakt" value={db.tanks.filter((t) => t.status === 'kontakt').length} sub="laufende Gespräche" />
         <Stat label="Reserviert" value={db.tanks.filter((t) => t.status === 'reserviert').length} sub="fest vorgemerkt" />
         <Stat label="Verkauft" value={p.sold.count} sub={`${num(p.sold.litres)} l abgegeben`} />
@@ -113,15 +116,15 @@ export default function Overview({ go }: { go: (v: View) => void }) {
 
       <Card>
         <SectionTitle
-          title="Komplettpaket"
-          hint="Rechnet immer mit den aktuell noch verfügbaren Tanks."
+          title="Tank-Komplettpaket"
+          hint="Rechnet nur mit den noch verfügbaren Edelstahltanks — Fässer bleiben außen vor."
           action={<Pill tone={s.packagePrice >= s.packageFloor ? 'green' : 'rose'}>{s.packagePrice >= s.packageFloor ? 'über Untergrenze' : 'unter Untergrenze'}</Pill>}
         />
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-xl bg-surface-2 p-3">
             <div className="text-xs font-semibold text-muted uppercase">Im Paket</div>
-            <div className="tnum mt-1 text-xl font-extrabold">{p.open.count} Tanks</div>
-            <div className="text-[13px] text-muted">{num(p.open.litres)} l</div>
+            <div className="tnum mt-1 text-xl font-extrabold">{pkg.count} Tanks</div>
+            <div className="text-[13px] text-muted">{num(pkg.litres)} l</div>
           </div>
           <Field label="Paketpreis brutto (VB)">
             <Input
@@ -141,7 +144,7 @@ export default function Overview({ go }: { go: (v: View) => void }) {
           <div className="rounded-xl bg-surface-2 p-3">
             <div className="text-xs font-semibold text-muted uppercase">Nachlass ggü. Einzel-VB</div>
             <div className={cx('tnum mt-1 text-xl font-extrabold', saving > 0 ? 'text-primary' : 'text-rose')}>{eur(saving)}</div>
-            <div className="text-[13px] text-muted">{p.open.vb ? `${((saving / p.open.vb) * 100).toFixed(0)} % unter Summe` : '–'}</div>
+            <div className="text-[13px] text-muted">{pkg.vb ? `${((saving / pkg.vb) * 100).toFixed(0)} % unter Summe` : '–'}</div>
           </div>
         </div>
       </Card>
