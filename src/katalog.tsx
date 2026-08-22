@@ -87,10 +87,10 @@ function App() {
     for (const i of items) {
       const g = byCat.get(i.category) ?? { label: i.categoryLabel, lots: [] }
       // 29 identical barrels are one lot with a quantity, not 29 checkboxes.
-      const key = `${i.maker}|${i.type}|${i.litres}|${i.vb}`
+      const key = `${i.maker}|${i.type}|${i.litres}|${i.vb}|${i.reserved ? 'r' : 'f'}`
       const lot = g.lots.find((l) => l.key === key)
       if (lot) lot.ids.push(i.id)
-      else g.lots.push({ key, maker: i.maker, type: i.type, litres: i.litres, vb: i.vb, ids: [i.id] })
+      else g.lots.push({ key, maker: i.maker, type: i.type, litres: i.litres, vb: i.vb, reserved: i.reserved, ids: [i.id] })
       byCat.set(i.category, g)
     }
     return [...byCat.entries()].map(([id, g]) => ({ id, ...g }))
@@ -119,7 +119,7 @@ function App() {
   function mailto(): string {
     if (!catalog) return '#'
     const lines = summarise(chosen).map(
-      (r) => `- ${r.count}× ${r.name}${r.litres ? ` (${num(r.litres)} l)` : ''} – je ${eur(r.vb)}${r.count > 1 ? `, zusammen ${eur(r.total)}` : ''}`)
+      (r) => `- ${r.count}× ${r.name}${r.litres ? ` (${num(r.litres)} l)` : ''} – je ${eur(r.vb)}${r.count > 1 ? `, zusammen ${eur(r.total)}` : ''}${r.reserved ? ' [reserviert — Ersatzinteresse]' : ''}`)
     // null marks "leave this out"; '' is a deliberate blank line and must survive.
     const body = [
       'Guten Tag,',
@@ -190,7 +190,7 @@ function App() {
               const taken = lot.ids.filter((id) => picked.has(id)).length
               const many = lot.ids.length > 1
               return (
-                <li key={lot.key} className={cx('flex items-center gap-3 px-4 py-3 transition', taken > 0 && 'bg-primary-soft/40')}>
+                <li key={lot.key} className={cx('flex items-center gap-3 px-4 py-3 transition', taken > 0 && 'bg-primary-soft/40', lot.reserved && 'opacity-70')}>
                   {!many && (
                     <input
                       type="checkbox"
@@ -204,8 +204,13 @@ function App() {
                     <span className="block font-semibold">{lot.maker === 'Sonstige' ? lot.type : `${lot.maker} ${lot.type}`}</span>
                     <span className="tnum block text-[13px] text-muted">
                       {lot.litres > 0 && `${num(lot.litres)} Liter · `}
-                      {many ? `${lot.ids.length} Stück verfügbar` : 'Einzelstück'}
+                      {many ? `${lot.ids.length} Stück` : 'Einzelstück'}
                     </span>
+                    {lot.reserved && (
+                      <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-soft px-2 py-0.5 text-[11px] font-bold text-amber">
+                        reserviert — Ersatzinteresse möglich
+                      </span>
+                    )}
                   </span>
                   {many && (
                     <span className="flex shrink-0 items-center gap-1.5">
@@ -295,6 +300,7 @@ interface Lot {
   type: string
   litres: number
   vb: number
+  reserved: boolean
   ids: string[]
 }
 
@@ -305,13 +311,14 @@ interface Summary {
   vb: number
   count: number
   total: number
+  reserved: boolean
 }
 
 /** Collapse a selection back into "6× Barriquefass" lines. */
 function summarise(items: CatalogItem[]): Summary[] {
   const map = new Map<string, Summary>()
   for (const i of items) {
-    const key = `${i.maker}|${i.type}|${i.litres}|${i.vb}`
+    const key = `${i.maker}|${i.type}|${i.litres}|${i.vb}|${i.reserved ? 'r' : 'f'}`
     const hit = map.get(key)
     if (hit) {
       hit.count += 1
@@ -319,6 +326,7 @@ function summarise(items: CatalogItem[]): Summary[] {
     } else {
       map.set(key, {
         key,
+        reserved: i.reserved,
         name: i.maker === 'Sonstige' ? i.type : `${i.maker} ${i.type}`,
         litres: i.litres,
         vb: i.vb,

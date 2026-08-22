@@ -25,6 +25,8 @@ export function buildCatalog(db: DB): Catalog {
       type: t.type,
       litres: t.litres,
       vb: t.vb,
+      // Hiding this loses the second buyer entirely; showing it turns them into a backup.
+      reserved: t.status === 'reserviert',
     })),
   }
 }
