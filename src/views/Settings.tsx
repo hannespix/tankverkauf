@@ -7,6 +7,7 @@ import { dateTimeDE, dims as fmtDims, num, relativeDE } from '../lib/format'
 import { store, useStore } from '../lib/store'
 import { clearVault, forgetDevice, rememberedUntil } from '../lib/vault'
 import { AI_MODELS } from '../lib/ai'
+import { BundleEditor } from '../components/BundleEditor'
 import { catalogPageUrl } from '../lib/catalog'
 import { STYLE_LABEL, type CategoryDef, type DB, type Portal, type PortalStyle } from '../types'
 
@@ -218,6 +219,8 @@ export default function Settings() {
           </Field>
         </div>
       </Card>
+
+      <BundleEditor />
 
       <Card>
         <SectionTitle

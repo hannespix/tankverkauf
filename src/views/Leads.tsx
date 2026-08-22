@@ -342,15 +342,25 @@ function ParseModal({ onClose }: { onClose: () => void }) {
               if (tankIds.length > 0) {
                 const picked = db.tanks.filter((t) => tankIds.includes(t.id))
                 const t = totals(picked)
+                // Hat die Käuferliste einen Paketpreis mitgeschickt, ist DAS unsere
+                // Forderung — nicht die Summe der Einzelpreise. Sonst sähe jeder, der
+                // den ausgeschriebenen Paketpreis annimmt, wie ein Preisdrücker aus.
+                const askPrice = parsed.packagePrice ?? t.vb
                 const quoteId = createQuote({
                   label: `Anfrage ${parsed.name || 'Käuferliste'} · ${picked.length} Positionen`,
                   tankIds,
-                  askPrice: t.vb,
+                  askPrice,
                   leadId,
                   portalId: null,
                   note: text.trim(),
                 })
-                if (parsed.offer != null) patchQuote(quoteId, { buyerOffer: parsed.offer, status: 'verhandlung' })
+                // Wer genau den geforderten Preis nennt, verhandelt nicht, er nimmt an.
+                if (parsed.offer != null) {
+                  patchQuote(quoteId, {
+                    buyerOffer: parsed.offer,
+                    status: parsed.offer >= askPrice ? 'gesendet' : 'verhandlung',
+                  })
+                }
               }
               onClose()
             }}>

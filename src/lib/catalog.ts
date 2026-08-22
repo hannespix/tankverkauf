@@ -1,4 +1,5 @@
-import type { Catalog, DB } from '../types'
+import type { Catalog, CatalogBundle, DB } from '../types'
+import { resolveBundle } from './bundles'
 import { isOpen } from './stats'
 
 /**
@@ -9,6 +10,14 @@ import { isOpen } from './stats'
  */
 export function buildCatalog(db: DB): Catalog {
   const label = (id: string) => db.settings.categories.find((c) => c.id === id)?.label ?? id
+  const open = db.tanks.filter(isOpen)
+  // Reservierte Positionen bleiben in der Liste — ein zweiter Interessent ist Gold
+  // wert, wenn die Reservierung platzt. In einem Paket haben sie nichts verloren:
+  // ein Paketpreis ist ein festes Angebot, und was schon jemandem zugesagt ist,
+  // kann darin nicht mitverkauft werden.
+  const stock = new Map(
+    open.filter((t) => t.status !== 'reserviert').map((t) => [t.id, { id: t.id, category: t.category, vb: t.vb }]),
+  )
   return {
     seller: db.settings.seller.name,
     location: [db.settings.seller.plz, db.settings.seller.location].filter(Boolean).join(' '),
@@ -17,7 +26,7 @@ export function buildCatalog(db: DB): Catalog {
     pickupInfo: db.settings.seller.pickupInfo,
     vatRate: db.settings.vatRate,
     updatedAt: new Date().toISOString(),
-    items: db.tanks.filter(isOpen).map((t) => ({
+    items: open.map((t) => ({
       id: t.id,
       category: t.category,
       categoryLabel: label(t.category),
@@ -32,6 +41,15 @@ export function buildCatalog(db: DB): Catalog {
       // Hiding this loses the second buyer entirely; showing it turns them into a backup.
       reserved: t.status === 'reserviert',
     })),
+    // Von einem Paket geht die fertige Zusammenstellung und der fertige Preis raus,
+    // nicht der eingestellte Nachlass — und schon gar nicht, gegen welche Untergrenze
+    // er gerechnet wurde. Verkaufte Positionen fallen dabei still heraus.
+    bundles: db.settings.bundles
+      .map((b) => resolveBundle(b, stock))
+      .filter((b): b is CatalogBundle => b !== null),
+    // Die Staffel ist ein Angebot und darf gelesen werden. Stufen ohne Nachlass
+    // wären nur eine Zeile, die nichts verspricht.
+    tiers: db.settings.tiers.filter((t) => t.discount > 0),
   }
 }
 

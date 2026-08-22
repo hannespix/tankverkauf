@@ -151,6 +151,112 @@ export const SEED: DB = {
     packagePrice: 17900,
     packageTarget: 15200,
     packageFloor: 12800,
+    /*
+     * Angebotspakete. Wie überall in dieser Datei sind das öffentliche Preise: ein
+     * Paketpreis steht am Ende auf der Käuferseite, genau wie eine VB. Der Nachlass
+     * wird deshalb auf die VB gerechnet und NICHT aus Zielpreis oder Untergrenze
+     * zurückgerechnet — sonst könnte jeder Käufer aus dem veröffentlichten
+     * Verhältnis die Untergrenze jeder einzelnen Position ausrechnen.
+     *
+     * giftIds sind Positionen, die ohne Aufpreis mitgehen. Das ist der bessere
+     * Hebel für Ware, die einzeln liegen bleibt: der Schichtenfilter und die
+     * Heizstäbe brauchen einen Käufer, der ohnehin das Passende dazu kauft.
+     */
+    bundles: [
+      {
+        id: 'startkeller',
+        label: 'Startkeller für den ersten Jahrgang',
+        blurb:
+          'Drei kleine Speidel-Tanks für getrennte Kleinstpartien, ein 1.000-l-Behälter zum Holen und Umlagern, dazu die fahrbare Impellerpumpe. Der Schichtenfilter kommt ohne Aufpreis mit. Zusammen 2.775 l — passt auf einen Autoanhänger.',
+        ids: ['T-03', 'T-04', 'T-05', 'T-09', 'M-02', 'M-03'],
+        giftIds: ['M-03'],
+        discount: 0.07,
+        minItems: 4,
+        active: true,
+      },
+      {
+        id: 'raumspar',
+        label: 'Raumspar-Keller, 8.000 l',
+        blurb:
+          'Sechs eckige Tanks von 800 bis 1.650 l, die sich Wand an Wand stellen lassen und keinen Zwickel Platz verschenken. Für einen engen Altbaukeller die dichteste Art, 8.000 l unterzubringen.',
+        ids: ['T-14', 'T-15', 'T-16', 'T-17', 'T-18', 'T-19'],
+        giftIds: [],
+        discount: 0.15,
+        minItems: 4,
+        active: true,
+      },
+      {
+        id: 'grossgebinde',
+        label: 'Großgebinde, 16.100 l',
+        blurb:
+          'Fünf Rundtanks von 2.800 bis 3.700 l. Verladung mit Stapler bei uns; für die Abholung sollten ein Lkw und drüben eine Halle mit Höhe bereitstehen.',
+        ids: ['T-20', 'T-21', 'T-22', 'T-23', 'T-24'],
+        giftIds: [],
+        discount: 0.14,
+        minItems: 3,
+        active: true,
+      },
+      {
+        id: 'clemens-paar',
+        label: 'Zwei Clemens, 4.200 l',
+        blurb:
+          'Zwei baugleiche Clemens-Tanks, laut Typenschild je 2.000 l, praktisch gehen etwa 2.100 l hinein. Gleiche Höhe, gleiche Armaturen — im Keller ein Handgriff für beide.',
+        ids: ['T-12', 'T-13'],
+        giftIds: [],
+        discount: 0.12,
+        minItems: 2,
+        active: true,
+      },
+      {
+        id: 'stapelpaar',
+        label: 'Zwei Speidel 1.250 l, stapelbar',
+        blurb:
+          'Zwei baugleiche 1.250er, übereinandergestapelt nur 218 cm hoch. 2.500 l auf gut anderthalb Quadratmetern Stellfläche — die Lösung für niedrige Decken.',
+        ids: ['T-07', 'T-08'],
+        giftIds: [],
+        discount: 0.11,
+        minItems: 2,
+        active: true,
+      },
+      {
+        id: 'barrique-partie',
+        label: 'Barrique-Partie mit Fassreiniger',
+        blurb:
+          '29 gebrauchte Eichenbarriques à 225 l aus laufendem Betrieb, dazu der Kiesel-Fassreiniger mit eigenem Motor und Anschluss für den Hochdruckreiniger. Wer die Partie geschlossen nimmt, hat einen Termin, eine Fuhre — und die Ecke ist leer.',
+        ids: ['F-01', 'F-02', 'F-03', 'F-04', 'F-05', 'F-06', 'F-07', 'F-08', 'F-09', 'F-10', 'F-11', 'F-12', 'F-13', 'F-14', 'F-15', 'F-16', 'F-17', 'F-18', 'F-19', 'F-20', 'F-21', 'F-22', 'F-23', 'F-24', 'F-25', 'F-26', 'F-27', 'F-28', 'F-29', 'M-04'],
+        giftIds: [],
+        discount: 0.24,
+        minItems: 12,
+        active: true,
+      },
+      {
+        id: 'tonneaux',
+        label: 'Zwei Tonneaux mit Heizstäben',
+        blurb:
+          'Zwei Tonneaux à 300 l, das handlichere Maß für kleine Mengen. Die beiden passenden Heizstäbe für die Zapflochklappen gehen ohne Aufpreis mit — einzeln braucht sie niemand.',
+        ids: ['F-30', 'F-31', 'M-05', 'M-06'],
+        giftIds: ['M-05', 'M-06'],
+        discount: 0,
+        minItems: 2,
+        active: true,
+      },
+    ],
+    /*
+     * Mengenstaffel. Für Maschinen ist bewusst keine Stufe hinterlegt: die Staffel
+     * kennt nur Kategorien, und eine Stufe auf "Maschinen" träfe auch die
+     * Exzenterschneckenpumpe — die einzige Position, die von selbst weggeht.
+     * Maschinen bekommen ihren Nachlass über die Pakete oben, die sie aussparen.
+     */
+    tiers: [
+      { category: 'tank', minCount: 2, discount: 0.05 },
+      { category: 'tank', minCount: 4, discount: 0.09 },
+      { category: 'tank', minCount: 6, discount: 0.13 },
+      { category: 'tank', minCount: 10, discount: 0.17 },
+      { category: 'fass', minCount: 3, discount: 0.05 },
+      { category: 'fass', minCount: 6, discount: 0.12 },
+      { category: 'fass', minCount: 12, discount: 0.18 },
+      { category: 'fass', minCount: 20, discount: 0.24 },
+    ],
     seller: {
       name: 'Weingut Pix',
       location: '',

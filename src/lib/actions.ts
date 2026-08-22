@@ -122,6 +122,16 @@ export function removeTank(tank: Tank) {
       db.leads.forEach((l) => {
         l.tankIds = l.tankIds.filter((id) => id !== tank.id)
       })
+      db.quotes.forEach((q) => {
+        q.tankIds = q.tankIds.filter((id) => id !== tank.id)
+      })
+      // Ein Angebotspaket, das auf eine gelöschte Position zeigt, würde auf der
+      // Käuferseite stillschweigend kleiner werden, ohne dass es jemand merkt.
+      db.settings.bundles = db.settings.bundles.map((b) => ({
+        ...b,
+        ids: b.ids.filter((id) => id !== tank.id),
+        giftIds: b.giftIds.filter((id) => id !== tank.id),
+      }))
     },
     { kind: 'tank', text: `Position gelöscht: ${tankName(tank)}` },
   )

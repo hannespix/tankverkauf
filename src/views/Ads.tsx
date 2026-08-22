@@ -21,6 +21,27 @@ export default function Ads() {
   const portals = db.settings.portals
   const stale = db.ads.filter((a) => a.status === 'online' && adDrift(db, a).stale)
 
+  /**
+   * Was in keiner Anzeige steht. Das Komplettpaket nimmt nur Kategorien, die in den
+   * Einstellungen als Paketbestandteil markiert sind — in der Voreinstellung sind
+   * das die Tanks. Fässer und Maschinen fallen damit aus jeder Paketanzeige heraus,
+   * und ohne diese Zeile merkt das niemand.
+   */
+  const uncovered = useMemo(() => {
+    const inAds = new Set(db.ads.flatMap((a) => a.tankIds))
+    const missing = db.tanks.filter((t) => isOpen(t) && !inAds.has(t.id))
+    const byCat = new Map<string, number>()
+    for (const t of missing) byCat.set(t.category, (byCat.get(t.category) ?? 0) + 1)
+    return {
+      count: missing.length,
+      categories: [...byCat.entries()].map(([id, n]) => ({
+        id,
+        n,
+        label: db.settings.categories.find((c) => c.id === id)?.label ?? id,
+      })),
+    }
+  }, [db.ads, db.tanks, db.settings.categories])
+
   // One section per portal, plus a catch-all for ads whose portal was deleted.
   const groups = useMemo(() => {
     const known = portals.map((p) => ({ portal: p, ads: db.ads.filter((a) => a.portalId === p.id) }))
@@ -51,6 +72,18 @@ export default function Ads() {
               <strong>{stale.length} Anzeige{stale.length > 1 ? 'n' : ''} nicht mehr aktuell.</strong> Der Bestand hat
               sich geändert, seit der Text zuletzt erzeugt wurde.
             </span>
+          </div>
+        )}
+
+        {uncovered.count > 0 && db.ads.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-start gap-2.5 rounded-xl border border-amber/50 bg-amber-soft/50 p-3 text-sm">
+            <IconWarn className="mt-0.5 shrink-0 text-amber" />
+            <span className="min-w-0 flex-1">
+              <strong>{uncovered.count} Positionen stehen in keiner Anzeige:</strong>{' '}
+              {uncovered.categories.map((c) => `${c.n} × ${c.label}`).join(', ')}. Das Komplettpaket nimmt nur Kategorien,
+              die in den Einstellungen als Paketbestandteil markiert sind — für alles andere braucht es eine eigene Anzeige.
+            </span>
+            <Button size="sm" onClick={() => setCreating(true)}><IconPlus />Anzeige dafür</Button>
           </div>
         )}
 
@@ -226,18 +259,36 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
     [db, scope, picked],
   )
 
+  // Wie viele Positionen ein Zuschnitt tatsächlich erfasst. "Komplettpaket" klingt
+  // nach allem, nimmt aber nur die Kategorien, die als Paketbestandteil markiert
+  // sind — bei 58 Positionen können das 21 sein, und das gehört an die Auswahl.
+  const openCount = db.tanks.filter(isOpen).length
+  const inPackage = db.tanks.filter((t) => isOpen(t) && db.settings.categories.find((c) => c.id === t.category)?.inPackage).length
+  const covered = previews[0]?.gen.tankIds.length ?? 0
+
   return (
     <Modal open onClose={onClose} title="Anzeige erstellen" wide>
       <div className="space-y-4">
-        <Field label="Was soll beworben werden?">
+        <Field label="Was soll beworben werden?" hint={`${covered} von ${openCount} noch offenen Positionen`}>
           <Select value={kind} onChange={(e) => setKind(e.target.value as AdScopeKind)}>
-            <option value="paket">Komplettpaket — alles, was zum Paket gehört</option>
+            <option value="paket">Komplettpaket — die Kategorien im Paket ({inPackage})</option>
             <option value="kategorie">Ganze Kategorie</option>
             <option value="maker">Hersteller-Bundle — alles einer Marke</option>
             <option value="tank">Einzelne Position</option>
-            <option value="restposten">Restposten — Kurzfassung</option>
+            <option value="restposten">Restposten — Kurzfassung ({inPackage})</option>
           </Select>
         </Field>
+
+        {(kind === 'paket' || kind === 'restposten') && inPackage < openCount && (
+          <p className="flex items-start gap-2 rounded-xl bg-amber-soft/50 p-3 text-[13px] text-amber">
+            <IconWarn className="mt-0.5 shrink-0" />
+            <span>
+              {openCount - inPackage} Positionen bleiben außen vor — sie gehören Kategorien an, die nicht als
+              Paketbestandteil markiert sind. Für sie braucht es eine eigene Anzeige, oder du markierst die Kategorie
+              in den Einstellungen.
+            </span>
+          </p>
+        )}
 
         {kind === 'kategorie' && (
           <Field label="Kategorie">
