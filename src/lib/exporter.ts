@@ -175,12 +175,30 @@ export interface ImportResult {
   warnings: string[]
 }
 
-const MAKERS: Maker[] = ['Speidel', 'Möschle', 'Clemens']
+const MAKERS: Maker[] = ['Speidel', 'Clemens']
 
-function splitMaker(label: string): { maker: Maker; type: string } {
-  const found = MAKERS.find((m) => label.toLowerCase().includes(m.toLowerCase()))
-  if (found) return { maker: found, type: label.replace(new RegExp(found, 'i'), '').trim() || 'Edelstahltank' }
-  return { maker: 'Sonstige', type: label.trim() || 'Edelstahltank' }
+/**
+ * Brand names that turned out to be wrong for this inventory. The original price
+ * lists call eleven tanks Möschle; none of them carries a maker's plate. Since
+ * this importer rebuilds the stock from exactly those lists, recognising the name
+ * would quietly put the false claim back into every ad — so it is dropped from the
+ * label instead of being trusted, and the import reports that it did so.
+ */
+const DISPROVEN = ['Möschle', 'Moeschle']
+
+function splitMaker(label: string): { maker: Maker; type: string; dropped: string | null } {
+  let text = label
+  let dropped: string | null = null
+  for (const wrong of DISPROVEN) {
+    const re = new RegExp(`\\b${wrong}\\b[-\\s]*`, 'i')
+    if (re.test(text)) {
+      dropped = wrong
+      text = text.replace(re, '').trim()
+    }
+  }
+  const found = MAKERS.find((m) => text.toLowerCase().includes(m.toLowerCase()))
+  if (found) return { maker: found, type: text.replace(new RegExp(found, 'i'), '').trim() || 'Edelstahltank', dropped }
+  return { maker: 'Sonstige', type: text.trim() || 'Edelstahltank', dropped }
 }
 
 const toNum = (v: unknown): number => {
@@ -237,7 +255,10 @@ export async function importXlsx(file: File): Promise<ImportResult> {
     const count = cCount === -1 ? 1 : Math.max(1, Math.round(toNum(row[cCount])) || 1)
     const target = cTarget === -1 ? Math.round(vb * 0.86) : toNum(row[cTarget]) || Math.round(vb * 0.86)
     const floor = cFloor === -1 ? Math.round(vb * 0.72) : toNum(row[cFloor]) || Math.round(vb * 0.72)
-    const { maker, type } = splitMaker(label)
+    const { maker, type, dropped } = splitMaker(label)
+    if (dropped && !warnings.some((w) => w.includes(dropped))) {
+      warnings.push(`„${dropped}" aus der Datei wurde nicht übernommen — an diesen Tanks ist kein Typenschild. Sie kommen als „Sonstige" herein.`)
+    }
 
     if (cTarget === -1 || cFloor === -1) {
       const missing = [cTarget === -1 && 'Zielpreis', cFloor === -1 && 'Untergrenze'].filter(Boolean).join(' und ')
