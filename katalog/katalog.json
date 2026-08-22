@@ -5,7 +5,7 @@
   "intro": "Wegen Betriebsaufgabe geben wir unsere komplette Kellerausstattung ab. Markieren Sie, was für Sie infrage kommt, und schicken Sie uns Ihr Angebot.",
   "pickupInfo": "Besichtigung und Abholung nach Absprache. Selbstabholung, Verladung mit Stapler möglich.",
   "vatRate": 0.19,
-  "updatedAt": "2026-08-22T12:42:11.925Z",
+  "updatedAt": "2026-08-22T13:04:11.292Z",
   "items": [
     {
       "id": "T-03",
@@ -195,6 +195,285 @@
       "type": "Edelstahltank",
       "litres": 3700,
       "vb": 2100
+    },
+    {
+      "id": "F-01",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175
+    },
+    {
+      "id": "F-02",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175
+    },
+    {
+      "id": "F-03",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175
+    },
+    {
+      "id": "F-04",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175
+    },
+    {
+      "id": "F-05",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175
+    },
+    {
+      "id": "F-06",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175
+    },
+    {
+      "id": "F-07",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175
+    },
+    {
+      "id": "F-08",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175
+    },
+    {
+      "id": "F-09",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175
+    },
+    {
+      "id": "F-10",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175
+    },
+    {
+      "id": "F-11",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175
+    },
+    {
+      "id": "F-12",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175
+    },
+    {
+      "id": "F-13",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175
+    },
+    {
+      "id": "F-14",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175
+    },
+    {
+      "id": "F-15",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175
+    },
+    {
+      "id": "F-16",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175
+    },
+    {
+      "id": "F-17",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175
+    },
+    {
+      "id": "F-18",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175
+    },
+    {
+      "id": "F-19",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175
+    },
+    {
+      "id": "F-20",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175
+    },
+    {
+      "id": "F-21",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175
+    },
+    {
+      "id": "F-22",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175
+    },
+    {
+      "id": "F-23",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175
+    },
+    {
+      "id": "F-24",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175
+    },
+    {
+      "id": "F-25",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175
+    },
+    {
+      "id": "F-26",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175
+    },
+    {
+      "id": "F-27",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175
+    },
+    {
+      "id": "F-28",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175
+    },
+    {
+      "id": "F-29",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Barriquefass",
+      "litres": 225,
+      "vb": 175
+    },
+    {
+      "id": "F-30",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Tonneau",
+      "litres": 300,
+      "vb": 250
+    },
+    {
+      "id": "F-31",
+      "category": "fass",
+      "categoryLabel": "Holzfässer",
+      "maker": "Sonstige",
+      "type": "Tonneau",
+      "litres": 300,
+      "vb": 250
     }
   ]
 }
