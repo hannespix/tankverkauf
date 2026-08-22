@@ -10,7 +10,7 @@ import type { Tank } from '../types'
  * so every device that can open the dashboard has them at hand for a listing.
  */
 export function PhotoStrip({ tank }: { tank: Tank }) {
-  const { mode, photosPending } = useStore()
+  const { db, mode, photosPending } = useStore()
   const input = useRef<HTMLInputElement>(null)
   const camera = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
@@ -79,7 +79,12 @@ export function PhotoStrip({ tank }: { tank: Tank }) {
       ) : (
         <div className="flex gap-2 overflow-x-auto pb-1">
           {tank.photos.map((path) => (
-            <Thumb key={path} path={path} onRemove={() => void store.removePhoto(tank.id, path)} />
+            <Thumb
+              key={path}
+              path={path}
+              sharedWith={db.tanks.filter((t) => t.id !== tank.id && t.photos.includes(path)).length}
+              onRemove={(alle) => void (alle ? store.removePhotoEverywhere(path) : store.removePhoto(tank.id, path))}
+            />
           ))}
         </div>
       )}
@@ -136,7 +141,7 @@ export function MiniPhoto({ path, className }: { path: string; className?: strin
   )
 }
 
-function Thumb({ path, onRemove }: { path: string; onRemove: () => void }) {
+function Thumb({ path, onRemove, sharedWith }: { path: string; onRemove: (alle: boolean) => void; sharedWith: number }) {
   const [url, setUrl] = useState<string | null>(null)
   const [full, setFull] = useState(false)
 
@@ -159,7 +164,9 @@ function Thumb({ path, onRemove }: { path: string; onRemove: () => void }) {
           // Fixed height, natural width: an overview shot of 29 barrels is wide, and
           // a square crop would show its middle third and nothing else.
           className={cx(
-            'block h-24 w-auto min-w-24 max-w-[15rem] overflow-hidden rounded-xl border border-line bg-surface-2',
+            // Kein min-w: ein Hochformat ist schmaler als 24, und der Kasten stand
+            // rechts daneben leer — mit dem Löschknopf halb neben dem Bild.
+            'block h-24 w-auto max-w-[15rem] overflow-hidden rounded-xl border border-line bg-surface-2',
             url && 'cursor-zoom-in',
           )}
         >
@@ -173,11 +180,23 @@ function Thumb({ path, onRemove }: { path: string; onRemove: () => void }) {
           type="button"
           aria-label="Foto entfernen"
           onClick={() => {
-            if (confirm('Foto löschen?')) onRemove()
+            // A photo hanging on 31 positions has to be removable from all of them
+            // at once — otherwise it means confirming the same dialog 31 times.
+            if (sharedWith > 0) {
+              const alle = confirm(
+                `Dieses Foto hängt an ${sharedWith + 1} Positionen.\n\n` +
+                  'OK  = überall entfernen\n' +
+                  'Abbrechen = nur hier entfernen',
+              )
+              onRemove(alle)
+              return
+            }
+            if (confirm('Foto löschen?')) onRemove(false)
           }}
-          // Without hover there is no way to reveal this, but it stays hit-testable —
-// tapping the corner of a photo would silently ask to delete it. Show it on touch.
-          className="absolute top-1 right-1 flex h-9 w-9 items-center justify-center rounded-lg bg-black/70 text-white transition lg:h-7 lg:w-7 lg:opacity-0 lg:group-hover:opacity-100 lg:focus-visible:opacity-100"
+          // Always visible. Hidden behind hover it was, for practical purposes, not
+          // there — nobody moves the mouse over a picture to find out whether a
+          // delete button appears.
+          className="absolute top-1 right-1 flex h-9 w-9 items-center justify-center rounded-lg bg-black/70 text-white shadow transition hover:bg-black/85 lg:h-7 lg:w-7"
         >
           <IconTrash />
         </button>

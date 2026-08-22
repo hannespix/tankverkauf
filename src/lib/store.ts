@@ -408,6 +408,25 @@ class TankStore {
     }
   }
 
+  /**
+   * Take one photo off every position that carries it, and delete the file. The
+   * counterpart to attaching one overview shot to a whole selection — without it,
+   * undoing that means confirming the same dialog thirty-one times.
+   */
+  async removePhotoEverywhere(path: string): Promise<void> {
+    if (!this.token) return
+    await removePending(path)
+    await deleteBinary(this.token, this.snapshot.config, path, `Foto entfernt: ${path}`).catch(() => {})
+    forgetUrl(path)
+    const count = this.snapshot.db.tanks.filter((t) => t.photos.includes(path)).length
+    this.mutate((db) => {
+      for (const t of db.tanks) {
+        if (t.photos.includes(path)) t.photos = t.photos.filter((x) => x !== path)
+      }
+    }, { kind: 'tank', text: `Foto von ${count} Positionen entfernt` })
+    this.emit({ photosPending: (await pendingPhotoPaths()).length })
+  }
+
   async removePhoto(tankId: string, path: string): Promise<void> {
     if (!this.token) return
     // One overview photo can hang on all 29 barrels. Deleting the file because it
