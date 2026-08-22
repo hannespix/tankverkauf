@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { PriceLadder } from '../components/charts'
+import { LeadPicker } from '../components/LeadPicker'
 import { Button, Card, EmptyState, Field, Input, Pill, SectionTitle, Select, Stat, Textarea, cx, type Tone } from '../components/ui'
 import { IconHandshake, IconTrash } from '../components/icons'
 import { patchQuote, quoteToDeal, removeQuote } from '../lib/actions'
@@ -176,10 +177,7 @@ function QuoteCard({ quote }: { quote: Quote }) {
 
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Interessent">
-              <Select value={quote.leadId ?? ''} onChange={(e) => patchQuote(quote.id, { leadId: e.target.value || null })}>
-                <option value="">– keiner –</option>
-                {db.leads.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-              </Select>
+              <LeadPicker value={quote.leadId ?? ''} stage="angebot" onChange={(id) => patchQuote(quote.id, { leadId: id || null })} />
             </Field>
             <Field label="Anfrage über">
               <Select value={quote.portalId ?? ''} onChange={(e) => patchQuote(quote.id, { portalId: e.target.value || null })}>

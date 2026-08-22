@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { PriceLadder, STATUS_FILL } from '../components/charts'
 import { PhotoStrip } from '../components/PhotoStrip'
+import { LeadPicker } from '../components/LeadPicker'
 import { Button, Card, EmptyState, Field, Input, Modal, Pill, Select, Textarea, cx, type Tone } from '../components/ui'
 import { IconFilter, IconPlus, IconSearch, IconTrash } from '../components/icons'
 import { addTank, createDeal, createQuote, patchTank, removeTank, setTankOffer, setTankStatus } from '../lib/actions'
@@ -345,10 +346,7 @@ function TankDetail({ id, onClose, readOnly }: { id: string | null; onClose: () 
           <Field label="Zielpreis"><Input type="number" disabled={readOnly} value={t.target} onChange={(e) => patchTank(t.id, { target: Number(e.target.value) || 0 })} className="tnum" /></Field>
           <Field label="Untergrenze"><Input type="number" disabled={readOnly} value={t.floor} onChange={(e) => patchTank(t.id, { floor: Number(e.target.value) || 0 })} className="tnum" /></Field>
           <Field label="Interessent">
-            <Select disabled={readOnly} value={t.leadId ?? ''} onChange={(e) => patchTank(t.id, { leadId: e.target.value || null })}>
-              <option value="">– keiner –</option>
-              {db.leads.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-            </Select>
+            <LeadPicker value={t.leadId ?? ''} stage="kontakt" onChange={(id) => patchTank(t.id, { leadId: id || null })} />
           </Field>
           <Field label="Abholung"><Input type="date" disabled={readOnly} value={t.pickup ?? ''} onChange={(e) => patchTank(t.id, { pickup: e.target.value || null })} /></Field>
         </div>
@@ -375,7 +373,6 @@ function TankDetail({ id, onClose, readOnly }: { id: string | null; onClose: () 
 }
 
 function DealModal({ open, onClose, tanks }: { open: boolean; onClose: () => void; tanks: Tank[] }) {
-  const { db } = useStore()
   const t = totals(tanks)
   const [price, setPrice] = useState('')
   const [leadId, setLeadId] = useState('')
@@ -405,10 +402,7 @@ function DealModal({ open, onClose, tanks }: { open: boolean; onClose: () => voi
 
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Käufer">
-            <Select value={leadId} onChange={(e) => setLeadId(e.target.value)}>
-              <option value="">– kein Interessent hinterlegt –</option>
-              {db.leads.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-            </Select>
+            <LeadPicker value={leadId} stage="gewonnen" emptyLabel="– kein Interessent hinterlegt –" onChange={setLeadId} />
           </Field>
           <Field label="Datum"><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
         </div>
@@ -523,10 +517,7 @@ function QuoteModal({ open, onClose, tanks }: { open: boolean; onClose: () => vo
 
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Interessent">
-            <Select value={leadId} onChange={(e) => setLeadId(e.target.value)}>
-              <option value="">– keiner –</option>
-              {db.leads.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-            </Select>
+            <LeadPicker value={leadId} stage="angebot" onChange={setLeadId} />
           </Field>
           <Field label="Anfrage über">
             <Select value={portalId} onChange={(e) => setPortalId(e.target.value)}>
