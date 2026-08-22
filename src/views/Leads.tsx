@@ -3,6 +3,7 @@ import { Button, Card, EmptyState, Field, Input, Modal, Pill, SectionTitle, Sele
 import { IconCheck, IconPlus, IconSpark, IconTrash } from '../components/icons'
 import { addLead, createQuote, patchLead, patchQuote, removeLead } from '../lib/actions'
 import { parseMessage } from '../lib/ads'
+import { AiError, readMessage, type AiResult } from '../lib/ai'
 import { itemLabel, dateDE, eur, num, relativeDE, todayISO } from '../lib/format'
 import { totals } from '../lib/stats'
 import { useStore } from '../lib/store'
@@ -200,7 +201,39 @@ function ParseModal({ onClose }: { onClose: () => void }) {
   const { db } = useStore()
   const [text, setText] = useState('')
   const [attachBroad, setAttachBroad] = useState(false)
-  const parsed = text.trim() ? parseMessage(text, db) : null
+  const [ai, setAi] = useState<AiResult | null>(null)
+  const [aiBusy, setAiBusy] = useState(false)
+  const [aiError, setAiError] = useState<string | null>(null)
+  const rule = text.trim() ? parseMessage(text, db) : null
+  // The model only ever overwrites a field it actually found. Whatever it did not
+  // see stays on what the rule read — the two together beat either alone.
+  const parsed = rule && ai
+    ? {
+        ...rule,
+        name: ai.name || rule.name,
+        email: ai.email || rule.email,
+        phone: ai.phone || rule.phone,
+        offer: ai.offer ?? rule.offer,
+        matchedTankIds: ai.positionIds.length ? ai.positionIds : rule.matchedTankIds,
+        exact: rule.exact || ai.positionIds.length > 0,
+        broadMatch: ai.positionIds.length ? ai.positionIds.length > 3 : rule.broadMatch,
+      }
+    : rule
+
+  async function askAi() {
+    const key = db.settings.ai.apiKey
+    if (!key) return
+    setAiBusy(true)
+    setAiError(null)
+    try {
+      setAi(await readMessage(text, db, key, db.settings.ai.model))
+    } catch (err) {
+      setAi(null)
+      setAiError(err instanceof AiError ? err.message : 'Die KI konnte die Nachricht nicht lesen.')
+    } finally {
+      setAiBusy(false)
+    }
+  }
   // A guess that hits many positions at once is almost never what the buyer meant:
   // "225 l Fässer" matches all 29 barrels, and attaching them sets every one to
   // "kontakt" — locked away from other buyers. So a wide guess attaches nothing
@@ -214,8 +247,33 @@ function ParseModal({ onClose }: { onClose: () => void }) {
         <p className="text-sm text-muted">
           Kopier die Nachricht aus Kleinanzeigen hier hinein. Name, Telefonnummer, E-Mail und der gefragte Tank werden erkannt — du prüfst nur noch nach.
         </p>
-        <Textarea rows={7} value={text} onChange={(e) => { setText(e.target.value); setAttachBroad(false) }} autoFocus
+        <Textarea rows={7} value={text} onChange={(e) => { setText(e.target.value); setAttachBroad(false); setAi(null); setAiError(null) }} autoFocus
           placeholder={'Hallo,\nist der Raumspar-Koffertank 1650 l noch zu haben? Ich würde ihn nächste Woche abholen.\nTel. 0176 12345678\nViele Grüße\nMax Mustermann'} />
+
+        {db.settings.ai.apiKey && text.trim() && (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" disabled={aiBusy} onClick={() => void askAi()}>
+              <IconSpark />{aiBusy ? 'Liest …' : ai ? 'Noch einmal lesen' : 'Zusätzlich mit KI lesen'}
+            </Button>
+            {ai && <Pill tone={ai.intent === 'kaufinteresse' ? 'green' : ai.intent === 'absage' ? 'rose' : 'sky'}>
+              {ai.intent === 'kaufinteresse' ? 'Kaufinteresse' : ai.intent === 'frage' ? 'Nur eine Frage' : ai.intent === 'absage' ? 'Absage' : 'Sonstiges'}
+            </Pill>}
+            {ai?.summary && <span className="text-[13px] text-muted">{ai.summary}</span>}
+          </div>
+        )}
+
+        {aiError && (
+          <p className="rounded-xl border border-amber/50 bg-amber-soft/50 p-3 text-[13px]">
+            <strong className="text-amber">{aiError}</strong> Die Erkennung ohne KI unten läuft weiter.
+          </p>
+        )}
+
+        {ai && ai.verworfen.length > 0 && (
+          <div className="rounded-xl border border-amber/50 bg-amber-soft/50 p-3 text-[13px]">
+            <strong className="text-amber">Von der KI verworfen, weil es nicht in der Nachricht steht:</strong>
+            <ul className="mt-1 list-inside list-disc">{ai.verworfen.map((v) => <li key={v}>{v}</li>)}</ul>
+          </div>
+        )}
 
         {parsed && (
           <div className={cx('rounded-xl border p-3 text-sm', parsed.exact ? 'border-primary/50 bg-primary-soft/40' : 'border-line bg-surface-2')}>

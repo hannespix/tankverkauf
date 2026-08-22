@@ -116,6 +116,7 @@ export const SEED: DB = {
   ads: [],
   settings: {
     appName: 'Betriebsauflösung',
+    ai: { apiKey: '', model: 'claude-haiku-4-5' },
     vatRate: 0.19,
     categories: [
       { id: 'tank', label: 'Edelstahltanks', one: 'Edelstahltank', hasVolume: true, inPackage: true },

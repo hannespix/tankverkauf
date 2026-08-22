@@ -90,6 +90,8 @@ export function migrate(raw: unknown): DB {
   if (!settings.catalog?.owner) {
     settings.catalog = { ...clone(seed.settings.catalog), ...(settings.catalog ?? {}), owner: loadConfig().owner }
   }
+  // Databases written before the optional message reader existed carry no block.
+  if (!settings.ai) settings.ai = { apiKey: '', model: 'claude-haiku-4-5' }
   const fallbackPortal = settings.portals[0].id
   // Items stored before barrels existed are all tanks.
   const tanks = (db.tanks ?? clone(seed.tanks)).map((t) => ({

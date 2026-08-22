@@ -6,6 +6,7 @@ import { exportCsv, exportJson, exportXlsx, importXlsx } from '../lib/exporter'
 import { dateTimeDE, dims as fmtDims, num, relativeDE } from '../lib/format'
 import { store, useStore } from '../lib/store'
 import { clearVault, forgetDevice, rememberedUntil } from '../lib/vault'
+import { AI_MODELS } from '../lib/ai'
 import { catalogPageUrl } from '../lib/catalog'
 import { STYLE_LABEL, type CategoryDef, type DB, type Portal, type PortalStyle } from '../types'
 
@@ -344,6 +345,49 @@ export default function Settings() {
           Nicht aus einer Kleinanzeige heraus verlinken — dort sind Links auf eigene Angebotsseiten heikel. Nach dem
           Erstkontakt per Mail oder Messenger verschicken ist unproblematisch.
         </p>
+      </Card>
+
+      <Card>
+        <SectionTitle
+          title="Nachrichten per KI lesen"
+          hint="Freiwillig. Ohne Schlüssel liest das Werkzeug Anfragen weiter wie bisher — nur ohne die Fälle, die eine Regel nicht schafft."
+        />
+        <div className="mb-3 rounded-xl bg-surface-2 p-3 text-[13px] text-muted">
+          <strong className="text-ink">Was besser wird:</strong> Weitergeleitete Portal-Mails werden unabhängig vom
+          Format gelesen, und eine reine Rückfrage („hat der Tank einen Kühlmantel?") wird von einer Kaufabsicht
+          unterschieden.
+          <br />
+          <br />
+          <strong className="text-ink">Was es kostet:</strong> Ein eigener Schlüssel bei Anthropic und ein paar Cent je
+          Nachricht. Nichts läuft automatisch — du siehst das Ergebnis und übernimmst es selbst.
+          <br />
+          <br />
+          <strong className="text-amber">Wo der Schlüssel liegt:</strong> im Klartext in deiner db.json im privaten
+          Repository, damit ihn jedes Gerät mit PIN benutzen kann. Er kann kein Geld ausgeben außer für Anfragen und
+          keine Daten ändern. Wer Zugriff auf das Repository hat, sieht ihn — bei Verdacht im Anthropic-Konto widerrufen.
+          <br />
+          <br />
+          <strong className="text-ink">Bevor du ihn einträgst:</strong> In den Nachrichten stehen Namen und
+          Telefonnummern von Interessenten. Die gehen dann an einen Auftragsverarbeiter — dafür brauchst du einen
+          AV-Vertrag mit Anthropic und einen Satz dazu in deiner Datenschutzerklärung.
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="API-Schlüssel" hint={s.ai.apiKey ? 'Hinterlegt. Zum Ändern überschreiben.' : 'Leer — die KI ist aus.'}>
+            <Input
+              type="password"
+              autoComplete="off"
+              value={s.ai.apiKey}
+              disabled={readOnly}
+              placeholder="sk-ant-…"
+              onChange={(e) => patchSettings({ ai: { ...s.ai, apiKey: e.target.value.trim() } })}
+            />
+          </Field>
+          <Field label="Modell">
+            <Select value={s.ai.model} disabled={readOnly} onChange={(e) => patchSettings({ ai: { ...s.ai, model: e.target.value } })}>
+              {AI_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+            </Select>
+          </Field>
+        </div>
       </Card>
 
       <Card>
