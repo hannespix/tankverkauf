@@ -217,7 +217,10 @@ export function generateAd(db: DB, scope: AdScope, portal: Portal | null): Gener
       // carry no plate, the few that do are the only brand value left in the text.
       const named = g.maker === 'Sonstige' ? g.type : `${g.maker} ${g.type}`
       const name = volume ? `${named} ${num(g.litres)} l` : named
-      return `• ${g.count}× ${name} – je ${eur(g.vb)}${extra.length ? ` (${extra.join(', ')})` : ''}`
+      // This scope builds its own line and so missed the measurements the package
+      // ad already carried — the same list read differently depending on the scope.
+      const size = fmtDims(g.dims)
+      return `• ${g.count}× ${name}${size ? ` · ${size}` : ''} – je ${eur(g.vb)}${extra.length ? ` (${extra.join(', ')})` : ''}`
     })
 
     const title = trim(
