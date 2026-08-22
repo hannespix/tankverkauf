@@ -56,9 +56,9 @@ function App() {
   useEffect(() => {
     let alive = true
     void (async () => {
-      const params = new URLSearchParams(location.search)
-      const override = params.get('src')
-      for (const url of override ? [override] : sources()) {
+      // No override parameter: it let anyone point this page at their own file and
+      // present foreign prices and a foreign contact address under this very address.
+      for (const url of sources()) {
         try {
           const res = await fetch(url, { cache: 'no-store' })
           if (!res.ok) continue
