@@ -40,6 +40,27 @@ export async function prepareImage(file: File): Promise<Prepared> {
 /** Object URLs are expensive to recreate on every render, so keep them around. */
 const urlCache = new Map<string, string>()
 
+/**
+ * Resolutions still in flight, one entry per path.
+ *
+ * One overview photo can hang on 31 positions, so 31 thumbnails ask for the same
+ * file at the same moment. Without this they each fetched it and each called
+ * rememberUrl — which revokes the previous object URL, the one the thumbnail
+ * before it was already showing. All but the last picture went blank.
+ */
+const inFlight = new Map<string, Promise<string | null>>()
+
+/** Everyone asking for the same path shares one fetch and one object URL. */
+export function resolveOnce(path: string, load: () => Promise<string | null>): Promise<string | null> {
+  const hit = urlCache.get(path)
+  if (hit) return Promise.resolve(hit)
+  const running = inFlight.get(path)
+  if (running) return running
+  const started = load().finally(() => inFlight.delete(path))
+  inFlight.set(path, started)
+  return started
+}
+
 export function cachedUrl(path: string): string | undefined {
   return urlCache.get(path)
 }
@@ -53,6 +74,7 @@ export function rememberUrl(path: string, blob: Blob): string {
 }
 
 export function forgetUrl(path: string) {
+  inFlight.delete(path)
   const url = urlCache.get(path)
   if (url) URL.revokeObjectURL(url)
   urlCache.delete(path)
