@@ -19,7 +19,8 @@ function tankRows(db: DB) {
     const deal = db.deals.find((d) => d.id === t.dealId)
     return {
       Nr: t.id,
-      Kategorie: t.category === 'fass' ? 'Holzfass' : 'Edelstahltank',
+      // Jede Pumpe und jede Gitterbox verließ die Tabelle bisher als "Edelstahltank".
+      Kategorie: db.settings.categories.find((c) => c.id === t.category)?.one ?? t.category,
       'Hersteller / Typ': t.maker === 'Sonstige' ? t.type : `${t.maker} ${t.type}`,
       Hersteller: t.maker,
       Volumen: t.litres,
@@ -160,7 +161,7 @@ export function exportCsv(db: DB): void {
 }
 
 export function exportJson(db: DB): void {
-  download(new Blob([JSON.stringify(db, null, 2)], { type: 'application/json' }), `tankverkauf-backup_${fileStamp()}.json`)
+  download(new Blob([JSON.stringify(db, null, 2)], { type: 'application/json' }), `${fileBase(db)}-backup_${fileStamp()}.json`)
 }
 
 function download(blob: Blob, filename: string) {
