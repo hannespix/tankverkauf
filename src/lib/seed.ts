@@ -7,44 +7,47 @@ import type { DB } from '../types'
  * (86 % bzw. 72 % der VB) gesetzt und NICHT die tatsächlichen Verhandlungsgrenzen — die
  * gehören ausschließlich in die private db.json.
  *
- * Holzfässer. Preise nach Marktrecherche im August 2026: gebrauchte 225-l-Barriques
- * werden im Einzelverkauf bei Händlern und auf Kleinanzeigen für rund 170–190 €
- * angeboten, 300-l-Fässer entsprechend höher. Die Untergrenze liegt deutlich
- * darunter, weil 29 Stück eine Partie sind und Wiederverkäufer nur Partiepreise
- * zahlen.
+ * Holzfässer. Sie werden ausdrücklich als DEKOFÄSSER angeboten, nicht als Ausbau-
+ * gebinde: gebraucht, gewachsen im Einsatz, nicht geschliffen und nicht behandelt.
+ * Das ist keine Beschönigung, sondern der größere Markt — Garten, Hof, Gastronomie
+ * und Möbelbau fragen Fässer in Stückzahlen nach, die der Weinbau nicht mehr her-
+ * gibt. Preise nach Marktrecherche im August 2026: gebrauchte 225-l-Fässer werden
+ * im Einzelverkauf für rund 170–190 € angeboten, 300-l-Fässer entsprechend höher.
+ * Die Untergrenze liegt deutlich darunter, weil 31 Stück eine Partie sind und
+ * Wiederverkäufer nur Partiepreise zahlen.
  */
 const FAESSER: DB['tanks'] = [
-  { id: 'F-01', category: 'fass', maker: 'Sonstige', type: 'Barriquefass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
-  { id: 'F-02', category: 'fass', maker: 'Sonstige', type: 'Barriquefass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
-  { id: 'F-03', category: 'fass', maker: 'Sonstige', type: 'Barriquefass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
-  { id: 'F-04', category: 'fass', maker: 'Sonstige', type: 'Barriquefass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
-  { id: 'F-05', category: 'fass', maker: 'Sonstige', type: 'Barriquefass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
-  { id: 'F-06', category: 'fass', maker: 'Sonstige', type: 'Barriquefass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
-  { id: 'F-07', category: 'fass', maker: 'Sonstige', type: 'Barriquefass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
-  { id: 'F-08', category: 'fass', maker: 'Sonstige', type: 'Barriquefass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
-  { id: 'F-09', category: 'fass', maker: 'Sonstige', type: 'Barriquefass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
-  { id: 'F-10', category: 'fass', maker: 'Sonstige', type: 'Barriquefass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
-  { id: 'F-11', category: 'fass', maker: 'Sonstige', type: 'Barriquefass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
-  { id: 'F-12', category: 'fass', maker: 'Sonstige', type: 'Barriquefass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
-  { id: 'F-13', category: 'fass', maker: 'Sonstige', type: 'Barriquefass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
-  { id: 'F-14', category: 'fass', maker: 'Sonstige', type: 'Barriquefass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
-  { id: 'F-15', category: 'fass', maker: 'Sonstige', type: 'Barriquefass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
-  { id: 'F-16', category: 'fass', maker: 'Sonstige', type: 'Barriquefass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
-  { id: 'F-17', category: 'fass', maker: 'Sonstige', type: 'Barriquefass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
-  { id: 'F-18', category: 'fass', maker: 'Sonstige', type: 'Barriquefass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
-  { id: 'F-19', category: 'fass', maker: 'Sonstige', type: 'Barriquefass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
-  { id: 'F-20', category: 'fass', maker: 'Sonstige', type: 'Barriquefass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
-  { id: 'F-21', category: 'fass', maker: 'Sonstige', type: 'Barriquefass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
-  { id: 'F-22', category: 'fass', maker: 'Sonstige', type: 'Barriquefass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
-  { id: 'F-23', category: 'fass', maker: 'Sonstige', type: 'Barriquefass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
-  { id: 'F-24', category: 'fass', maker: 'Sonstige', type: 'Barriquefass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
-  { id: 'F-25', category: 'fass', maker: 'Sonstige', type: 'Barriquefass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
-  { id: 'F-26', category: 'fass', maker: 'Sonstige', type: 'Barriquefass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
-  { id: 'F-27', category: 'fass', maker: 'Sonstige', type: 'Barriquefass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
-  { id: 'F-28', category: 'fass', maker: 'Sonstige', type: 'Barriquefass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
-  { id: 'F-29', category: 'fass', maker: 'Sonstige', type: 'Barriquefass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
-  { id: 'F-30', category: 'fass', maker: 'Sonstige', type: 'Tonneau', litres: 300, dims: null, vb: 250, target: 215, floor: 180, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
-  { id: 'F-31', category: 'fass', maker: 'Sonstige', type: 'Tonneau', litres: 300, dims: null, vb: 250, target: 215, floor: 180, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
+  { id: 'F-01', category: 'fass', maker: 'Sonstige', type: 'Barrique-Dekofass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht', 'nicht geschliffen', 'für Garten, Hof und Gastronomie'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
+  { id: 'F-02', category: 'fass', maker: 'Sonstige', type: 'Barrique-Dekofass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht', 'nicht geschliffen', 'für Garten, Hof und Gastronomie'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
+  { id: 'F-03', category: 'fass', maker: 'Sonstige', type: 'Barrique-Dekofass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht', 'nicht geschliffen', 'für Garten, Hof und Gastronomie'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
+  { id: 'F-04', category: 'fass', maker: 'Sonstige', type: 'Barrique-Dekofass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht', 'nicht geschliffen', 'für Garten, Hof und Gastronomie'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
+  { id: 'F-05', category: 'fass', maker: 'Sonstige', type: 'Barrique-Dekofass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht', 'nicht geschliffen', 'für Garten, Hof und Gastronomie'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
+  { id: 'F-06', category: 'fass', maker: 'Sonstige', type: 'Barrique-Dekofass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht', 'nicht geschliffen', 'für Garten, Hof und Gastronomie'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
+  { id: 'F-07', category: 'fass', maker: 'Sonstige', type: 'Barrique-Dekofass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht', 'nicht geschliffen', 'für Garten, Hof und Gastronomie'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
+  { id: 'F-08', category: 'fass', maker: 'Sonstige', type: 'Barrique-Dekofass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht', 'nicht geschliffen', 'für Garten, Hof und Gastronomie'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
+  { id: 'F-09', category: 'fass', maker: 'Sonstige', type: 'Barrique-Dekofass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht', 'nicht geschliffen', 'für Garten, Hof und Gastronomie'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
+  { id: 'F-10', category: 'fass', maker: 'Sonstige', type: 'Barrique-Dekofass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht', 'nicht geschliffen', 'für Garten, Hof und Gastronomie'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
+  { id: 'F-11', category: 'fass', maker: 'Sonstige', type: 'Barrique-Dekofass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht', 'nicht geschliffen', 'für Garten, Hof und Gastronomie'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
+  { id: 'F-12', category: 'fass', maker: 'Sonstige', type: 'Barrique-Dekofass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht', 'nicht geschliffen', 'für Garten, Hof und Gastronomie'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
+  { id: 'F-13', category: 'fass', maker: 'Sonstige', type: 'Barrique-Dekofass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht', 'nicht geschliffen', 'für Garten, Hof und Gastronomie'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
+  { id: 'F-14', category: 'fass', maker: 'Sonstige', type: 'Barrique-Dekofass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht', 'nicht geschliffen', 'für Garten, Hof und Gastronomie'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
+  { id: 'F-15', category: 'fass', maker: 'Sonstige', type: 'Barrique-Dekofass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht', 'nicht geschliffen', 'für Garten, Hof und Gastronomie'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
+  { id: 'F-16', category: 'fass', maker: 'Sonstige', type: 'Barrique-Dekofass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht', 'nicht geschliffen', 'für Garten, Hof und Gastronomie'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
+  { id: 'F-17', category: 'fass', maker: 'Sonstige', type: 'Barrique-Dekofass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht', 'nicht geschliffen', 'für Garten, Hof und Gastronomie'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
+  { id: 'F-18', category: 'fass', maker: 'Sonstige', type: 'Barrique-Dekofass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht', 'nicht geschliffen', 'für Garten, Hof und Gastronomie'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
+  { id: 'F-19', category: 'fass', maker: 'Sonstige', type: 'Barrique-Dekofass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht', 'nicht geschliffen', 'für Garten, Hof und Gastronomie'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
+  { id: 'F-20', category: 'fass', maker: 'Sonstige', type: 'Barrique-Dekofass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht', 'nicht geschliffen', 'für Garten, Hof und Gastronomie'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
+  { id: 'F-21', category: 'fass', maker: 'Sonstige', type: 'Barrique-Dekofass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht', 'nicht geschliffen', 'für Garten, Hof und Gastronomie'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
+  { id: 'F-22', category: 'fass', maker: 'Sonstige', type: 'Barrique-Dekofass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht', 'nicht geschliffen', 'für Garten, Hof und Gastronomie'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
+  { id: 'F-23', category: 'fass', maker: 'Sonstige', type: 'Barrique-Dekofass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht', 'nicht geschliffen', 'für Garten, Hof und Gastronomie'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
+  { id: 'F-24', category: 'fass', maker: 'Sonstige', type: 'Barrique-Dekofass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht', 'nicht geschliffen', 'für Garten, Hof und Gastronomie'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
+  { id: 'F-25', category: 'fass', maker: 'Sonstige', type: 'Barrique-Dekofass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht', 'nicht geschliffen', 'für Garten, Hof und Gastronomie'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
+  { id: 'F-26', category: 'fass', maker: 'Sonstige', type: 'Barrique-Dekofass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht', 'nicht geschliffen', 'für Garten, Hof und Gastronomie'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
+  { id: 'F-27', category: 'fass', maker: 'Sonstige', type: 'Barrique-Dekofass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht', 'nicht geschliffen', 'für Garten, Hof und Gastronomie'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
+  { id: 'F-28', category: 'fass', maker: 'Sonstige', type: 'Barrique-Dekofass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht', 'nicht geschliffen', 'für Garten, Hof und Gastronomie'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
+  { id: 'F-29', category: 'fass', maker: 'Sonstige', type: 'Barrique-Dekofass', litres: 225, dims: null, vb: 175, target: 150, floor: 126, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht', 'nicht geschliffen', 'für Garten, Hof und Gastronomie'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
+  { id: 'F-30', category: 'fass', maker: 'Sonstige', type: 'Tonneau-Dekofass', litres: 300, dims: null, vb: 250, target: 215, floor: 180, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht', 'nicht geschliffen', 'für Garten, Hof und Gastronomie'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
+  { id: 'F-31', category: 'fass', maker: 'Sonstige', type: 'Tonneau-Dekofass', litres: 300, dims: null, vb: 250, target: 215, floor: 180, status: 'verfuegbar', leadId: null, dealId: null, offer: null, pickup: null, note: '', tags: ['Eiche', 'gebraucht', 'nicht geschliffen', 'für Garten, Hof und Gastronomie'], photos: [], updatedAt: '2026-01-15T09:00:00.000Z' },
 ]
 
 /**
@@ -120,7 +123,15 @@ export const SEED: DB = {
     vatRate: 0.19,
     categories: [
       { id: 'tank', label: 'Edelstahltanks', one: 'Edelstahltank', hasVolume: true, inPackage: true },
-      { id: 'fass', label: 'Holzfässer', one: 'Holzfass', hasVolume: true, inPackage: false },
+      {
+        id: 'fass',
+        label: 'Holzfässer',
+        one: 'Holzfass',
+        hasVolume: true,
+        inPackage: false,
+        note:
+          'Wir geben die Fässer als Dekofässer ab — für Garten und Hof, als Stehtisch, Pflanzkübel, Regentonne oder Möbelprojekt. Original Weinfässer aus dem eigenen Keller, gebraucht und gewachsen im Einsatz, nicht geschliffen und nicht behandelt.',
+      },
       { id: 'gitterbox', label: 'Gitterboxen', one: 'Gitterbox', hasVolume: false, inPackage: false },
       { id: 'maschine', label: 'Maschinen', one: 'Maschine', hasVolume: false, inPackage: false },
       { id: 'armatur', label: 'Armaturen & Schläuche', one: 'Armatur', hasVolume: false, inPackage: false },
@@ -219,25 +230,29 @@ export const SEED: DB = {
         active: true,
       },
       {
-        id: 'barrique-partie',
-        label: 'Barrique-Partie mit Fassreiniger',
+        id: 'deko-faesser',
+        label: 'Alle Dekofässer, 31 Stück',
         blurb:
-          '29 gebrauchte Eichenbarriques à 225 l aus laufendem Betrieb, dazu der Kiesel-Fassreiniger mit eigenem Motor und Anschluss für den Hochdruckreiniger. Wer die Partie geschlossen nimmt, hat einen Termin, eine Fuhre — und die Ecke ist leer.',
-        ids: ['F-01', 'F-02', 'F-03', 'F-04', 'F-05', 'F-06', 'F-07', 'F-08', 'F-09', 'F-10', 'F-11', 'F-12', 'F-13', 'F-14', 'F-15', 'F-16', 'F-17', 'F-18', 'F-19', 'F-20', 'F-21', 'F-22', 'F-23', 'F-24', 'F-25', 'F-26', 'F-27', 'F-28', 'F-29', 'M-04'],
+          '29 Barriques à 225 l und zwei Tonneaux à 300 l, Eiche, original aus dem Weinkeller. Für Hof, Garten, Gastronomie oder Möbelbau — als Stehtisch, Pflanzkübel oder Regentonne. Wer die Partie geschlossen nimmt, hat einen Termin, eine Fuhre, und die Ecke ist leer.',
+        ids: ['F-01', 'F-02', 'F-03', 'F-04', 'F-05', 'F-06', 'F-07', 'F-08', 'F-09', 'F-10', 'F-11', 'F-12', 'F-13', 'F-14', 'F-15', 'F-16', 'F-17', 'F-18', 'F-19', 'F-20', 'F-21', 'F-22', 'F-23', 'F-24', 'F-25', 'F-26', 'F-27', 'F-28', 'F-29', 'F-30', 'F-31'],
         giftIds: [],
-        discount: 0.24,
+        discount: 0.25,
         minItems: 12,
         active: true,
       },
       {
-        id: 'tonneaux',
-        label: 'Zwei Tonneaux mit Heizstäben',
+        // Der Fassreiniger hing vorher an der Fasspartie. Das trug nur, solange die
+        // Fässer an einen Winzer gingen — wer sie als Deko in den Hof stellt, hat für
+        // ein Reinigungsgerät keine Verwendung. Er geht deshalb an den Betrieb, der
+        // seine eigenen Barriques bewirtschaftet, und nimmt die beiden Heizstäbe mit.
+        id: 'fasspflege',
+        label: 'Fassreiniger mit zwei Heizstäben',
         blurb:
-          'Zwei Tonneaux à 300 l, das handlichere Maß für kleine Mengen. Die beiden passenden Heizstäbe für die Zapflochklappen gehen ohne Aufpreis mit — einzeln braucht sie niemand.',
-        ids: ['F-30', 'F-31', 'M-05', 'M-06'],
+          'Kiesel-Barriquefass-Reiniger mit eigenem Elektromotor, Rotationsdüse und Anschluss für den Hochdruckreiniger. Die beiden Jakobs-Heizstäbe für die Zapflochklappe gehen ohne Aufpreis mit — für einen Betrieb, der seine Barriques selbst bewirtschaftet.',
+        ids: ['M-04', 'M-05', 'M-06'],
         giftIds: ['M-05', 'M-06'],
         discount: 0,
-        minItems: 2,
+        minItems: 1,
         active: true,
       },
     ],
@@ -254,8 +269,8 @@ export const SEED: DB = {
       { category: 'tank', minCount: 10, discount: 0.17 },
       { category: 'fass', minCount: 3, discount: 0.05 },
       { category: 'fass', minCount: 6, discount: 0.12 },
-      { category: 'fass', minCount: 12, discount: 0.18 },
-      { category: 'fass', minCount: 20, discount: 0.24 },
+      { category: 'fass', minCount: 12, discount: 0.16 },
+      { category: 'fass', minCount: 20, discount: 0.2 },
     ],
     seller: {
       name: 'Weingut Pix',

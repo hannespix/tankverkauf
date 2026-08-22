@@ -14,6 +14,13 @@ export interface CategoryDef {
   hasVolume: boolean
   /** Included in the package price calculation. */
   inPackage: boolean
+  /**
+   * Ein Satz über die ganze Gruppe, der auf der Käuferliste unter der Überschrift
+   * steht. Dafür da, eine Verwendung auszusprechen, die man der einzelnen Position
+   * nicht ansieht — gebrauchte Barriques verkaufen sich als Dekofässer an einen
+   * viel größeren Kreis als an Winzer.
+   */
+  note?: string
 }
 /** Free text — a pump maker is as valid here as a tank maker. */
 export type Maker = string
@@ -292,6 +299,8 @@ export interface Catalog {
   vatRate: number
   updatedAt: string
   items: CatalogItem[]
+  /** Überschrift und Hinweis je Gruppe. Fehlt in älteren veröffentlichten Dateien. */
+  categories: { id: string; label: string; note: string }[]
   /** Fertig geschnürte Angebote. Fehlt in älteren veröffentlichten Dateien. */
   bundles: CatalogBundle[]
   /** Mengenstaffel je Kategorie. Fehlt in älteren veröffentlichten Dateien. */

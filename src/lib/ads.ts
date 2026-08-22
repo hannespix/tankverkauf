@@ -260,20 +260,23 @@ export function generateAd(db: DB, scope: AdScope, portal: Portal | null): Gener
 
     const title = trim(
       isBarrel
-        ? `${t.count} Weinfässer Eiche ${groups.map((g) => `${num(g.litres)} l`).join(' / ')} Dekofass Regentonne`
+        // Die Suchbegriffe stehen vorn: gesucht wird nach "Dekofass", nicht nach
+        // "Weinfass" — und verkauft werden sie ausdrücklich als Deko.
+        ? `${t.count} Dekofässer Eiche ${groups.map((g) => `${num(g.litres)} l`).join(' / ')} Weinfass Regentonne Stehtisch`
         : `${t.count}× ${cat?.label ?? 'Positionen'} aus Betriebsauflösung Weingut`,
       lim.title,
     )
 
     const intro = isBarrel
-      ? `${t.count} gebrauchte Eichenfässer aus dem eigenen Keller abzugeben — ${sellerName}, Betriebsauflösung.`
+      ? `${t.count} gebrauchte Eichenfässer aus dem eigenen Keller, ausdrücklich als Dekofässer abzugeben — ${sellerName}, Betriebsauflösung.`
       : `${cat?.label ?? 'Verschiedene Positionen'} aus der Betriebsauflösung von ${sellerName}. ${t.count} Positionen, einzeln oder zusammen abzugeben.`
 
     const condition = isBarrel
       ? [
           'ZUSTAND',
-          'Original Weinfässer, gebraucht, gewachsen im Einsatz. Holz dicht, Reifen fest.',
+          'Original Weinfässer, gebraucht, gewachsen im Einsatz. Reifen fest.',
           'Nicht geschliffen und nicht behandelt — genau so, wie sie aus dem Keller kommen.',
+          'Abgabe ausdrücklich als Dekofässer — nicht auf Dichtheit für den Weinausbau geprüft.',
           '',
           'VERWENDUNG',
           'Als Deko im Garten oder Hof, Stehtisch, Pflanzkübel, Regentonne oder Möbelprojekt.',

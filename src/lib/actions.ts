@@ -258,6 +258,61 @@ export function addMissingSeedDims(): number {
   return todo.length
 }
 
+/**
+ * Gruppenhinweise, die im Ausgangsbestand stehen und in dieser Datenbank noch
+ * fehlen. Derselbe Grund wie bei Positionen und Maßen: migrate() lässt eine
+ * vorhandene Kategorie unangetastet, ein später hinzugekommener Text erreicht eine
+ * bestehende Datenbank also nur über einen sichtbaren Schritt.
+ *
+ * Füllt ausschließlich ein leeres Feld — ein selbst geschriebener Hinweis gewinnt.
+ */
+export function notesInSeed(db: DB): { id: string; label: string; note: string }[] {
+  const seeded = new Map(SEED.settings.categories.filter((c) => c.note).map((c) => [c.id, c.note!]))
+  return db.settings.categories
+    .filter((c) => !c.note?.trim() && seeded.has(c.id))
+    .map((c) => ({ id: c.id, label: c.label, note: seeded.get(c.id)! }))
+}
+
+export function addMissingSeedNotes(): number {
+  const todo = notesInSeed(store.getSnapshot().db)
+  if (todo.length === 0) return 0
+  const byId = new Map(todo.map((x) => [x.id, x.note]))
+  store.mutate(
+    (db) => {
+      db.settings.categories = db.settings.categories.map((c) =>
+        byId.has(c.id) && !c.note?.trim() ? { ...c, note: byId.get(c.id) } : c,
+      )
+    },
+    { kind: 'settings', text: `Gruppenhinweis für ${todo.length} ${todo.length === 1 ? 'Kategorie' : 'Kategorien'} übernommen` },
+  )
+  return todo.length
+}
+
+/**
+ * Angebotspakete, die im Ausgangsbestand stehen und hier noch fehlen. Gleiche
+ * Regel wie überall: migrate() lässt eine vorhandene Liste unangetastet, sonst
+ * käme jedes selbst geschnürte Paket beim nächsten Laden wieder weg.
+ */
+export function bundlesInSeed(db: DB): typeof SEED.settings.bundles {
+  const have = new Set(db.settings.bundles.map((b) => b.id))
+  return SEED.settings.bundles.filter((b) => !have.has(b.id))
+}
+
+export function addMissingSeedBundles(): number {
+  const missing = bundlesInSeed(store.getSnapshot().db)
+  if (missing.length === 0) return 0
+  store.mutate(
+    (db) => {
+      db.settings.bundles = [
+        ...db.settings.bundles,
+        ...missing.map((b) => ({ ...b, ids: [...b.ids], giftIds: [...b.giftIds] })),
+      ]
+    },
+    { kind: 'settings', text: `${missing.length} Angebotspakete aus dem Ausgangsbestand ergänzt` },
+  )
+  return missing.length
+}
+
 // ------------------------------------------------------------------- quotes
 
 /** Turn a selection of tanks into an offer, keeping the price ladder intact. */

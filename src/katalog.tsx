@@ -65,7 +65,11 @@ function App() {
   const [message, setMessage] = useState('')
   const [offer, setOffer] = useState('')
   const [allBundles, setAllBundles] = useState(false)
+  // Wird ein Paket übernommen, zeigt die Liste nur noch dessen Positionen. Sonst
+  // steht der Käufer vor 58 Zeilen und sucht, was er gerade angeklickt hat.
+  const [onlyBundle, setOnlyBundle] = useState<string | null>(null)
   const auswahl = useRef<HTMLDivElement>(null)
+  const liste = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     let alive = true
@@ -94,15 +98,20 @@ function App() {
   const groups = useMemo(() => {
     if (!catalog) return []
     const needle = q.trim().toLowerCase()
+    const bundle = onlyBundle ? (catalog.bundles ?? []).find((b) => b.id === onlyBundle) : null
+    const inBundle = bundle ? new Set([...bundle.ids, ...bundle.giftIds]) : null
     const items = catalog.items.filter((i) => {
+      if (inBundle && !inBundle.has(i.id)) return false
       if (cat && i.category !== cat) return false
       if (!needle) return true
       return [i.maker, i.type, String(i.litres)].some((v) => v.toLowerCase().includes(needle))
     })
 
-    const byCat = new Map<string, { label: string; lots: Lot[] }>()
+    // ?? [] und ?? '': eine ältere veröffentlichte Datei kennt die Gruppentexte nicht.
+    const notes = new Map((catalog.categories ?? []).map((c) => [c.id, c.note]))
+    const byCat = new Map<string, { label: string; note: string; lots: Lot[] }>()
     for (const i of items) {
-      const g = byCat.get(i.category) ?? { label: i.categoryLabel, lots: [] }
+      const g = byCat.get(i.category) ?? { label: i.categoryLabel, note: notes.get(i.category) ?? '', lots: [] }
       // 29 identical barrels are one lot with a quantity, not 29 checkboxes.
       const key = lotKey(i)
       const lot = g.lots.find((l) => l.key === key)
@@ -113,7 +122,7 @@ function App() {
       byCat.set(i.category, g)
     }
     return [...byCat.entries()].map(([id, g]) => ({ id, ...g }))
-  }, [catalog, q, cat])
+  }, [catalog, q, cat, onlyBundle])
 
   const chosen = useMemo(() => catalog?.items.filter((i) => picked.has(i.id)) ?? [], [catalog, picked])
   const sum = chosen.reduce((a, i) => a + i.vb, 0)
@@ -279,15 +288,23 @@ function idRanges(ids: string[]): string {
       </Card>
 
       <Card pad={false} className="rise-in" style={{ '--d': '40ms' } as React.CSSProperties}>
+        {onlyBundle && (
+          <div className="flex flex-wrap items-center gap-2 border-b border-line bg-primary-soft/60 px-3 py-2.5 text-[13px]">
+            <span className="min-w-0 flex-1">
+              Die Liste zeigt nur, was zum Paket <strong>{bundles.find((b) => b.id === onlyBundle)?.label}</strong> gehört.
+            </span>
+            <Button size="sm" className="press" onClick={() => setOnlyBundle(null)}>Alles zeigen</Button>
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-2 p-3">
           <div className="relative min-w-[180px] flex-1">
             <IconSearch className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-faint" />
             <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Suchen …" className="pl-9" />
           </div>
           <div className="flex flex-wrap gap-1.5">
-            <Chip active={cat === ''} onClick={() => setCat('')}>Alle</Chip>
+            <Chip active={cat === '' && !onlyBundle} onClick={() => { setCat(''); setOnlyBundle(null) }}>Alle</Chip>
             {categories.map(([id, label]) => (
-              <Chip key={id} active={cat === id} onClick={() => setCat(id)}>{label}</Chip>
+              <Chip key={id} active={cat === id} onClick={() => { setCat(id); setOnlyBundle(null) }}>{label}</Chip>
             ))}
           </div>
         </div>
@@ -335,7 +352,18 @@ function idRanges(ids: string[]): string {
                       {all.length} Positionen · statt {eur(b.full)} ·{' '}
                       <span className="font-bold text-primary">{eur(b.full - b.price)} günstiger</span>
                     </span>
-                    <Button size="sm" className="press" variant={taken ? 'ghost' : 'primary'} onClick={() => toggleBundle(all, !taken)}>
+                    <Button
+                      size="sm"
+                      className="press"
+                      variant={taken ? 'ghost' : 'primary'}
+                      onClick={() => {
+                        toggleBundle(all, !taken)
+                        // Suche und Kategorie zurücksetzen, sonst blendet ein alter
+                        // Filter Teile des gerade gewählten Pakets wieder aus.
+                        if (!taken) { setQ(''); setCat(''); setOnlyBundle(b.id) } else setOnlyBundle(null)
+                        setTimeout(() => liste.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60)
+                      }}
+                    >
                       {taken ? <>Aus der Auswahl nehmen</> : <><IconCheck />Übernehmen</>}
                     </Button>
                   </div>
@@ -361,11 +389,18 @@ function idRanges(ids: string[]): string {
         </Card>
       )}
 
+      <div ref={liste} className="scroll-mt-20" />
+
       {groups.map((g, gi) => (
         <Card key={g.id} pad={false} className="rise-in" style={{ '--d': `${140 + gi * 70}ms` } as React.CSSProperties}>
-          <div className="flex items-baseline justify-between gap-3 border-b border-line px-4 py-3">
-            <h2 className="font-bold">{g.label}</h2>
-            <span className="tnum text-[13px] text-muted">{g.lots.reduce((a, l) => a + l.ids.length, 0)} Positionen</span>
+          <div className="border-b border-line px-4 py-3">
+            <div className="flex items-baseline justify-between gap-3">
+              <h2 className="font-bold">{g.label}</h2>
+              <span className="tnum text-[13px] text-muted">{g.lots.reduce((a, l) => a + l.ids.length, 0)} Positionen</span>
+            </div>
+            {/* Ein Satz über die ganze Gruppe — die Verwendung, die man der einzelnen
+                Zeile nicht ansieht. */}
+            {g.note && <p className="mt-1.5 text-[13px] leading-relaxed text-muted">{g.note}</p>}
           </div>
           <ul className="divide-y divide-line">
             {g.lots.map((lot) => {
