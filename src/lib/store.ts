@@ -366,6 +366,26 @@ class TankStore {
     await this.flushPhotos()
   }
 
+  /**
+   * One picture for a whole selection — an overview shot of all 29 barrels beats
+   * photographing each one. The file is uploaded ONCE and every position points at
+   * the same path; nothing is duplicated in the repository.
+   */
+  async addPhotoToMany(tankIds: string[], base64: string): Promise<void> {
+    if (!this.token) throw new Error('Nicht angemeldet — Fotos brauchen eine Verbindung zu GitHub.')
+    if (tankIds.length === 0) return
+    const stamp = Math.random().toString(36).slice(2, 8)
+    const path = photoPath('gruppe', stamp)
+    await enqueuePhoto({ path, tankId: tankIds[0], base64, addedAt: Date.now() })
+    this.mutate((db) => {
+      for (const id of tankIds) {
+        const t = db.tanks.find((x) => x.id === id)
+        if (t && !t.photos.includes(path)) t.photos = [...t.photos, path]
+      }
+    }, { kind: 'tank', text: `Foto an ${tankIds.length} Positionen gehängt` })
+    await this.flushPhotos()
+  }
+
   /** Upload everything waiting. Safe to call repeatedly; one run at a time. */
   async flushPhotos(): Promise<void> {
     if (!this.token || this.sendingPhotos || this.snapshot.mode !== 'online') return
@@ -388,11 +408,17 @@ class TankStore {
 
   async removePhoto(tankId: string, path: string): Promise<void> {
     if (!this.token) return
-    // Drop it from the queue too, or a photo deleted before its upload would be
-    // sent afterwards and reappear on a position that no longer references it.
-    await removePending(path)
-    await deleteBinary(this.token, this.snapshot.config, path, `Foto zu ${tankId} entfernt`).catch(() => {})
-    forgetUrl(path)
+    // One overview photo can hang on all 29 barrels. Deleting the file because it
+    // was removed from ONE of them would blank the other 28 — so the file only
+    // goes when nobody else still points at it.
+    const sharedWith = this.snapshot.db.tanks.filter((t) => t.id !== tankId && t.photos.includes(path))
+    if (sharedWith.length === 0) {
+      // Drop it from the queue too, or a photo deleted before its upload would be
+      // sent afterwards and reappear on a position that no longer references it.
+      await removePending(path)
+      await deleteBinary(this.token, this.snapshot.config, path, `Foto zu ${tankId} entfernt`).catch(() => {})
+      forgetUrl(path)
+    }
     this.mutate((db) => {
       const t = db.tanks.find((x) => x.id === tankId)
       if (t) t.photos = t.photos.filter((x) => x !== path)
