@@ -247,7 +247,8 @@ export async function importXlsx(file: File): Promise<ImportResult> {
     for (let i = 0; i < count; i += 1) {
       n += 1
       tanks.push({
-        id: `T-${String(n).padStart(2, '0')}`,
+        // Placeholder id; Settings assigns a free one for positions that are new.
+        id: `IMPORT-${String(n).padStart(3, '0')}`,
         category: 'tank',
         maker,
         type,

@@ -124,7 +124,9 @@ function Thumb({ path, onRemove }: { path: string; onRemove: () => void }) {
           onClick={() => {
             if (confirm('Foto löschen?')) onRemove()
           }}
-          className="absolute top-1 right-1 flex h-7 w-7 items-center justify-center rounded-lg bg-black/60 text-white opacity-0 transition group-hover:opacity-100 focus-visible:opacity-100"
+          // Without hover there is no way to reveal this, but it stays hit-testable —
+// tapping the corner of a photo would silently ask to delete it. Show it on touch.
+          className="absolute top-1 right-1 flex h-9 w-9 items-center justify-center rounded-lg bg-black/70 text-white transition lg:h-7 lg:w-7 lg:opacity-0 lg:group-hover:opacity-100 lg:focus-visible:opacity-100"
         >
           <IconTrash />
         </button>

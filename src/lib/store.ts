@@ -56,7 +56,7 @@ const clone = <T,>(v: T): T => (typeof structuredClone === 'function' ? structur
 
 export const newId = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
 
-function migrate(raw: unknown): DB {
+export function migrate(raw: unknown): DB {
   const db = raw as Partial<DB>
   const seed = SEED
   const settings = { ...clone(seed.settings), ...(db.settings ?? {}) }
@@ -382,11 +382,14 @@ class TankStore {
   }
 
   /** Replace the whole database, e.g. after an import. */
-  replaceAll(db: DB, reason: string) {
+  /** A restored backup goes through the same migration as a loaded one — an older
+   *  file otherwise lands without category or photos and the list throws on render. */
+  replaceAll(raw: unknown, reason: string) {
+    const db = migrate(raw)
     this.mutate((draft) => {
       draft.tanks = db.tanks
       draft.leads = db.leads
-      draft.quotes = db.quotes ?? []
+      draft.quotes = db.quotes
       draft.deals = db.deals
       draft.ads = db.ads
       draft.settings = db.settings
