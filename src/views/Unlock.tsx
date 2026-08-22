@@ -4,7 +4,7 @@ import { IconCheck, IconLock, IconTank, IconWarn } from '../components/icons'
 import { DEFAULT_CONFIG, type RepoConfig, repoMeta, verifyToken } from '../lib/github'
 import { store } from '../lib/store'
 import { loadConfig } from '../lib/github'
-import { saveVault, seal, unseal, loadVault, clearVault } from '../lib/vault'
+import { DEFAULT_REMEMBER_DAYS, saveVault, seal, unseal, loadVault, clearVault } from '../lib/vault'
 
 const TOKEN_URL = 'https://github.com/settings/personal-access-tokens/new'
 
@@ -12,6 +12,7 @@ export function Unlock() {
   const [pin, setPin] = useState('')
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [remember, setRemember] = useState(true)
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -26,7 +27,7 @@ export function Unlock() {
       setBusy(false)
       return
     }
-    await store.unlock(pin)
+    await store.unlock(pin, remember)
   }
 
   return (
@@ -46,6 +47,8 @@ export function Unlock() {
           placeholder="PIN" className="text-center text-lg tracking-[0.3em]"
         />
         {err && <p className="flex items-center justify-center gap-1.5 text-sm font-semibold text-rose"><IconWarn />{err}</p>}
+
+        <RememberBox checked={remember} onChange={setRemember} />
 
         <Button variant="primary" className="w-full" disabled={pin.length < 4 || busy} {...({ type: 'submit' } as object)}>
           {busy ? 'Wird geprüft …' : 'Entsperren'}
@@ -72,6 +75,7 @@ export function Setup() {
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [checked, setChecked] = useState<{ login: string; isPrivate: boolean } | null>(null)
+  const [remember, setRemember] = useState(true)
 
   async function check() {
     setBusy(true)
@@ -96,7 +100,7 @@ export function Setup() {
     setBusy(true)
     try {
       saveVault(await seal(token.trim(), pin))
-      await store.adoptToken(token.trim(), cfg)
+      await store.adoptToken(token.trim(), cfg, remember)
     } finally {
       setBusy(false)
     }
@@ -194,6 +198,7 @@ export function Setup() {
               <Input type="password" inputMode="numeric" value={pin2} onChange={(e) => setPin2(e.target.value)} className="text-center text-lg tracking-[0.3em]" />
             </Field>
             {pin && pin2 && pin !== pin2 && <p className="text-sm font-semibold text-rose">Die PINs stimmen nicht überein.</p>}
+            <RememberBox checked={remember} onChange={setRemember} />
             <Button variant="primary" className="w-full" disabled={pin.length < 4 || pin !== pin2 || busy} onClick={() => void finish()}>
               {busy ? 'Wird eingerichtet …' : 'Fertig — loslegen'}
             </Button>
@@ -201,6 +206,20 @@ export function Setup() {
         )}
       </div>
     </Shell>
+  )
+}
+
+function RememberBox({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-line bg-surface-2 p-3 text-[13px]">
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[var(--primary)]" />
+      <span>
+        <span className="block font-semibold text-ink">Auf diesem Gerät angemeldet bleiben</span>
+        <span className="block text-muted">
+          Dann entfällt die PIN für {DEFAULT_REMEMBER_DAYS} Tage. Nur auf Geräten aktivieren, auf die niemand sonst zugreift.
+        </span>
+      </span>
+    </label>
   )
 }
 

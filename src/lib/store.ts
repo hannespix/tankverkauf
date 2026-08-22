@@ -14,9 +14,11 @@ import {
   saveConfig,
   verifyToken,
 } from './github'
-import { loadVault, unseal } from './vault'
+import { DEFAULT_REMEMBER_DAYS, forgetDevice, loadVault, recallFromDevice, rememberOnDevice, unseal } from './vault'
 
 export type Mode =
+  /** Checking whether this device is still signed in. */
+  | 'boot'
   /** No vault on this device yet — first run. */
   | 'setup'
   /** Vault exists, waiting for the PIN. */
@@ -85,7 +87,7 @@ class TankStore {
     const config = loadConfig()
     this.snapshot = {
       db: clone(SEED),
-      mode: loadVault() ? 'locked' : 'setup',
+      mode: 'boot',
       sync: 'idle',
       dirty: false,
       error: null,
@@ -107,6 +109,21 @@ class TankStore {
         if (document.visibilityState === 'hidden' && this.snapshot.dirty) void this.flush()
       })
     }
+  }
+
+  /**
+   * Resolve the opening screen: a device that opted into staying signed in goes
+   * straight through, everything else lands on the PIN or the setup wizard.
+   */
+  async init() {
+    const token = await recallFromDevice()
+    if (token) {
+      this.token = token
+      this.emit({ mode: 'online' })
+      await this.connect()
+      return
+    }
+    this.emit({ mode: loadVault() ? 'locked' : 'setup' })
   }
 
   subscribe = (fn: () => void) => {
@@ -144,20 +161,22 @@ class TankStore {
 
   // ---------------------------------------------------------------- session
 
-  async unlock(pin: string): Promise<boolean> {
+  async unlock(pin: string, remember = false): Promise<boolean> {
     const vault = loadVault()
     if (!vault) return false
     const token = await unseal(vault, pin)
     if (!token) return false
     this.token = token
+    if (remember) await rememberOnDevice(token, DEFAULT_REMEMBER_DAYS)
     this.emit({ mode: 'online' })
     await this.connect()
     return true
   }
 
   /** Called right after the vault is created during setup. */
-  async adoptToken(token: string, cfg: RepoConfig) {
+  async adoptToken(token: string, cfg: RepoConfig, remember = false) {
     this.token = token
+    if (remember) await rememberOnDevice(token, DEFAULT_REMEMBER_DAYS)
     saveConfig(cfg)
     const cached = this.readCache(cfg)
     this.emit({ config: cfg, mode: 'online', db: cached ?? this.snapshot.db })
@@ -168,9 +187,11 @@ class TankStore {
     this.emit({ mode: 'demo', db: clone(SEED), sync: 'idle' })
   }
 
+  /** Locking has to drop the remembered session too, or the next load walks straight back in. */
   lock() {
     this.token = null
     this.sha = null
+    forgetDevice()
     this.emit({ mode: loadVault() ? 'locked' : 'setup', sync: 'idle', error: null, login: null })
   }
 
