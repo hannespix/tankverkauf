@@ -242,9 +242,13 @@ export default function Settings() {
           title="Öffentliche Liste für Käufer"
           hint="Eine reduzierte Fassung des Bestands, die Interessenten ansehen und ankreuzen können."
           action={
-            <Button variant="primary" disabled={readOnly || publishing || !s.catalog.owner} onClick={() => void publish()}>
-              <IconCloud />{publishing ? 'Wird veröffentlicht …' : 'Jetzt veröffentlichen'}
-            </Button>
+            <span className="flex flex-wrap items-center justify-end gap-2">
+              {!s.catalog.owner && <span className="text-[13px] font-semibold text-amber">Benutzer fehlt</span>}
+              {!s.seller.email && <span className="text-[13px] font-semibold text-amber">E-Mail fehlt</span>}
+              <Button variant="primary" disabled={readOnly || publishing || !s.catalog.owner} onClick={() => void publish()}>
+                <IconCloud />{publishing ? 'Wird veröffentlicht …' : 'Jetzt veröffentlichen'}
+              </Button>
+            </span>
           }
         />
 

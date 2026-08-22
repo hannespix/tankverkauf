@@ -67,6 +67,11 @@ function migrate(raw: unknown): DB {
   if (!Array.isArray(settings.categories) || settings.categories.length === 0) {
     settings.categories = clone(seed.settings.categories)
   }
+  // The catalogue almost always lives under the same account as the data repo,
+  // and an empty owner silently disables publishing — so fill it in.
+  if (!settings.catalog?.owner) {
+    settings.catalog = { ...clone(seed.settings.catalog), ...(settings.catalog ?? {}), owner: loadConfig().owner }
+  }
   const fallbackPortal = settings.portals[0].id
   // Items stored before barrels existed are all tanks.
   const tanks = (db.tanks ?? clone(seed.tanks)).map((t) => ({
