@@ -1,13 +1,14 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { PriceLadder, STATUS_FILL } from '../components/charts'
 import { PhotoStrip } from '../components/PhotoStrip'
 import { LeadPicker } from '../components/LeadPicker'
 import { TagEditor } from '../components/TagEditor'
 import { Button, Card, EmptyState, Field, Input, Modal, Pill, Select, Textarea, cx, type Tone } from '../components/ui'
-import { IconFilter, IconPlus, IconSearch, IconTrash } from '../components/icons'
+import { IconCamera, IconCheck, IconFilter, IconPlus, IconSearch, IconTrash } from '../components/icons'
 import { addTank, createDeal, createQuote, patchTank, removeTank, retypeMany, setTankOffer, setTankStatus, tagMany } from '../lib/actions'
 import { itemLabel, centsPerLitre, dims as fmtDims, eur, num, todayISO } from '../lib/format'
-import { useStore } from '../lib/store'
+import { prepareImage } from '../lib/photos'
+import { store, useStore } from '../lib/store'
 import { VERDICT_LABEL, judgeBundle, judgeOffer, totals } from '../lib/stats'
 import { STATUS_LABEL, type Category, type Maker, type Tank, type TankStatus } from '../types'
 
@@ -39,6 +40,7 @@ export default function Tanks() {
   const [quoteOpen, setQuoteOpen] = useState(false)
   const [tagOpen, setTagOpen] = useState(false)
   const [retypeOpen, setRetypeOpen] = useState(false)
+  const [photoOpen, setPhotoOpen] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
 
   const rows = useMemo(() => {
@@ -80,6 +82,7 @@ export default function Tanks() {
   const pickedTanks = db.tanks.filter((t) => picked.has(t.id))
   // "Alle auswählen" applies to what the filter currently shows, minus what is already sold.
   const selectable = rows.filter((t) => t.status !== 'verkauft')
+  const allPicked = selectable.length > 0 && selectable.every((t) => picked.has(t.id))
   const pickedTotals = totals(pickedTanks)
   // With barrels in the same list, "Tanks" is only right when nothing else is shown.
   const allTypes = [...new Set(db.tanks.map((t) => t.type))].sort((a, b) => a.localeCompare(b, 'de'))
@@ -158,8 +161,8 @@ export default function Tanks() {
               {shown.litres > 0 && <> · <span className="tnum">{num(shown.litres)} l</span></>} · <span className="tnum">{eur(shown.vb)}</span> VB
             </span>
             {selectable.length > 0 && (
-              <Button size="sm" variant="ghost" onClick={() => setPicked(new Set(selectable.map((t) => t.id)))}>
-                Alle {selectable.length} auswählen
+              <Button size="sm" onClick={() => setPicked(allPicked ? new Set() : new Set(selectable.map((t) => t.id)))}>
+                <IconCheck />{allPicked ? 'Auswahl aufheben' : `Alle ${selectable.length} auswählen`}
               </Button>
             )}
           </span>
@@ -174,6 +177,7 @@ export default function Tanks() {
               <Button size="sm" onClick={() => setDealOpen(true)}>Als Verkauf buchen</Button>
               <Button size="sm" onClick={() => setTagOpen(true)}>Merkmal setzen</Button>
               <Button size="sm" onClick={() => setRetypeOpen(true)}>Hersteller/Typ ändern</Button>
+              <Button size="sm" onClick={() => setPhotoOpen(true)}><IconCamera />Foto für alle</Button>
               <Button size="sm" variant="ghost" onClick={() => setPicked(new Set())}>Leeren</Button>
             </span>
           )}
@@ -190,7 +194,17 @@ export default function Tanks() {
               <table className="w-full border-collapse">
                 <thead className="sticky top-0 z-10 bg-surface-3 text-muted">
                   <tr>
-                    <th className="w-9 px-2.5 py-2" />
+                    <th className="w-9 px-2.5 py-2">
+                      <input
+                        type="checkbox"
+                        aria-label={allPicked ? 'Auswahl aufheben' : `Alle ${selectable.length} auswählen`}
+                        checked={allPicked}
+                        ref={(el) => { if (el) el.indeterminate = picked.size > 0 && !allPicked }}
+                        disabled={selectable.length === 0}
+                        onChange={() => setPicked(allPicked ? new Set() : new Set(selectable.map((t) => t.id)))}
+                        className="h-4 w-4 accent-[var(--primary)]"
+                      />
+                    </th>
                     {head('id', '#', 'w-14')}
                     {head('maker', 'Hersteller')}
                     {head('type', 'Typ')}
@@ -301,6 +315,7 @@ export default function Tanks() {
       <DealModal open={dealOpen} onClose={() => { setDealOpen(false); setPicked(new Set()) }} tanks={pickedTanks} />
       <QuoteModal open={quoteOpen} onClose={() => { setQuoteOpen(false); setPicked(new Set()) }} tanks={pickedTanks} />
       <BulkTagModal open={tagOpen} onClose={() => setTagOpen(false)} tanks={pickedTanks} />
+      <BulkPhotoModal open={photoOpen} onClose={() => setPhotoOpen(false)} tanks={pickedTanks} />
       <BulkRetypeModal
         open={retypeOpen}
         onClose={() => setRetypeOpen(false)}
@@ -589,6 +604,84 @@ function QuoteModal({ open, onClose, tanks }: { open: boolean; onClose: () => vo
             Angebot speichern
           </Button>
         </div>
+      </div>
+    </Modal>
+  )
+}
+
+/**
+ * One picture for a whole selection. Twenty-nine barrels standing next to each
+ * other are one photograph, not twenty-nine — and the file is stored once, with
+ * every position pointing at it.
+ */
+function BulkPhotoModal({ open, onClose, tanks }: { open: boolean; onClose: () => void; tanks: Tank[] }) {
+  const { mode } = useStore()
+  const camera = useRef<HTMLInputElement>(null)
+  const library = useRef<HTMLInputElement>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [preview, setPreview] = useState<string | null>(null)
+  if (!open) return null
+
+  const demo = mode === 'demo'
+
+  async function take(files: FileList | null) {
+    const file = files?.[0]
+    if (!file) return
+    setBusy(true)
+    setError(null)
+    try {
+      const prepared = await prepareImage(file)
+      setPreview(`data:image/jpeg;base64,${prepared.base64}`)
+      await store.addPhotoToMany(tanks.map((t) => t.id), prepared.base64)
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Foto konnte nicht gespeichert werden.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal open onClose={onClose} title={`Ein Foto für ${tanks.length} Positionen`}>
+      <div className="space-y-4">
+        <p className="text-sm text-muted">
+          Das Bild wird einmal hochgeladen und an alle ausgewählten Positionen gehängt — ein Übersichtsfoto reicht,
+          jede einzeln zu fotografieren ist nicht nötig. Entfernst du es später an einer Position, bleibt es an den
+          übrigen erhalten.
+        </p>
+
+        <div className="rounded-xl bg-surface-2 p-3 text-[13px]">
+          <span className="text-muted">Bekommt das Foto: </span>
+          {[...new Set(tanks.map((t) => (t.maker === 'Sonstige' ? t.type : `${t.maker} ${t.type}`)))].slice(0, 4).join(' · ')}
+          {tanks.length > 4 && ` … (${tanks.length} Positionen)`}
+        </div>
+
+        {preview && <img src={preview} alt="" className="max-h-48 w-full rounded-xl object-cover" />}
+
+        {demo ? (
+          <p className="rounded-xl bg-surface-2 p-3 text-[13px] text-muted">
+            Fotos brauchen ein eingerichtetes Daten-Repository — im Demo-Modus nicht verfügbar.
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            <Button variant="primary" disabled={busy} onClick={() => camera.current?.click()}>
+              <IconCamera />{busy ? 'Lädt hoch …' : 'Kamera'}
+            </Button>
+            <Button disabled={busy} onClick={() => library.current?.click()}><IconPlus />Auswählen</Button>
+          </div>
+        )}
+
+        {error && <p className="text-[13px] font-semibold text-rose">{error}</p>}
+
+        <div className="flex justify-end border-t border-line pt-4">
+          <Button onClick={onClose}>Abbrechen</Button>
+        </div>
+
+        <input ref={camera} type="file" accept="image/*" capture="environment" hidden
+          onChange={(e) => { void take(e.target.files); e.target.value = '' }} />
+        <input ref={library} type="file" accept="image/*" hidden
+          onChange={(e) => { void take(e.target.files); e.target.value = '' }} />
       </div>
     </Modal>
   )
