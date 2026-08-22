@@ -1,3 +1,4 @@
+import { STORE_KEYS, openIdb } from './idb'
 /**
  * The GitHub token never sits in localStorage as plain text. It is sealed with a
  * PIN the user chooses, using PBKDF2 + AES-GCM via WebCrypto. Losing the phone
@@ -88,8 +89,6 @@ export const hasVault = () => loadVault() !== null
  * still ask the key to decrypt. Hence the expiry and the explicit opt-in.
  */
 
-const IDB_NAME = 'tankverkauf'
-const IDB_STORE = 'keys'
 const DEVICE_KEY_ID = 'device'
 const REMEMBER_STORAGE = 'tankverkauf.remember.v1'
 
@@ -101,22 +100,11 @@ interface Remembered {
   expires: number
 }
 
-function openIdb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(IDB_NAME, 1)
-    req.onupgradeneeded = () => {
-      if (!req.result.objectStoreNames.contains(IDB_STORE)) req.result.createObjectStore(IDB_STORE)
-    }
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
-  })
-}
-
 async function deviceKey(createIfMissing: boolean): Promise<CryptoKey | null> {
   const db = await openIdb()
   try {
     const existing = await new Promise<CryptoKey | undefined>((resolve, reject) => {
-      const req = db.transaction(IDB_STORE, 'readonly').objectStore(IDB_STORE).get(DEVICE_KEY_ID)
+      const req = db.transaction(STORE_KEYS, 'readonly').objectStore(STORE_KEYS).get(DEVICE_KEY_ID)
       req.onsuccess = () => resolve(req.result as CryptoKey | undefined)
       req.onerror = () => reject(req.error)
     })
@@ -125,8 +113,8 @@ async function deviceKey(createIfMissing: boolean): Promise<CryptoKey | null> {
 
     const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])
     await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction(IDB_STORE, 'readwrite')
-      tx.objectStore(IDB_STORE).put(key, DEVICE_KEY_ID)
+      const tx = db.transaction(STORE_KEYS, 'readwrite')
+      tx.objectStore(STORE_KEYS).put(key, DEVICE_KEY_ID)
       tx.oncomplete = () => resolve()
       tx.onerror = () => reject(tx.error)
     })

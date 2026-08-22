@@ -10,13 +10,16 @@ import type { Tank } from '../types'
  * so every device that can open the dashboard has them at hand for a listing.
  */
 export function PhotoStrip({ tank }: { tank: Tank }) {
-  const { mode } = useStore()
+  const { mode, photosPending } = useStore()
   const input = useRef<HTMLInputElement>(null)
   const camera = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const offline = mode !== 'online'
+  // Taking a picture works without a connection now — it is queued. Only the demo
+  // has nowhere to put it.
+  const demo = mode === 'demo'
+  const offline = demo
 
   async function add(files: FileList | null) {
     if (!files?.length) return
@@ -54,9 +57,16 @@ export function PhotoStrip({ tank }: { tank: Tank }) {
         </span>
       </div>
 
+      {photosPending > 0 && (
+        <p className="mb-1.5 rounded-xl bg-amber-soft px-3 py-2 text-[13px] font-semibold text-amber">
+          {photosPending === 1 ? 'Ein Foto wartet' : `${photosPending} Fotos warten`} auf die Übertragung. Sie bleiben auf
+          diesem Gerät gespeichert und gehen von selbst raus, sobald wieder Empfang da ist.
+        </p>
+      )}
+
       {offline ? (
         <p className="rounded-xl bg-surface-2 p-3 text-[13px] text-muted">
-          Fotos brauchen die Verbindung zu GitHub — im Demo-Modus nicht verfügbar.
+          Fotos brauchen ein eingerichtetes Daten-Repository — im Demo-Modus nicht verfügbar.
         </p>
       ) : tank.photos.length === 0 ? (
         <button
@@ -64,7 +74,7 @@ export function PhotoStrip({ tank }: { tank: Tank }) {
           onClick={() => camera.current?.click()}
           className="w-full rounded-xl border border-dashed border-line-strong p-4 text-[13px] text-muted transition hover:border-primary hover:text-ink"
         >
-          Foto aufnehmen oder auswählen — wird verkleinert und im Daten-Repository abgelegt.
+          Foto aufnehmen oder auswählen — wird verkleinert und abgelegt, auch ohne Empfang.
         </button>
       ) : (
         <div className="flex gap-2 overflow-x-auto pb-1">

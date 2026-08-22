@@ -2,6 +2,15 @@ import { useSyncExternalStore } from 'react'
 import type { Activity, ActivityKind, DB } from '../types'
 import { SEED } from './seed'
 import { blobToBase64, cachedUrl, forgetUrl, photoPath, rememberUrl } from './photos'
+import {
+  allPending as allPendingPhotos,
+  dataUrl as photoDataUrl,
+  enqueue as enqueuePhoto,
+  get as getPending,
+  markFailed as markPhotoFailed,
+  pendingPaths as pendingPhotoPaths,
+  remove as removePending,
+} from './photoQueue'
 import { buildCatalog, catalogPageUrl } from './catalog'
 import {
   ConflictError,
@@ -40,6 +49,8 @@ export type SyncState = 'idle' | 'loading' | 'saving' | 'saved' | 'offline' | 'e
 export interface StoreSnapshot {
   db: DB
   mode: Mode
+  /** Photos taken but not yet uploaded — shown so nobody closes the tab too early. */
+  photosPending: number
   sync: SyncState
   /** Pending local changes that have not reached GitHub yet. */
   dirty: boolean
@@ -108,6 +119,7 @@ class TankStore {
   private listeners = new Set<() => void>()
   private token: string | null = null
   private sha: string | null = null
+  private sendingPhotos = false
   private saveTimer: ReturnType<typeof setTimeout> | null = null
   private saving = false
   private pendingReason = ''
@@ -117,6 +129,7 @@ class TankStore {
     this.snapshot = {
       db: clone(SEED),
       mode: 'boot',
+      photosPending: 0,
       sync: 'idle',
       dirty: false,
       error: null,
@@ -130,7 +143,7 @@ class TankStore {
     if (cached) this.snapshot.db = cached
 
     if (typeof window !== 'undefined') {
-      window.addEventListener('online', () => void this.flush())
+      window.addEventListener('online', () => { void this.flush(); void this.flushPhotos() })
       window.addEventListener('beforeunload', () => {
         if (this.snapshot.dirty) this.writeCache()
       })
@@ -228,6 +241,12 @@ class TankStore {
   async connect() {
     if (!this.token || !isConfigured(this.snapshot.config)) return
     this.emit({ sync: 'loading', error: null })
+    // Photos from an earlier session may still be waiting — send them before
+    // anything else, they are the only data that exists in one place only.
+    void pendingPhotoPaths().then((paths) => {
+      this.emit({ photosPending: paths.length })
+      if (paths.length) void this.flushPhotos()
+    }).catch(() => {})
     try {
       const [identity, meta] = await Promise.all([
         verifyToken(this.token),
@@ -330,32 +349,63 @@ class TankStore {
     }
   }
 
-  /** Upload a prepared photo and attach it to an item. */
+  /**
+   * Attach a prepared photo. The bytes go into the local queue first and the
+   * upload follows — a cellar with no reception used to lose the picture
+   * outright, because this wrote straight to the network and threw on failure.
+   */
   async addPhoto(tankId: string, base64: string): Promise<void> {
     if (!this.token) throw new Error('Nicht angemeldet — Fotos brauchen eine Verbindung zu GitHub.')
     const stamp = Math.random().toString(36).slice(2, 8)
     const path = photoPath(tankId, stamp)
-    await putBinary(this.token, this.snapshot.config, path, base64, `Foto zu ${tankId}`)
+    await enqueuePhoto({ path, tankId, base64, addedAt: Date.now() })
     this.mutate((db) => {
       const t = db.tanks.find((x) => x.id === tankId)
       if (t) t.photos = [...t.photos, path]
     }, { kind: 'tank', text: `Foto zu ${tankId} hinzugefügt` })
+    await this.flushPhotos()
+  }
+
+  /** Upload everything waiting. Safe to call repeatedly; one run at a time. */
+  async flushPhotos(): Promise<void> {
+    if (!this.token || this.sendingPhotos || this.snapshot.mode !== 'online') return
+    this.sendingPhotos = true
+    try {
+      for (const entry of await allPendingPhotos()) {
+        try {
+          await putBinary(this.token, this.snapshot.config, entry.path, entry.base64, `Foto zu ${entry.tankId}`)
+          await removePending(entry.path)
+        } catch (err) {
+          // Keep the bytes. A picture that cannot go up yet is not a picture lost.
+          await markPhotoFailed(entry.path, err instanceof Error ? err.message : 'Upload fehlgeschlagen')
+        }
+      }
+    } finally {
+      this.sendingPhotos = false
+      this.emit({ photosPending: (await pendingPhotoPaths()).length })
+    }
   }
 
   async removePhoto(tankId: string, path: string): Promise<void> {
     if (!this.token) return
-    await deleteBinary(this.token, this.snapshot.config, path, `Foto zu ${tankId} entfernt`)
+    // Drop it from the queue too, or a photo deleted before its upload would be
+    // sent afterwards and reappear on a position that no longer references it.
+    await removePending(path)
+    await deleteBinary(this.token, this.snapshot.config, path, `Foto zu ${tankId} entfernt`).catch(() => {})
     forgetUrl(path)
     this.mutate((db) => {
       const t = db.tanks.find((x) => x.id === tankId)
       if (t) t.photos = t.photos.filter((x) => x !== path)
     }, { kind: 'tank', text: `Foto zu ${tankId} entfernt` })
+    this.emit({ photosPending: (await pendingPhotoPaths()).length })
   }
 
-  /** Resolves to an object URL, fetching the blob once and caching it. */
+  /** Resolves to a URL. A photo still queued is shown from the local bytes. */
   async photoUrl(path: string): Promise<string | null> {
     const hit = cachedUrl(path)
     if (hit) return hit
+    const waiting = await getPending(path).catch(() => undefined)
+    if (waiting) return photoDataUrl(waiting.base64)
     if (!this.token) return null
     const blob = await getBinary(this.token, this.snapshot.config, path)
     return blob ? rememberUrl(path, blob) : null
