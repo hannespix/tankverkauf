@@ -199,7 +199,14 @@ function LeadModal({ lead, onClose, readOnly }: { lead: Lead | null; onClose: ()
 function ParseModal({ onClose }: { onClose: () => void }) {
   const { db } = useStore()
   const [text, setText] = useState('')
+  const [attachBroad, setAttachBroad] = useState(false)
   const parsed = text.trim() ? parseMessage(text, db) : null
+  // A guess that hits many positions at once is almost never what the buyer meant:
+  // "225 l Fässer" matches all 29 barrels, and attaching them sets every one to
+  // "kontakt" — locked away from other buyers. So a wide guess attaches nothing
+  // until it is confirmed.
+  const holdBack = !!parsed?.broadMatch && !attachBroad
+  const tankIds = parsed && !holdBack ? parsed.matchedTankIds : []
 
   return (
     <Modal open onClose={onClose} title="Anfrage übernehmen" wide>
@@ -207,7 +214,7 @@ function ParseModal({ onClose }: { onClose: () => void }) {
         <p className="text-sm text-muted">
           Kopier die Nachricht aus Kleinanzeigen hier hinein. Name, Telefonnummer, E-Mail und der gefragte Tank werden erkannt — du prüfst nur noch nach.
         </p>
-        <Textarea rows={7} value={text} onChange={(e) => setText(e.target.value)} autoFocus
+        <Textarea rows={7} value={text} onChange={(e) => { setText(e.target.value); setAttachBroad(false) }} autoFocus
           placeholder={'Hallo,\nist der Raumspar-Koffertank 1650 l noch zu haben? Ich würde ihn nächste Woche abholen.\nTel. 0176 12345678\nViele Grüße\nMax Mustermann'} />
 
         {parsed && (
@@ -231,11 +238,32 @@ function ParseModal({ onClose }: { onClose: () => void }) {
             </dl>
             {parsed.matchedTankIds.length > 0 && (
               <div className="mt-2.5 border-t border-line pt-2.5">
-                <span className="text-muted">Passende Tanks: </span>
-                {parsed.matchedTankIds.map((id) => {
-                  const t = db.tanks.find((x) => x.id === id)!
-                  return <Pill key={id} tone="green" className="mr-1.5">{t.maker} {num(t.litres)} l</Pill>
-                })}
+                {parsed.broadMatch ? (
+                  <div className="space-y-2">
+                    <p className="text-[13px]">
+                      <strong className="text-amber">Die genannte Größe passt auf {parsed.matchedTankIds.length} Positionen.</strong>{' '}
+                      Alle anzuhängen setzt jede davon auf „im Kontakt“ und nimmt sie damit anderen Interessenten weg.
+                    </p>
+                    <label className="flex items-center gap-2 text-[13px] font-semibold">
+                      <input type="checkbox" checked={attachBroad} onChange={(e) => setAttachBroad(e.target.checked)}
+                        className="h-4 w-4 accent-[var(--primary)]" />
+                      Trotzdem alle {parsed.matchedTankIds.length} anhängen
+                    </label>
+                    {!attachBroad && (
+                      <p className="text-[13px] text-muted">
+                        Sonst wird der Interessent ohne Positionen angelegt — du hängst die richtigen danach von Hand an.
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <span className="text-muted">Passende Tanks: </span>
+                    {parsed.matchedTankIds.map((id) => {
+                      const t = db.tanks.find((x) => x.id === id)!
+                      return <Pill key={id} tone="green" className="mr-1.5">{t.maker === 'Sonstige' ? t.type : t.maker} {num(t.litres)} l</Pill>
+                    })}
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -249,16 +277,16 @@ function ParseModal({ onClose }: { onClose: () => void }) {
               const leadId = addLead({
                 name: parsed.name || 'Anfrage aus Käuferliste',
                 phone: parsed.phone, email: parsed.email,
-                source: 'kleinanzeigen', stage: parsed.matchedTankIds.length ? 'angebot' : 'neu',
-                tankIds: parsed.matchedTankIds, note: text.trim(),
+                source: 'kleinanzeigen', stage: tankIds.length ? 'angebot' : 'neu',
+                tankIds, note: text.trim(),
               })
               // A named price is already a negotiation — record it as an offer straight away.
-              if (parsed.matchedTankIds.length > 0) {
-                const picked = db.tanks.filter((t) => parsed.matchedTankIds.includes(t.id))
+              if (tankIds.length > 0) {
+                const picked = db.tanks.filter((t) => tankIds.includes(t.id))
                 const t = totals(picked)
                 const quoteId = createQuote({
                   label: `Anfrage ${parsed.name || 'Käuferliste'} · ${picked.length} Positionen`,
-                  tankIds: parsed.matchedTankIds,
+                  tankIds,
                   askPrice: t.vb,
                   leadId,
                   portalId: null,

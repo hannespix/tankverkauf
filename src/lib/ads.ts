@@ -349,10 +349,12 @@ export interface ParsedMessage {
   email: string
   litresMentioned: number[]
   matchedTankIds: string[]
-  /** Price the buyer named, if the message carries the structured block. */
+  /** Price the buyer named — from the structured block, otherwise from the prose. */
   offer: number | null
   /** True when the positions were read exactly instead of guessed from prose. */
   exact: boolean
+  /** Set when a guess covers suspiciously many positions, so the form can warn. */
+  broadMatch: boolean
 }
 
 /** Marker the catalogue puts at the end of an enquiry so nothing has to be guessed. */
@@ -363,16 +365,40 @@ export const OFFER_MARK = 'Angebot:'
  * Kleinanzeigen has no API for private sellers, so incoming enquiries arrive as
  * text. Pasting one here pulls out the bits worth keeping instead of retyping them.
  */
+/** Robot addresses the portals send from. Never the buyer. */
+const RELAY_ADDRESS = /^(no-?reply|do-?not-?reply|reply-[\w.-]+|noreply)@/i
+
+/**
+ * A forwarded mail carries a header block — Von/An/Gesendet/Betreff — before the
+ * text the buyer actually wrote. Everything in it belongs to the portal's robot:
+ * searching it for a mail address finds noreply@…, and "Gesendet: 22.08.2026 09:41"
+ * reads as the phone number 08202609. So the header is cut off first.
+ */
+function bodyOf(text: string): string {
+  const start = text.search(/^-{2,}\s*(Weitergeleitete|Urspr(ü|ue)ngliche) Nachricht|^Anfang der weitergeleiteten Nachricht:/im)
+  const rest = start === -1 ? text : text.slice(start)
+  const lines = rest.split(/\r?\n/)
+  let last = -1
+  for (let i = 0; i < Math.min(lines.length, 25); i += 1) {
+    if (/^\s*(Von|An|Gesendet|Betreff|Datum|Cc|Kopie|From|To|Sent|Subject|Date|Reply-To|Antwort an):/i.test(lines[i])) last = i
+  }
+  return last === -1 ? text : lines.slice(last + 1).join('\n')
+}
+
 export function parseMessage(text: string, db: DB): ParsedMessage {
-  const email = text.match(/[\w.+-]+@[\w-]+\.[\w.]{2,}/)?.[0] ?? ''
-  const phoneRaw = text.match(/(?:\+49|0)[\d\s/().-]{7,}\d/)?.[0] ?? ''
+  const body = bodyOf(text)
+  const email = (body.match(/[\w.+-]+@[\w-]+\.[\w.]{2,}/g) ?? []).find((a) => !RELAY_ADDRESS.test(a)) ?? ''
+  const phoneRaw = body.match(/(?:\+49|0)[\d\s/().-]{7,}\d/)?.[0] ?? ''
   const phone = phoneRaw.replace(/[^\d+]/g, '').replace(/^(\+49)/, '+49 ')
 
-  const litresMentioned = [...text.matchAll(/\b(\d{3,4})(?:[.,](\d{3}))?\s*(?:l\b|liter)/gi)]
-    .map((m) => Number(m[2] ? `${m[1]}${m[2]}` : m[1]))
+  // A number only counts as a volume when a unit stands next to it. The bare
+  // "1.650" pattern that used to be here cannot work in this stock: the asking
+  // prices (1250, 1650, 1800, 2100) are the same numbers as the tank sizes, so
+  // "ich biete 2.800 Euro" silently attached both 2800 l tanks to the enquiry.
+  const litresMentioned = [...body.matchAll(/\b(\d{1,2})[.,](\d{3})\s*(?:l\b|ltr\b|liter)|\b(\d{3,5})\s*(?:l\b|ltr\b|liter)/gi)]
+    .map((m) => Number(m[3] ?? `${m[1]}${m[2]}`))
     .filter((n) => n >= 100 && n <= 20000)
-  const bare = [...text.matchAll(/\b(\d\.\d{3})\b/g)].map((m) => Number(m[1].replace('.', '')))
-  const all = [...new Set([...litresMentioned, ...bare])]
+  const all = [...new Set(litresMentioned)]
 
   // The catalogue appends the exact position numbers — prefer them over any guessing.
   const known = new Set(db.tanks.map((t) => t.id))
@@ -382,15 +408,24 @@ export function parseMessage(text: string, db: DB): ParsedMessage {
     : []
 
   const offerLine = text.match(new RegExp(`${OFFER_MARK}\\s*([\\d.]+)`, 'i'))
-  const offer = offerLine ? Number(offerLine[1].replace(/\./g, '')) || null : null
+  // Without the structured block the price has to come out of the prose, where a
+  // currency word is the only thing that tells it apart from a volume.
+  const prosePrice = body.match(/(\d{1,3}(?:[.\s]\d{3})+|\d{2,6})\s*(?:€|EUR\b|Euro\b)/i)
+  const offer = offerLine
+    ? Number(offerLine[1].replace(/\./g, '')) || null
+    : prosePrice
+      ? Number(prosePrice[1].replace(/[.\s]/g, '')) || null
+      : null
 
-  const matchedTankIds = exactIds.length
-    ? exactIds
-    : db.tanks.filter((t) => all.includes(t.litres) && isOpen(t)).map((t) => t.id)
+  const guessed = db.tanks.filter((t) => all.includes(t.litres) && isOpen(t)).map((t) => t.id)
+  const matchedTankIds = exactIds.length ? exactIds : guessed
+  // "225 l Fässer" matches every one of the 29 barrels. Attaching them all locks
+  // the whole lot to one enquirer, so the form has to ask before that happens.
+  const broadMatch = exactIds.length === 0 && guessed.length > 3
 
   // The structured block sits at the very end, exactly where a signature would —
   // so cut it off before looking for a name, or every enquiry is called "Angebot: 1100".
-  const prose = text.split(/^\s*[—–-]\s*[—–-]\s*[—–-]\s*$/m)[0]
+  const prose = body.split(/^\s*[—–-]\s*[—–-]\s*[—–-]\s*$/m)[0]
   const lines = prose.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
 
   // "Viele Grüße, Martin Kessler" — the name rides along on the greeting line.
@@ -398,12 +433,12 @@ export function parseMessage(text: string, db: DB): ParsedMessage {
     /(?:mit freundlichen grüßen|viele grüße|beste grüße|liebe grüße|grüße|gruß|mfg|lg)[,\s]+([A-ZÄÖÜ][\wäöüß-]+(?:\s+[A-ZÄÖÜ][\wäöüß-]+){0,2})\s*$/im,
   )
 
-  const stop = /^(hallo|hi|guten|sehr|mit freundlichen|viele grüße|liebe|mfg|lg|danke|gruß|grüße|ich |positionen|angebot|summe|diese)/i
+  const stop = /^(hallo|hi|guten|sehr|mit freundlichen|viele grüße|liebe|mfg|lg|danke|gruß|grüße|ich |positionen|angebot|summe|diese|von|an|betreff|gesendet|datum|cc|kopie|from|to|subject|sent|date|antwort an)\b/i
   const standalone = [...lines]
     .reverse()
     .find((l) => l.length >= 3 && l.length <= 40 && !stop.test(l) && /^[A-ZÄÖÜ]/.test(l) && !/[.?!:€]$/.test(l) && l.split(/\s+/).length <= 4)
 
   const name = (afterGreeting?.[1] ?? standalone ?? '').trim()
 
-  return { name, phone, email, litresMentioned: all, matchedTankIds, offer, exact: exactIds.length > 0 }
+  return { name, phone, email, litresMentioned: all, matchedTankIds, offer, exact: exactIds.length > 0, broadMatch }
 }
