@@ -2,9 +2,21 @@
 
 export type TankStatus = 'verfuegbar' | 'kontakt' | 'reserviert' | 'verkauft'
 
-/** Tanks and barrels sell to different people and must not share a package price. */
-export type Category = 'tank' | 'fass'
-export type Maker = 'Speidel' | 'Möschle' | 'Clemens' | 'Sonstige'
+/** Category id. The list itself is configurable, see Settings.categories. */
+export type Category = string
+
+export interface CategoryDef {
+  id: string
+  label: string
+  /** Singular, for a single item in the list. */
+  one: string
+  /** Volume only makes sense for vessels; a pump has none. */
+  hasVolume: boolean
+  /** Included in the package price calculation. */
+  inPackage: boolean
+}
+/** Free text — a pump maker is as valid here as a tank maker. */
+export type Maker = string
 
 export interface Tank {
   id: string
@@ -87,7 +99,7 @@ export interface Quote {
   updatedAt: string
 }
 
-export type AdScopeKind = 'paket' | 'faesser' | 'maker' | 'tank' | 'restposten' | 'custom'
+export type AdScopeKind = 'paket' | 'kategorie' | 'maker' | 'tank' | 'restposten' | 'custom'
 
 export interface AdScope {
   kind: AdScopeKind
@@ -139,6 +151,7 @@ export interface Ad {
 
 export interface Settings {
   vatRate: number
+  categories: CategoryDef[]
   portals: Portal[]
   packagePrice: number
   packageTarget: number
@@ -176,11 +189,6 @@ export interface DB {
   ads: Ad[]
   settings: Settings
   activity: Activity[]
-}
-
-export const CATEGORY_LABEL: Record<Category, string> = {
-  tank: 'Edelstahltanks',
-  fass: 'Holzfässer',
 }
 
 export const STATUS_LABEL: Record<TankStatus, string> = {

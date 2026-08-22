@@ -1,12 +1,12 @@
 import { useRef, useState } from 'react'
 import { Button, Card, Field, Input, Modal, Pill, SectionTitle, Select, Textarea, cx } from '../components/ui'
 import { IconCheck, IconCloud, IconDownload, IconLock, IconPlus, IconRefresh, IconTrash, IconUpload, IconWarn } from '../components/icons'
-import { patchSettings, removePortal, upsertPortal } from '../lib/actions'
+import { patchSettings, removeCategory, removePortal, upsertCategory, upsertPortal } from '../lib/actions'
 import { exportCsv, exportJson, exportXlsx, importXlsx } from '../lib/exporter'
 import { dateTimeDE, relativeDE } from '../lib/format'
 import { store, useStore } from '../lib/store'
 import { clearVault, forgetDevice, rememberedUntil } from '../lib/vault'
-import { STYLE_LABEL, type DB, type Portal, type PortalStyle } from '../types'
+import { STYLE_LABEL, type CategoryDef, type DB, type Portal, type PortalStyle } from '../types'
 
 export default function Settings() {
   const { db, config, mode, login, repoPrivate, lastSyncAt, sync, error } = useStore()
@@ -15,6 +15,7 @@ export default function Settings() {
   const [busy, setBusy] = useState<string | null>(null)
   const [note, setNote] = useState<string | null>(null)
   const [editPortal, setEditPortal] = useState<Portal | null>(null)
+  const [editCat, setEditCat] = useState<CategoryDef | null>(null)
   const remembered = rememberedUntil()
   const xlsxRef = useRef<HTMLInputElement>(null)
   const jsonRef = useRef<HTMLInputElement>(null)
@@ -156,6 +157,37 @@ export default function Settings() {
 
       <Card>
         <SectionTitle
+          title="Kategorien"
+          hint="Bestimmt, wie sich der Bestand gliedert und was ins Komplettpaket zählt."
+          action={<Button onClick={() => setEditCat({ id: '', label: '', one: '', hasVolume: false, inPackage: false })}><IconPlus />Kategorie</Button>}
+        />
+        <div className="space-y-2">
+          {s.categories.map((c) => {
+            const used = db.tanks.filter((t) => t.category === c.id).length
+            return (
+              <div key={c.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface-2 p-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-bold">{c.label}</span>
+                    <Pill tone="neutral">{used} Positionen</Pill>
+                    {c.inPackage && <Pill tone="green">im Komplettpaket</Pill>}
+                    {c.hasVolume && <Pill tone="sky">mit Volumen</Pill>}
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={() => setEditCat(c)}>Bearbeiten</Button>
+                  <Button size="sm" variant="danger" onClick={() => { const err = removeCategory(c.id); if (err) setNote(err) }}>
+                    <IconTrash />
+                  </Button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </Card>
+
+      <Card>
+        <SectionTitle
           title="Portale"
           hint="Bestimmt Zeichengrenzen, Zielseite und Tonlage der erzeugten Anzeigentexte."
           action={<Button onClick={() => setEditPortal({ id: '', name: '', postUrl: '', titleLimit: 80, bodyLimit: 4000, style: 'privat', notes: '', active: true })}><IconPlus />Portal</Button>}
@@ -227,6 +259,7 @@ export default function Settings() {
       )}
 
       {editPortal && <PortalModal portal={editPortal} onClose={() => setEditPortal(null)} />}
+      {editCat && <CategoryModal cat={editCat} onClose={() => setEditCat(null)} />}
     </div>
   )
 }
@@ -261,6 +294,45 @@ function PortalModal({ portal, onClose }: { portal: Portal; onClose: () => void 
           <Button onClick={onClose}>Abbrechen</Button>
           <Button variant="primary" disabled={!draft.name.trim() || !id}
             onClick={() => { upsertPortal({ ...draft, id }); onClose() }}>
+            Speichern
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+function CategoryModal({ cat, onClose }: { cat: CategoryDef; onClose: () => void }) {
+  const [draft, setDraft] = useState<CategoryDef>(cat)
+  const set = (patch: Partial<CategoryDef>) => setDraft((d) => ({ ...d, ...patch }))
+  const isNew = cat.id === ''
+  const id = isNew ? draft.label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') : draft.id
+
+  return (
+    <Modal open onClose={onClose} title={isNew ? 'Kategorie hinzufügen' : draft.label}>
+      <div className="space-y-4">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Bezeichnung (Mehrzahl)"><Input value={draft.label} onChange={(e) => set({ label: e.target.value })} placeholder="z. B. Maschinen" autoFocus /></Field>
+          <Field label="Einzahl"><Input value={draft.one} onChange={(e) => set({ one: e.target.value })} placeholder="z. B. Maschine" /></Field>
+        </div>
+        <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-line bg-surface-2 p-3 text-[13px]">
+          <input type="checkbox" checked={draft.hasVolume} onChange={(e) => set({ hasVolume: e.target.checked })} className="mt-0.5 h-4 w-4 accent-[var(--primary)]" />
+          <span>
+            <span className="block font-semibold text-ink">Positionen haben ein Volumen</span>
+            <span className="block text-muted">Für Tanks und Fässer sinnvoll, für Pumpen oder Armaturen nicht.</span>
+          </span>
+        </label>
+        <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-line bg-surface-2 p-3 text-[13px]">
+          <input type="checkbox" checked={draft.inPackage} onChange={(e) => set({ inPackage: e.target.checked })} className="mt-0.5 h-4 w-4 accent-[var(--primary)]" />
+          <span>
+            <span className="block font-semibold text-ink">Zählt zum Komplettpaket</span>
+            <span className="block text-muted">Nur angehakte Kategorien fließen in Paketpreis und Preis je Liter ein.</span>
+          </span>
+        </label>
+        <div className="flex justify-end gap-2 border-t border-line pt-4">
+          <Button onClick={onClose}>Abbrechen</Button>
+          <Button variant="primary" disabled={!draft.label.trim() || !id}
+            onClick={() => { upsertCategory({ ...draft, id, one: draft.one.trim() || draft.label }); onClose() }}>
             Speichern
           </Button>
         </div>

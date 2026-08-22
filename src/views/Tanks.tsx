@@ -8,10 +8,9 @@ import { addTank, createDeal, createQuote, patchTank, removeTank, setTankOffer, 
 import { centsPerLitre, eur, num, todayISO } from '../lib/format'
 import { useStore } from '../lib/store'
 import { VERDICT_LABEL, judgeBundle, judgeOffer, totals } from '../lib/stats'
-import { CATEGORY_LABEL, STATUS_LABEL, type Category, type Maker, type Tank, type TankStatus } from '../types'
+import { STATUS_LABEL, type Category, type Maker, type Tank, type TankStatus } from '../types'
 
 const STATUSES: TankStatus[] = ['verfuegbar', 'kontakt', 'reserviert', 'verkauft']
-const MAKERS: Maker[] = ['Speidel', 'Möschle', 'Clemens', 'Sonstige']
 
 const STATUS_TONE: Record<TankStatus, Tone> = { verfuegbar: 'green', kontakt: 'amber', reserviert: 'sky', verkauft: 'neutral' }
 
@@ -81,9 +80,12 @@ export default function Tanks() {
   const pickedTotals = totals(pickedTanks)
   // With barrels in the same list, "Tanks" is only right when nothing else is shown.
   const allTypes = [...new Set(db.tanks.map((t) => t.type))].sort((a, b) => a.localeCompare(b, 'de'))
+  const allMakers = [...new Set(db.tanks.map((t) => t.maker))].sort((a, b) => a.localeCompare(b, 'de'))
+  const cats = db.settings.categories.filter((c) => db.tanks.some((t) => t.category === c.id))
   const kinds = new Set(rows.map((t) => t.category))
-  const noun = kinds.size === 1 ? (kinds.has('fass') ? 'Fässer' : 'Tanks') : 'Positionen'
-  const totalNoun = db.tanks.some((t) => t.category === 'fass') ? 'Positionen' : 'Tanks'
+  const onlyCat = kinds.size === 1 ? db.settings.categories.find((c) => c.id === [...kinds][0]) : null
+  const noun = onlyCat?.label ?? 'Positionen'
+  const totalNoun = new Set(db.tanks.map((t) => t.category)).size > 1 ? 'Positionen' : noun
   const active = catSel.length + statusSel.length + makerSel.length + typeSel.length + (leadSel ? 1 : 0) + (minL ? 1 : 0) + (maxL ? 1 : 0) + (withOffer ? 1 : 0)
   const shown = totals(rows)
 
@@ -111,16 +113,16 @@ export default function Tanks() {
           {!readOnly && (
             <Button onClick={() => setAddOpen(true)}>
               <IconPlus />
-              Tank
+              Position
             </Button>
           )}
         </div>
 
         {showFilters && (
           <div className="animate-rise space-y-3 border-t border-line bg-surface-2 p-3">
-            <ChipRow label="Art" items={(['tank', 'fass'] as Category[]).map((c) => ({ v: c, l: CATEGORY_LABEL[c] }))} sel={catSel} onToggle={(v) => toggle(catSel, v, setCatSel)} />
+            <ChipRow label="Art" items={cats.map((c) => ({ v: c.id, l: c.label }))} sel={catSel} onToggle={(v) => toggle(catSel, v, setCatSel)} />
             <ChipRow label="Status" items={STATUSES.map((s) => ({ v: s, l: STATUS_LABEL[s] }))} sel={statusSel} onToggle={(v) => toggle(statusSel, v, setStatusSel)} />
-            <ChipRow label="Hersteller" items={MAKERS.map((m) => ({ v: m, l: m }))} sel={makerSel} onToggle={(v) => toggle(makerSel, v, setMakerSel)} />
+            <ChipRow label="Hersteller" items={allMakers.map((m) => ({ v: m, l: m }))} sel={makerSel} onToggle={(v) => toggle(makerSel, v, setMakerSel)} />
             <ChipRow label="Typ" items={allTypes.map((t) => ({ v: t, l: t }))} sel={typeSel} onToggle={(v) => toggle(typeSel, v, setTypeSel)} />
             <div className="flex flex-wrap items-center gap-2">
               <span className="w-20 shrink-0 text-[13px] font-semibold text-muted">Interessent</span>
@@ -149,7 +151,8 @@ export default function Tanks() {
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-4 py-2.5 text-[13px]">
           <span className="flex flex-wrap items-center gap-2 text-muted">
             <span>
-              <strong className="tnum text-ink">{rows.length}</strong> {noun} von {db.tanks.length} {totalNoun} · <span className="tnum">{num(shown.litres)} l</span> · <span className="tnum">{eur(shown.vb)}</span> VB
+              <strong className="tnum text-ink">{rows.length}</strong> {noun} von {db.tanks.length} {totalNoun}
+              {shown.litres > 0 && <> · <span className="tnum">{num(shown.litres)} l</span></>} · <span className="tnum">{eur(shown.vb)}</span> VB
             </span>
             {selectable.length > 0 && (
               <Button size="sm" variant="ghost" onClick={() => setPicked(new Set(selectable.map((t) => t.id)))}>
@@ -159,7 +162,7 @@ export default function Tanks() {
           </span>
           {picked.size > 0 && (
             <span className="flex flex-wrap items-center gap-2">
-              <Pill tone="sky">{picked.size} ausgewählt · {num(pickedTotals.litres)} l</Pill>
+              <Pill tone="sky">{picked.size} ausgewählt{pickedTotals.litres > 0 && ` · ${num(pickedTotals.litres)} l`}</Pill>
               <span className="tnum">
                 VB <strong>{eur(pickedTotals.vb)}</strong> · Ziel <strong>{eur(pickedTotals.target)}</strong> ·{' '}
                 <span className="text-rose">Limit <strong>{eur(pickedTotals.floor)}</strong></span>
@@ -422,31 +425,60 @@ function DealModal({ open, onClose, tanks }: { open: boolean; onClose: () => voi
 }
 
 function AddTankModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [maker, setMaker] = useState<Maker>('Möschle')
-  const [type, setType] = useState('Edelstahltank')
+  const { db } = useStore()
+  const [category, setCategory] = useState<Category>(db.settings.categories[0]?.id ?? 'tank')
+  const [maker, setMaker] = useState('')
+  const [type, setType] = useState('')
   const [litres, setLitres] = useState('')
   const [vb, setVb] = useState('')
+  const [count, setCount] = useState('1')
+
   if (!open) return null
+  const cat = db.settings.categories.find((c) => c.id === category)
   const l = Number(litres) || 0
   const p = Number(vb) || 0
+  const n = Math.max(1, Math.min(200, Number(count) || 1))
+  const knownMakers = [...new Set(db.tanks.map((t) => t.maker))].sort((a, b) => a.localeCompare(b, 'de'))
+
+  function submit() {
+    // Several identical items at once — 12 Gitterboxen should not need 12 rounds.
+    for (let i = 0; i < n; i += 1) {
+      addTank({ category, maker: maker.trim() || 'Sonstige', type: type.trim() || (cat?.one ?? 'Position'), litres: l, vb: p })
+    }
+    onClose()
+    setLitres(''); setVb(''); setType(''); setMaker(''); setCount('1')
+  }
 
   return (
-    <Modal open onClose={onClose} title="Tank hinzufügen">
+    <Modal open onClose={onClose} title="Position hinzufügen">
       <div className="space-y-4">
+        <Field label="Kategorie">
+          <Select value={category} onChange={(e) => setCategory(e.target.value)}>
+            {db.settings.categories.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+          </Select>
+        </Field>
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Hersteller">
-            <Select value={maker} onChange={(e) => setMaker(e.target.value as Maker)}>
-              {MAKERS.map((m) => <option key={m}>{m}</option>)}
-            </Select>
+          <Field label="Hersteller" hint="frei, z. B. Speidel, Bucher, Inoxpa">
+            <Input value={maker} onChange={(e) => setMaker(e.target.value)} placeholder="Sonstige" list="bekannte-hersteller" />
+            <datalist id="bekannte-hersteller">{knownMakers.map((m) => <option key={m} value={m} />)}</datalist>
           </Field>
-          <Field label="Typ"><Input value={type} onChange={(e) => setType(e.target.value)} placeholder="Edelstahltank" /></Field>
-          <Field label="Volumen (l)"><Input type="number" value={litres} onChange={(e) => setLitres(e.target.value)} className="tnum" /></Field>
-          <Field label="VB brutto (€)" hint={l && p ? centsPerLitre(p, l) : undefined}><Input type="number" value={vb} onChange={(e) => setVb(e.target.value)} className="tnum" /></Field>
+          <Field label="Bezeichnung"><Input value={type} onChange={(e) => setType(e.target.value)} placeholder={cat?.one ?? 'Position'} /></Field>
+          {cat?.hasVolume && (
+            <Field label="Volumen (l)"><Input type="number" value={litres} onChange={(e) => setLitres(e.target.value)} className="tnum" /></Field>
+          )}
+          <Field label="VB brutto (€)" hint={cat?.hasVolume && l && p ? centsPerLitre(p, l) : undefined}>
+            <Input type="number" value={vb} onChange={(e) => setVb(e.target.value)} className="tnum" />
+          </Field>
+          <Field label="Anzahl" hint={n > 1 ? `${n} gleiche Positionen anlegen` : undefined}>
+            <Input type="number" min={1} max={200} value={count} onChange={(e) => setCount(e.target.value)} className="tnum" />
+          </Field>
         </div>
         <p className="text-[13px] text-muted">Zielpreis und Untergrenze werden automatisch geschätzt (86 % bzw. 72 % der VB) und lassen sich danach anpassen.</p>
         <div className="flex justify-end gap-2 border-t border-line pt-4">
           <Button onClick={onClose}>Abbrechen</Button>
-          <Button variant="primary" disabled={!l || !p} onClick={() => { addTank({ maker, type, litres: l, vb: p }); onClose(); setLitres(''); setVb('') }}>Hinzufügen</Button>
+          <Button variant="primary" disabled={!p} onClick={submit}>
+            {n > 1 ? `${n} Positionen hinzufügen` : 'Hinzufügen'}
+          </Button>
         </div>
       </div>
     </Modal>

@@ -63,6 +63,9 @@ function migrate(raw: unknown): DB {
   if (!Array.isArray(settings.portals) || settings.portals.length === 0) {
     settings.portals = clone(seed.settings.portals)
   }
+  if (!Array.isArray(settings.categories) || settings.categories.length === 0) {
+    settings.categories = clone(seed.settings.categories)
+  }
   const fallbackPortal = settings.portals[0].id
   // Items stored before barrels existed are all tanks.
   const tanks = (db.tanks ?? clone(seed.tanks)).map((t) => ({

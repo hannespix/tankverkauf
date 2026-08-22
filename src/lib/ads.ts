@@ -24,8 +24,8 @@ export interface GeneratedAd {
 }
 
 export const SCOPE_LABEL: Record<AdScope['kind'], string> = {
-  paket: 'Tank-Komplettpaket',
-  faesser: 'Holzfässer',
+  paket: 'Komplettpaket',
+  kategorie: 'Ganze Kategorie',
   maker: 'Hersteller-Bundle',
   tank: 'Einzelner Tank',
   restposten: 'Restposten (Kurzfassung)',
@@ -37,10 +37,11 @@ function tanksInScope(db: DB, scope: AdScope): Tank[] {
   switch (scope.kind) {
     case 'paket':
     case 'restposten':
-      // Barrels sell to gardeners, tanks to winemakers — never in one package price.
-      return open.filter((t) => t.category === 'tank')
-    case 'faesser':
-      return open.filter((t) => t.category === 'fass')
+      // Only what the settings mark as part of the package — barrels and machines
+      // sell to entirely different people than the tanks do.
+      return open.filter((t) => db.settings.categories.find((c) => c.id === t.category)?.inPackage)
+    case 'kategorie':
+      return open.filter((t) => t.category === scope.category)
     case 'maker':
       return open.filter((t) => t.maker === scope.maker)
     case 'tank':
@@ -169,26 +170,49 @@ export function generateAd(db: DB, scope: AdScope, portal: Portal | null): Gener
     return { title, body: trim(body, lim.body), price: t.vb, priceType: 'VB', tankIds: tanks.map((x) => x.id), stamp: stampOf(tanks, t.vb) }
   }
 
-  if (scope.kind === 'faesser') {
-    // Deco buyers care about look, size and what fits in the garden, not cellar specs.
-    const perPiece = groups.map((g) => `• ${g.count}× ${g.type} ${num(g.litres)} l – je ${eur(g.vb)}`)
-    const title = trim(`${t.count} Weinfässer Eiche ${groups.map((g) => `${num(g.litres)} l`).join(' / ')} Dekofass Regentonne`, lim.title)
+  if (scope.kind === 'kategorie') {
+    const cat = db.settings.categories.find((c) => c.id === scope.category)
+    const volume = cat?.hasVolume ?? false
+    const isBarrel = scope.category === 'fass'
+    const perPiece = groups.map((g) =>
+      volume
+        ? `• ${g.count}× ${g.type} ${num(g.litres)} l – je ${eur(g.vb)}`
+        : `• ${g.count}× ${g.maker === 'Sonstige' ? g.type : `${g.maker} ${g.type}`} – je ${eur(g.vb)}`)
+
+    const title = trim(
+      isBarrel
+        ? `${t.count} Weinfässer Eiche ${groups.map((g) => `${num(g.litres)} l`).join(' / ')} Dekofass Regentonne`
+        : `${t.count}× ${cat?.label ?? 'Positionen'} aus Betriebsauflösung Weingut`,
+      lim.title,
+    )
+
+    const intro = isBarrel
+      ? `${t.count} gebrauchte Eichenfässer aus dem eigenen Keller abzugeben — ${sellerName}, Betriebsauflösung.`
+      : `${cat?.label ?? 'Verschiedene Positionen'} aus der Betriebsauflösung von ${sellerName}. ${t.count} Positionen, einzeln oder zusammen abzugeben.`
+
+    const condition = isBarrel
+      ? [
+          'ZUSTAND',
+          'Original Weinfässer, gebraucht, gewachsen im Einsatz. Holz dicht, Reifen fest.',
+          'Nicht geschliffen und nicht behandelt — genau so, wie sie aus dem Keller kommen.',
+          '',
+          'VERWENDUNG',
+          'Als Deko im Garten oder Hof, Stehtisch, Pflanzkübel, Regentonne oder Möbelprojekt.',
+        ]
+      : ['ZUSTAND', 'Gebraucht, aus laufendem Betrieb. Funktionsfähig, Besichtigung und Prüfung vor Ort möglich.']
+
     const body = [
-      `${t.count} gebrauchte Eichenfässer aus dem eigenen Keller abzugeben — ${sellerName}, Betriebsauflösung.`,
+      intro,
       '',
       'BESTAND',
       ...perPiece,
       '',
-      'ZUSTAND',
-      'Original Weinfässer, gebraucht, gewachsen im Einsatz. Holz dicht, Reifen fest.',
-      'Nicht geschliffen und nicht behandelt — genau so, wie sie aus dem Keller kommen.',
-      '',
-      'VERWENDUNG',
-      'Als Deko im Garten oder Hof, Stehtisch, Pflanzkübel, Regentonne oder Möbelprojekt.',
+      ...condition,
       '',
       'PREIS',
-      `Einzeln zu den genannten Preisen. Bei Abnahme mehrerer Fässer deutlicher Nachlass — die ganze Partie (${t.count} Stück) auf Anfrage.`,
+      `Einzeln zu den genannten Preisen. Bei Abnahme mehrerer Positionen deutlicher Nachlass — alles zusammen (${t.count} Stück) auf Anfrage.`,
       `Alle Preise brutto inkl. ${Math.round(s.vatRate * 100)} % MwSt.`,
+      ...(fach ? ['Die Umsatzsteuer wird auf der Rechnung separat ausgewiesen.'] : []),
       '',
       pickupBlock(db),
       '',

@@ -446,6 +446,28 @@ export function removeAd(id: string) {
 
 // ----------------------------------------------------------------- settings
 
+export function upsertCategory(cat: DB['settings']['categories'][number]) {
+  store.mutate(
+    (db) => {
+      const i = db.settings.categories.findIndex((c) => c.id === cat.id)
+      if (i >= 0) db.settings.categories[i] = cat
+      else db.settings.categories.push(cat)
+    },
+    { kind: 'settings', text: `Kategorie gespeichert: ${cat.label}` },
+  )
+}
+
+/** Refused while positions still point at it — silently orphaning them would be worse. */
+export function removeCategory(id: string): string | null {
+  const db = store.getSnapshot().db
+  const used = db.tanks.filter((t) => t.category === id).length
+  if (used > 0) return `${used} Positionen gehören noch zu dieser Kategorie.`
+  store.mutate((draft) => {
+    draft.settings.categories = draft.settings.categories.filter((c) => c.id !== id)
+  }, { kind: 'settings', text: 'Kategorie entfernt' })
+  return null
+}
+
 export function upsertPortal(portal: DB['settings']['portals'][number]) {
   store.mutate(
     (db) => {
