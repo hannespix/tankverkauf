@@ -1,12 +1,12 @@
 import { useRef, useState } from 'react'
-import { Button, Card, Field, Input, Pill, SectionTitle, Textarea, cx } from '../components/ui'
-import { IconCheck, IconCloud, IconDownload, IconLock, IconRefresh, IconUpload, IconWarn } from '../components/icons'
-import { patchSettings } from '../lib/actions'
+import { Button, Card, Field, Input, Modal, Pill, SectionTitle, Select, Textarea, cx } from '../components/ui'
+import { IconCheck, IconCloud, IconDownload, IconLock, IconPlus, IconRefresh, IconTrash, IconUpload, IconWarn } from '../components/icons'
+import { patchSettings, removePortal, upsertPortal } from '../lib/actions'
 import { exportCsv, exportJson, exportXlsx, importXlsx } from '../lib/exporter'
 import { dateTimeDE, relativeDE } from '../lib/format'
 import { store, useStore } from '../lib/store'
 import { clearVault } from '../lib/vault'
-import type { DB } from '../types'
+import { STYLE_LABEL, type DB, type Portal, type PortalStyle } from '../types'
 
 export default function Settings() {
   const { db, config, mode, login, repoPrivate, lastSyncAt, sync, error } = useStore()
@@ -14,6 +14,7 @@ export default function Settings() {
   const [cfg, setCfg] = useState(config)
   const [busy, setBusy] = useState<string | null>(null)
   const [note, setNote] = useState<string | null>(null)
+  const [editPortal, setEditPortal] = useState<Portal | null>(null)
   const xlsxRef = useRef<HTMLInputElement>(null)
   const jsonRef = useRef<HTMLInputElement>(null)
 
@@ -127,6 +128,39 @@ export default function Settings() {
       </Card>
 
       <Card>
+        <SectionTitle
+          title="Portale"
+          hint="Bestimmt Zeichengrenzen, Zielseite und Tonlage der erzeugten Anzeigentexte."
+          action={<Button onClick={() => setEditPortal({ id: '', name: '', postUrl: '', titleLimit: 80, bodyLimit: 4000, style: 'privat', notes: '', active: true })}><IconPlus />Portal</Button>}
+        />
+        <div className="space-y-2">
+          {s.portals.map((portal) => (
+            <div key={portal.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface-2 p-3">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-bold">{portal.name}</span>
+                  <Pill tone={portal.style === 'fach' ? 'sky' : 'neutral'}>{portal.style === 'fach' ? 'Fachportal' : 'Privatmarkt'}</Pill>
+                  <Pill tone="neutral">{db.ads.filter((a) => a.portalId === portal.id).length} Anzeigen</Pill>
+                </div>
+                <div className="tnum mt-0.5 text-[13px] text-muted">
+                  Titel max. {portal.titleLimit} · Text max. {portal.bodyLimit} Zeichen
+                </div>
+                {portal.notes && <div className="mt-0.5 text-xs text-faint">{portal.notes}</div>}
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={() => setEditPortal(portal)}>Bearbeiten</Button>
+                <Button size="sm" variant="danger"
+                  onClick={() => { if (confirm(`Portal „${portal.name}" entfernen? Bestehende Anzeigen bleiben erhalten.`)) removePortal(portal.id) }}>
+                  <IconTrash />
+                </Button>
+              </div>
+            </div>
+          ))}
+          {s.portals.length === 0 && <p className="text-sm text-muted">Keine Portale angelegt.</p>}
+        </div>
+      </Card>
+
+      <Card>
         <SectionTitle title="Export & Import" hint="Excel für die Ablage, JSON als vollständiges Backup." />
         {note && <div className="mb-3 rounded-xl border border-line bg-surface-2 p-3 text-sm">{note}</div>}
         <div className="flex flex-wrap gap-2">
@@ -164,6 +198,46 @@ export default function Settings() {
       {sync === 'saved' && (
         <p className="flex items-center justify-center gap-1.5 text-sm text-primary"><IconCheck />Alles gespeichert</p>
       )}
+
+      {editPortal && <PortalModal portal={editPortal} onClose={() => setEditPortal(null)} />}
     </div>
+  )
+}
+
+function PortalModal({ portal, onClose }: { portal: Portal; onClose: () => void }) {
+  const [draft, setDraft] = useState<Portal>(portal)
+  const set = (patch: Partial<Portal>) => setDraft((d) => ({ ...d, ...patch }))
+  const isNew = portal.id === ''
+  // A stable id keeps existing ads pointing at the right portal, so derive it once.
+  const id = isNew ? draft.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') : draft.id
+
+  return (
+    <Modal open onClose={onClose} title={isNew ? 'Portal hinzufügen' : draft.name}>
+      <div className="space-y-4">
+        <Field label="Name"><Input value={draft.name} onChange={(e) => set({ name: e.target.value })} placeholder="z. B. Winzer-Service.de" autoFocus /></Field>
+        <Field label="Seite zum Anzeigen-Aufgeben">
+          <Input value={draft.postUrl} onChange={(e) => set({ postUrl: e.target.value })} placeholder="https://…" inputMode="url" />
+        </Field>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Titel max. Zeichen"><Input type="number" min={10} className="tnum" value={draft.titleLimit} onChange={(e) => set({ titleLimit: Math.max(10, Number(e.target.value) || 65) })} /></Field>
+          <Field label="Text max. Zeichen"><Input type="number" min={100} className="tnum" value={draft.bodyLimit} onChange={(e) => set({ bodyLimit: Math.max(100, Number(e.target.value) || 4000) })} /></Field>
+        </div>
+        <Field label="Tonlage" hint="Fachportale bekommen Branchensprache und den Netto-/MwSt.-Hinweis.">
+          <Select value={draft.style} onChange={(e) => set({ style: e.target.value as PortalStyle })}>
+            {(['privat', 'fach'] as PortalStyle[]).map((v) => <option key={v} value={v}>{STYLE_LABEL[v]}</option>)}
+          </Select>
+        </Field>
+        <Field label="Notiz" hint="Kosten, passende Kategorie, Besonderheiten.">
+          <Textarea rows={2} value={draft.notes} onChange={(e) => set({ notes: e.target.value })} />
+        </Field>
+        <div className="flex justify-end gap-2 border-t border-line pt-4">
+          <Button onClick={onClose}>Abbrechen</Button>
+          <Button variant="primary" disabled={!draft.name.trim() || !id}
+            onClick={() => { upsertPortal({ ...draft, id }); onClose() }}>
+            Speichern
+          </Button>
+        </div>
+      </div>
+    </Modal>
   )
 }

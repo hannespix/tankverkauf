@@ -52,14 +52,22 @@ export const newId = (prefix: string) => `${prefix}-${Math.random().toString(36)
 function migrate(raw: unknown): DB {
   const db = raw as Partial<DB>
   const seed = SEED
+  const settings = { ...clone(seed.settings), ...(db.settings ?? {}) }
+  // Databases written before portals existed carry neither the list nor an ad's portal.
+  if (!Array.isArray(settings.portals) || settings.portals.length === 0) {
+    settings.portals = clone(seed.settings.portals)
+  }
+  const fallbackPortal = settings.portals[0].id
+  const ads = (db.ads ?? []).map((a) => ({ ...a, portalId: a.portalId ?? fallbackPortal }))
+
   return {
     schema: 1,
     updatedAt: db.updatedAt ?? new Date().toISOString(),
     tanks: db.tanks ?? clone(seed.tanks),
     leads: db.leads ?? [],
     deals: db.deals ?? clone(seed.deals),
-    ads: db.ads ?? [],
-    settings: { ...clone(seed.settings), ...(db.settings ?? {}) },
+    ads,
+    settings,
     activity: db.activity ?? [],
   }
 }

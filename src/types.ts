@@ -70,8 +70,26 @@ export interface AdScope {
 
 export type AdStatus = 'entwurf' | 'online' | 'offline'
 
+/** Wording register: a consumer marketplace reads differently than a trade portal. */
+export type PortalStyle = 'privat' | 'fach'
+
+export interface Portal {
+  id: string
+  name: string
+  /** Where a new ad is posted. */
+  postUrl: string
+  titleLimit: number
+  bodyLimit: number
+  style: PortalStyle
+  /** Free note, e.g. costs or the right category to pick. */
+  notes: string
+  active: boolean
+}
+
 export interface Ad {
   id: string
+  /** Which portal this ad is written for. */
+  portalId: string
   title: string
   body: string
   price: number
@@ -93,6 +111,7 @@ export interface Ad {
 
 export interface Settings {
   vatRate: number
+  portals: Portal[]
   packagePrice: number
   packageTarget: number
   packageFloor: number
@@ -144,6 +163,11 @@ export const STAGE_LABEL: Record<LeadStage, string> = {
   reserviert: 'Reserviert',
   gewonnen: 'Gewonnen',
   verloren: 'Verloren',
+}
+
+export const STYLE_LABEL: Record<PortalStyle, string> = {
+  privat: 'Privatmarkt (allgemein verständlich)',
+  fach: 'Fachportal (Branchensprache, MwSt.-Hinweis)',
 }
 
 export const SOURCE_LABEL: Record<LeadSource, string> = {
