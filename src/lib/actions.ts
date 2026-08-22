@@ -290,6 +290,34 @@ export function addMissingSeedNotes(): number {
 }
 
 /**
+ * Wortgrenzen, die im Ausgangsbestand hinterlegt sind und beim vorhandenen Portal
+ * noch fehlen. Die Portalliste ist Nutzerdatei — migrate() rührt sie nicht an,
+ * sonst käme jedes selbst angelegte Portal beim nächsten Laden wieder weg. Also
+ * derselbe sichtbare Abgleich wie bei Maßen und Paketen.
+ */
+export function wordLimitsInSeed(db: DB): { id: string; name: string; words: number }[] {
+  const seeded = new Map(SEED.settings.portals.filter((p) => p.bodyWords).map((p) => [p.id, p.bodyWords!]))
+  return db.settings.portals
+    .filter((p) => !p.bodyWords && seeded.has(p.id))
+    .map((p) => ({ id: p.id, name: p.name, words: seeded.get(p.id)! }))
+}
+
+export function addMissingSeedWordLimits(): number {
+  const todo = wordLimitsInSeed(store.getSnapshot().db)
+  if (todo.length === 0) return 0
+  const byId = new Map(todo.map((x) => [x.id, x.words]))
+  store.mutate(
+    (db) => {
+      db.settings.portals = db.settings.portals.map((p) =>
+        byId.has(p.id) && !p.bodyWords ? { ...p, bodyWords: byId.get(p.id) } : p,
+      )
+    },
+    { kind: 'settings', text: `Wortgrenze für ${todo.length} ${todo.length === 1 ? 'Portal' : 'Portale'} übernommen` },
+  )
+  return todo.length
+}
+
+/**
  * Angebotspakete, die im Ausgangsbestand stehen und hier noch fehlen. Gleiche
  * Regel wie überall: migrate() lässt eine vorhandene Liste unangetastet, sonst
  * käme jedes selbst geschnürte Paket beim nächsten Laden wieder weg.

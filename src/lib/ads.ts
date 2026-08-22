@@ -1,5 +1,6 @@
 import type { Ad, AdScope, DB, Maker, Portal, Tank } from '../types'
 import { dims as fmtDims, eur, eurExact, centsPerLitre, netOf, num } from './format'
+import { catalogPageUrl } from './catalog'
 import { isOpen, totals } from './stats'
 
 /** Fallback when a portal was deleted but an ad still points at it. */
@@ -24,6 +25,7 @@ export interface GeneratedAd {
 }
 
 export const SCOPE_LABEL: Record<AdScope['kind'], string> = {
+  gesamt: 'Gesamtanzeige — alles',
   paket: 'Komplettpaket',
   kategorie: 'Ganze Kategorie',
   maker: 'Hersteller-Bundle',
@@ -35,6 +37,9 @@ export const SCOPE_LABEL: Record<AdScope['kind'], string> = {
 function tanksInScope(db: DB, scope: AdScope): Tank[] {
   const open = db.tanks.filter(isOpen)
   switch (scope.kind) {
+    case 'gesamt':
+      // Wirklich alles, ohne Rücksicht auf inPackage — das ist der Sinn.
+      return open
     case 'paket':
     case 'restposten':
       // Only what the settings mark as part of the package — barrels and machines
@@ -154,10 +159,14 @@ function featureBlock(tanks: Tank[]): string[] {
   return shared.length > 0 ? ['AUSSTATTUNG', ...shared.map((f) => `• ${f}`), ''] : []
 }
 
-function pickupBlock(db: DB): string {
+/**
+ * `withPlace: false` für Zuschnitte, die den Standort schon an anderer Stelle
+ * führen — sonst steht "Standort: 79241 Ihringen" zweimal in derselben Anzeige.
+ */
+function pickupBlock(db: DB, withPlace = true): string {
   const s = db.settings.seller
   const where = [s.plz, s.location].filter(Boolean).join(' ')
-  return ['ABHOLUNG', s.pickupInfo, where ? `Standort: ${where}` : ''].filter(Boolean).join('\n')
+  return ['ABHOLUNG', s.pickupInfo, withPlace && where ? `Standort: ${where}` : ''].filter(Boolean).join('\n')
 }
 
 export function generateAd(db: DB, scope: AdScope, portal: Portal | null): GeneratedAd {
@@ -166,7 +175,7 @@ export function generateAd(db: DB, scope: AdScope, portal: Portal | null): Gener
   const s = db.settings
   const groups = group(tanks)
   const sellerName = s.seller.name || 'Betriebsauflösung'
-  const lim = limitsOf(portal)
+  const lim = limitsOfPortal(portal)
   const fach = portal?.style === 'fach'
   // Wie die Ware in Überschrift und Fließtext heißt. Solange nur eine Kategorie im
   // Zuschnitt steckt, ist es deren Name; bei gemischten Posten bleibt es neutral.
@@ -211,6 +220,112 @@ export function generateAd(db: DB, scope: AdScope, portal: Portal | null): Gener
       .filter((l) => l !== undefined)
       .join('\n')
     return { title, body: trim(body, lim.body), price: tank.vb, priceType: 'VB', tankIds: [tank.id], stamp: stampOf(tanks, tank.vb) }
+  }
+
+  if (scope.kind === 'gesamt') {
+    const byCat = new Map<string, Tank[]>()
+    for (const t of tanks) byCat.set(t.category, [...(byCat.get(t.category) ?? []), t])
+    const catName = (id: string) => s.categories.find((c) => c.id === id)?.label ?? id
+
+    // Eine Zeile je Bauart, ohne Maße: die stehen samt Fotos in der Liste, auf die
+    // unten verwiesen wird. Bei 58 Positionen ist jedes Wort eine Entscheidung.
+    const rows = (withPrice: boolean) => {
+      const out: string[] = []
+      for (const [cat, list] of byCat) {
+        const tt = totals(list)
+        const withVolume = s.categories.find((c) => c.id === cat)?.hasVolume ?? false
+        const prices = list.map((x) => x.vb)
+        const lo = Math.min(...prices)
+        const hi = Math.max(...prices)
+        // Fällt der Preis aus den Zeilen, wandert er als Spanne in die Überschrift.
+        // Eine Anzeige ohne jede Preisangabe bekommt keine ernsthafte Anfrage.
+        const span = withPrice ? '' : ` · ${lo === hi ? eur(lo) : `${num(lo)}–${eur(hi)}`} je Stück`
+        out.push(`${catName(cat).toUpperCase()} — ${list.length} Stück${withVolume && tt.litres > 0 ? `, ${num(tt.litres)} l` : ''}${span}`)
+        for (const g of group(list)) {
+          const name = g.maker === 'Sonstige' ? g.type : `${g.maker} ${g.type}`
+          const vol = withVolume && g.litres > 0 ? ` ${num(g.litres)} l` : ''
+          // "1× Schichtenfilter – je 390 €" liest sich falsch. "je" gehört nur dorthin,
+          // wo es von mehreren Stück tatsächlich eines meint.
+          const price = withPrice ? ` – ${g.count > 1 ? 'je ' : ''}${eur(g.vb)}` : ''
+          out.push(`• ${g.count}× ${name}${vol}${price}`)
+        }
+        out.push('')
+      }
+      return out
+    }
+
+    const link = s.catalog.owner ? catalogPageUrl(s.catalog) : ''
+    // Kleinanzeigen erlaubt 65 Zeichen. Ein abgeschnittener Titel ("… Dekof…")
+    // sieht nach Panne aus, deshalb wird gekürzt, indem Wörter wegfallen, nicht
+    // Buchstaben: die erste Fassung, die hineinpasst, gewinnt.
+    // Die Warengattungen kommen aus den Kategorien selbst. Fest verdrahtet stand
+    // hier "Edelstahltanks, Dekofässer, Kellertechnik" — sobald eine Gattung
+    // ausverkauft ist, wäre das eine Einladung unter falschen Angaben.
+    const catList = [...byCat.keys()].map(catName).join(', ')
+    const titles = [
+      fach
+        ? `Betriebsauflösung Weingut: ${t.count} Positionen — ${catList}`
+        : `Betriebsauflösung Weingut — ${t.count} Positionen: ${catList}`,
+      `Betriebsauflösung Weingut: ${catList}`,
+      `Betriebsauflösung: ${catList}`,
+      `Betriebsauflösung Weingut — ${t.count} Positionen`,
+    ]
+    const title = trim(titles.find((x) => x.length <= lim.title) ?? titles[titles.length - 1], lim.title)
+
+    // Nach Wichtigkeit geordnet: was am Ende steht, fällt zuerst weg, wenn das
+    // Portal nach Wörtern zählt. Der Verweis auf die Liste bleibt — ohne ihn
+    // sieht niemand Fotos und Maße, und genau dafür ist die Anzeige da.
+    const head = [
+      fach
+        ? `${sellerName} — Betriebsauflösung. ${t.count} Positionen abzugeben, einzeln oder zusammen.`
+        : `Wegen Betriebsaufgabe geben wir unsere komplette Kellerausstattung ab: ${t.count} Positionen, einzeln oder zusammen.`,
+      '',
+    ]
+    const tail = [
+      'ALLE FOTOS UND MASSE',
+      link ? `Vollständige Liste mit Bildern und Maßen zu jeder Position: ${link}` : 'Fotos und Maße auf Anfrage.',
+      `Alle Preise brutto inkl. ${Math.round(s.vatRate * 100)} % MwSt., Verhandlungsbasis.`,
+      'Bei Abnahme mehrerer Positionen mache ich einen Preis — bitte anfragen.',
+      // Der Standort kostet drei Wörter und entscheidet, ob jemand überhaupt
+      // anfragt. Er bleibt auch dann stehen, wenn der Abholtext fällt.
+      [s.seller.plz, s.seller.location].filter(Boolean).join(' ')
+        ? `Standort: ${[s.seller.plz, s.seller.location].filter(Boolean).join(' ')}`
+        : '',
+    ].filter(Boolean)
+    // Der Standort steht schon im tail — hier würde er sich wiederholen.
+    // Der Standort steht schon im tail — hier würde er sich wiederholen.
+    const full = ['', pickupBlock(db, false), '', s.ad.signature]
+    const short = ['', s.ad.signature]
+
+    const assemble = (list: string[], extra: string[]) => [...head, ...list, ...tail, ...extra].join('\n').replace(/\n{3,}/g, '\n\n')
+
+    // Nach Wert geordnet, nicht nach Länge: die Preisspalte wiegt schwerer als
+    // Abholtext und Signatur, denn ohne sie fragt niemand an. Erst wenn sie
+    // fällt, wandert der Preis als Spanne in die Kategoriezeile; ganz zuletzt
+    // fällt die Aufzählung selbst. Der Verweis auf die Liste bleibt immer —
+    // ohne ihn sieht niemand Fotos und Maße, und genau dafür ist die Anzeige da.
+    const fits = (text: string) => lim.words === 0 || countWords(text) <= lim.words
+    const priced = rows(true)
+    const plain = rows(false)
+    const versions = [
+      assemble(priced, full),
+      assemble(priced, short),
+      assemble(priced, []),
+      assemble(plain, full),
+      assemble(plain, short),
+      assemble(plain, []),
+      assemble(plain.filter((l) => !l.startsWith('•')), []),
+    ]
+    const body = versions.find(fits) ?? versions[versions.length - 1]
+
+    return {
+      title,
+      body: trim(body, lim.body),
+      price: t.vb,
+      priceType: 'VB',
+      tankIds: tanks.map((x) => x.id),
+      stamp: stampOf(tanks, t.vb),
+    }
   }
 
   if (scope.kind === 'maker') {
@@ -361,6 +476,15 @@ export function generateAd(db: DB, scope: AdScope, portal: Portal | null): Gener
 
 function trim(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`
+}
+
+/** Wie ein Portal zählt: alles, was durch Leerraum getrennt ist. */
+export function countWords(text: string): number {
+  return text.trim() ? text.trim().split(/\s+/).length : 0
+}
+
+export function limitsOfPortal(portal: Portal | null) {
+  return { ...limitsOf(portal), words: portal?.bodyWords ?? 0 }
 }
 
 export interface AdDrift {

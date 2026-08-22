@@ -138,7 +138,7 @@ export interface Quote {
   updatedAt: string
 }
 
-export type AdScopeKind = 'paket' | 'kategorie' | 'maker' | 'tank' | 'restposten' | 'custom'
+export type AdScopeKind = 'gesamt' | 'paket' | 'kategorie' | 'maker' | 'tank' | 'restposten' | 'custom'
 
 export interface AdScope {
   kind: AdScopeKind
@@ -159,6 +159,12 @@ export interface Portal {
   postUrl: string
   titleLimit: number
   bodyLimit: number
+  /**
+   * Höchstzahl an WÖRTERN im Anzeigentext. Manche Portale zählen Wörter statt
+   * Zeichen — bei 58 Positionen ist das die Schranke, die zuerst greift.
+   * 0 oder fehlend heißt: keine Wortgrenze.
+   */
+  bodyWords?: number
   style: PortalStyle
   /** Free note, e.g. costs or the right category to pick. */
   notes: string
