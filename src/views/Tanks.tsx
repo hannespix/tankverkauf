@@ -13,7 +13,7 @@ const MAKERS: Maker[] = ['Speidel', 'Möschle', 'Clemens', 'Sonstige']
 
 const STATUS_TONE: Record<TankStatus, Tone> = { verfuegbar: 'green', kontakt: 'amber', reserviert: 'sky', verkauft: 'neutral' }
 
-type SortKey = 'id' | 'litres' | 'vb' | 'ctl' | 'status' | 'offer'
+type SortKey = 'id' | 'maker' | 'type' | 'litres' | 'vb' | 'ctl' | 'status' | 'offer' | 'lead'
 
 export default function Tanks() {
   const { db } = useStore()
@@ -24,6 +24,8 @@ export default function Tanks() {
   const [catSel, setCatSel] = useState<Category[]>([])
   const [statusSel, setStatusSel] = useState<TankStatus[]>([])
   const [makerSel, setMakerSel] = useState<Maker[]>([])
+  const [typeSel, setTypeSel] = useState<string[]>([])
+  const [leadSel, setLeadSel] = useState('')
   const [minL, setMinL] = useState('')
   const [maxL, setMaxL] = useState('')
   const [withOffer, setWithOffer] = useState(false)
@@ -43,14 +45,20 @@ export default function Tanks() {
       if (catSel.length && !catSel.includes(t.category)) return false
       if (statusSel.length && !statusSel.includes(t.status)) return false
       if (makerSel.length && !makerSel.includes(t.maker)) return false
+      if (typeSel.length && !typeSel.includes(t.type)) return false
+      if (leadSel === '__none' ? t.leadId : leadSel && t.leadId !== leadSel) return false
       if (t.litres < lo || t.litres > hi) return false
       if (withOffer && !(t.offer && t.offer > 0)) return false
       if (!needle) return true
       const lead = db.leads.find((l) => l.id === t.leadId)?.name ?? ''
       return [t.id, t.maker, t.type, String(t.litres), t.note, lead].some((v) => v.toLowerCase().includes(needle))
     })
+    const leadName = (t: Tank) => db.leads.find((l) => l.id === t.leadId)?.name ?? ''
     const val = (t: Tank): number | string => {
       switch (sort.key) {
+        case 'maker': return t.maker
+        case 'type': return t.type
+        case 'lead': return leadName(t) || '\uffff' // empty sorts last
         case 'litres': return t.litres
         case 'vb': return t.vb
         case 'ctl': return t.vb / t.litres
@@ -63,17 +71,18 @@ export default function Tanks() {
       const x = val(a), y = val(b)
       return (x < y ? -1 : x > y ? 1 : 0) * sort.dir
     })
-  }, [db, q, catSel, statusSel, makerSel, minL, maxL, withOffer, sort])
+  }, [db, q, catSel, statusSel, makerSel, typeSel, leadSel, minL, maxL, withOffer, sort])
 
   const pickedTanks = db.tanks.filter((t) => picked.has(t.id))
   // "Alle auswählen" applies to what the filter currently shows, minus what is already sold.
   const selectable = rows.filter((t) => t.status !== 'verkauft')
   const pickedTotals = totals(pickedTanks)
   // With barrels in the same list, "Tanks" is only right when nothing else is shown.
+  const allTypes = [...new Set(db.tanks.map((t) => t.type))].sort((a, b) => a.localeCompare(b, 'de'))
   const kinds = new Set(rows.map((t) => t.category))
   const noun = kinds.size === 1 ? (kinds.has('fass') ? 'Fässer' : 'Tanks') : 'Positionen'
   const totalNoun = db.tanks.some((t) => t.category === 'fass') ? 'Positionen' : 'Tanks'
-  const active = catSel.length + statusSel.length + makerSel.length + (minL ? 1 : 0) + (maxL ? 1 : 0) + (withOffer ? 1 : 0)
+  const active = catSel.length + statusSel.length + makerSel.length + typeSel.length + (leadSel ? 1 : 0) + (minL ? 1 : 0) + (maxL ? 1 : 0) + (withOffer ? 1 : 0)
   const shown = totals(rows)
 
   const toggle = <T,>(arr: T[], v: T, set: (a: T[]) => void) => set(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v])
@@ -110,6 +119,15 @@ export default function Tanks() {
             <ChipRow label="Art" items={(['tank', 'fass'] as Category[]).map((c) => ({ v: c, l: CATEGORY_LABEL[c] }))} sel={catSel} onToggle={(v) => toggle(catSel, v, setCatSel)} />
             <ChipRow label="Status" items={STATUSES.map((s) => ({ v: s, l: STATUS_LABEL[s] }))} sel={statusSel} onToggle={(v) => toggle(statusSel, v, setStatusSel)} />
             <ChipRow label="Hersteller" items={MAKERS.map((m) => ({ v: m, l: m }))} sel={makerSel} onToggle={(v) => toggle(makerSel, v, setMakerSel)} />
+            <ChipRow label="Typ" items={allTypes.map((t) => ({ v: t, l: t }))} sel={typeSel} onToggle={(v) => toggle(typeSel, v, setTypeSel)} />
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="w-20 shrink-0 text-[13px] font-semibold text-muted">Interessent</span>
+              <Select value={leadSel} onChange={(e) => setLeadSel(e.target.value)} className="w-auto min-w-[190px] py-1.5 text-[13px]">
+                <option value="">Alle</option>
+                <option value="__none">ohne Interessent</option>
+                {db.leads.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+              </Select>
+            </div>
             <div className="flex flex-wrap items-end gap-3">
               <Field label="Liter ab" className="w-28"><Input type="number" value={minL} onChange={(e) => setMinL(e.target.value)} placeholder="0" /></Field>
               <Field label="Liter bis" className="w-28"><Input type="number" value={maxL} onChange={(e) => setMaxL(e.target.value)} placeholder="∞" /></Field>
@@ -118,7 +136,7 @@ export default function Tanks() {
                 nur mit Gebot
               </label>
               {active > 0 && (
-                <Button variant="ghost" onClick={() => { setCatSel([]); setStatusSel([]); setMakerSel([]); setMinL(''); setMaxL(''); setWithOffer(false) }}>
+                <Button variant="ghost" onClick={() => { setCatSel([]); setStatusSel([]); setMakerSel([]); setTypeSel([]); setLeadSel(''); setMinL(''); setMaxL(''); setWithOffer(false) }}>
                   Zurücksetzen
                 </Button>
               )}
@@ -164,12 +182,13 @@ export default function Tanks() {
                   <tr>
                     <th className="w-9 px-2.5 py-2" />
                     {head('id', '#', 'w-14')}
-                    <th className="px-2.5 py-2 text-left text-[11px] font-bold tracking-wide uppercase">Tank</th>
+                    {head('maker', 'Hersteller')}
+                    {head('type', 'Typ')}
                     {head('litres', 'Liter', 'text-right')}
                     {head('vb', 'VB', 'text-right')}
                     {head('ctl', 'ct/l', 'text-right')}
                     {head('status', 'Status')}
-                    <th className="px-2.5 py-2 text-left text-[11px] font-bold tracking-wide uppercase">Interessent</th>
+                    {head('lead', 'Interessent')}
                     {head('offer', 'Gebot', 'text-right')}
                     <th className="px-2.5 py-2 text-left text-[11px] font-bold tracking-wide uppercase">Abholung</th>
                   </tr>
@@ -188,9 +207,10 @@ export default function Tanks() {
                         <td className="tnum px-2.5 py-1.5 text-xs text-faint">{t.id}</td>
                         <td className="px-2.5 py-1.5">
                           <button type="button" onClick={() => setDetail(t.id)} className="text-left font-semibold whitespace-nowrap hover:text-primary hover:underline">
-                            {t.maker === 'Sonstige' ? t.type : `${t.maker} ${t.type}`}
+                            {t.maker}
                           </button>
                         </td>
+                        <td className="px-2.5 py-1.5 whitespace-nowrap">{t.type}</td>
                         <td className="tnum px-2.5 py-1.5 text-right font-bold">{num(t.litres)}</td>
                         <td className="tnum px-2.5 py-1.5 text-right">{eur(t.vb)}</td>
                         <td className="tnum px-2.5 py-1.5 text-right text-xs whitespace-nowrap text-muted">{centsPerLitre(t.vb, t.litres)}</td>

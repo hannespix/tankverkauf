@@ -11,9 +11,16 @@ export default function Deals() {
   const readOnly = false
   // Deal id we are creating a brand-new buyer for.
   const [newBuyerFor, setNewBuyerFor] = useState<string | null>(null)
+  const [leadSel, setLeadSel] = useState('')
+  const [openOnly, setOpenOnly] = useState(false)
   const p = progress(db)
   const openMoney = db.deals.filter((d) => !d.paid).reduce((a, d) => a + d.price, 0)
   const toCollect = db.deals.filter((d) => !d.pickedUp)
+  const shown = db.deals.filter((d) => {
+    if (leadSel === '__none' ? d.leadId : leadSel && d.leadId !== leadSel) return false
+    if (openOnly && d.paid && d.pickedUp) return false
+    return true
+  })
 
   return (
     <div className="space-y-4">
@@ -36,13 +43,30 @@ export default function Deals() {
         </Card>
       </section>
 
+      {db.deals.length > 0 && (
+        <Card pad={false}>
+          <div className="flex flex-wrap items-center gap-2 p-3">
+            <Select value={leadSel} onChange={(e) => setLeadSel(e.target.value)} className="w-auto min-w-[190px]">
+              <option value="">Alle Käufer</option>
+              <option value="__none">ohne Käufer</option>
+              {db.leads.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </Select>
+            <label className="flex min-h-11 items-center gap-2 text-sm font-semibold">
+              <input type="checkbox" checked={openOnly} onChange={(e) => setOpenOnly(e.target.checked)} className="h-4 w-4 accent-[var(--primary)]" />
+              nur offene (unbezahlt oder nicht abgeholt)
+            </label>
+            <span className="ml-auto text-[13px] text-muted"><strong className="tnum text-ink">{shown.length}</strong> von {db.deals.length}</span>
+          </div>
+        </Card>
+      )}
+
       {db.deals.length === 0 ? (
         <Card>
           <EmptyState title="Noch keine Verkäufe gebucht" hint="In der Tankliste mehrere Tanks anhaken und „Als Verkauf buchen“ wählen — auch für Paketverkäufe." />
         </Card>
       ) : (
         <div className="space-y-3">
-          {db.deals.map((d) => {
+          {shown.map((d) => {
             const tanks = d.tankIds.map((id) => db.tanks.find((t) => t.id === id)).filter(Boolean)
             const litres = tanks.reduce((a, t) => a + (t?.litres ?? 0), 0)
             const listPrice = tanks.reduce((a, t) => a + (t?.vb ?? 0), 0)

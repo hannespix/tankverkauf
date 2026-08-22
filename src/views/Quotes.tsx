@@ -16,9 +16,16 @@ const STATUS_TONE: Record<QuoteStatus, Tone> = {
 export default function Quotes() {
   const { db } = useStore()
   const [filter, setFilter] = useState<QuoteStatus | ''>('')
+  const [leadSel, setLeadSel] = useState('')
+  const [portalSel, setPortalSel] = useState('')
 
   const openQuotes = db.quotes.filter((q) => q.status !== 'angenommen' && q.status !== 'abgelehnt')
-  const shown = filter ? db.quotes.filter((q) => q.status === filter) : db.quotes
+  const shown = db.quotes.filter((q) => {
+    if (filter && q.status !== filter) return false
+    if (leadSel === '__none' ? q.leadId : leadSel && q.leadId !== leadSel) return false
+    if (portalSel && q.portalId !== portalSel) return false
+    return true
+  })
 
   const openValue = openQuotes.reduce((a, q) => a + (q.buyerOffer ?? q.askPrice), 0)
   const openLitres = openQuotes.reduce(
@@ -37,10 +44,21 @@ export default function Quotes() {
       <Card pad={false}>
         <div className="flex flex-wrap items-center justify-between gap-2 p-3">
           <SectionTitle title="Angebote" hint="Was wem zu welchem Preis angeboten wurde — und wie viel Luft noch bleibt." />
-          <Select value={filter} onChange={(e) => setFilter(e.target.value as QuoteStatus | '')} className="w-auto min-w-[170px]">
-            <option value="">Alle Status</option>
-            {STATUSES.map((s) => <option key={s} value={s}>{QUOTE_STATUS_LABEL[s]}</option>)}
-          </Select>
+          <div className="flex flex-wrap gap-2">
+            <Select value={filter} onChange={(e) => setFilter(e.target.value as QuoteStatus | '')} className="w-auto min-w-[150px]">
+              <option value="">Alle Status</option>
+              {STATUSES.map((s) => <option key={s} value={s}>{QUOTE_STATUS_LABEL[s]}</option>)}
+            </Select>
+            <Select value={leadSel} onChange={(e) => setLeadSel(e.target.value)} className="w-auto min-w-[170px]">
+              <option value="">Alle Interessenten</option>
+              <option value="__none">ohne Interessent</option>
+              {db.leads.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </Select>
+            <Select value={portalSel} onChange={(e) => setPortalSel(e.target.value)} className="w-auto min-w-[150px]">
+              <option value="">Alle Portale</option>
+              {db.settings.portals.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </Select>
+          </div>
         </div>
       </Card>
 
