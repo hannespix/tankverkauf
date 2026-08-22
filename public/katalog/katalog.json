@@ -5,7 +5,7 @@
   "intro": "Wegen Betriebsaufgabe geben wir unsere komplette Kellerausstattung ab. Markieren Sie, was für Sie infrage kommt, und schicken Sie uns Ihr Angebot.",
   "pickupInfo": "Besichtigung und Abholung nach Absprache. Selbstabholung, Verladung mit Stapler möglich.",
   "vatRate": 0.19,
-  "updatedAt": "2026-08-22T16:18:53.968Z",
+  "updatedAt": "2026-08-22T17:35:59.756Z",
   "items": [
     {
       "id": "T-03",
@@ -95,7 +95,9 @@
         "d": 102,
         "h": 132
       },
-      "photos": [],
+      "photos": [
+        "fotos/T-09-fi7tgr.jpg"
+      ],
       "reserved": false
     },
     {
@@ -111,7 +113,9 @@
         "d": 102,
         "h": 132
       },
-      "photos": [],
+      "photos": [
+        "fotos/T-10-2c4jdr.jpg"
+      ],
       "reserved": false
     },
     {
