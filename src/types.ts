@@ -167,6 +167,14 @@ export interface Ad {
 export interface Settings {
   /** Name of the whole thing, shown in the header and the browser tab. */
   appName: string
+  /**
+   * Optional key for reading incoming messages. Deliberately stored with the
+   * data, not in the per-device vault: every device that can unlock the tool
+   * should be able to use it, which is what was asked for. It therefore lives
+   * in the private repo in plain text — it can spend money, but it cannot touch
+   * the data, and it is revoked in one click at the provider.
+   */
+  ai: { apiKey: string; model: string }
   vatRate: number
   categories: CategoryDef[]
   portals: Portal[]
