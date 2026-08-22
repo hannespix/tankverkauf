@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { Button, Card, Field, Input, Modal, Pill, SectionTitle, Select, Textarea, cx } from '../components/ui'
 import { IconCheck, IconCloud, IconDownload, IconLock, IconPlus, IconRefresh, IconTrash, IconUpload, IconWarn } from '../components/icons'
-import { patchSettings, removeCategory, removePortal, upsertCategory, upsertPortal } from '../lib/actions'
+import { addMissingSeedItems, missingFromSeed, patchSettings, removeCategory, removePortal, upsertCategory, upsertPortal } from '../lib/actions'
 import { exportCsv, exportJson, exportXlsx, importXlsx } from '../lib/exporter'
 import { dateTimeDE, relativeDE } from '../lib/format'
 import { store, useStore } from '../lib/store'
@@ -18,6 +18,7 @@ export default function Settings() {
   const [editPortal, setEditPortal] = useState<Portal | null>(null)
   const [editCat, setEditCat] = useState<CategoryDef | null>(null)
   const remembered = rememberedUntil()
+  const missing = missingFromSeed(db)
   const [publishing, setPublishing] = useState(false)
 
   async function publish() {
@@ -303,6 +304,28 @@ export default function Settings() {
         <input ref={jsonRef} type="file" accept=".json" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void onImportJson(f); e.target.value = '' }} />
       </Card>
 
+      {missing.length > 0 && (
+        <Card className="border-amber/40">
+          <SectionTitle
+            title="Positionen aus dem Ausgangsbestand fehlen"
+            hint="Diese Positionen wurden nach dem Anlegen deiner Datenbank ergänzt und sind deshalb noch nicht drin."
+            action={
+              <Button variant="primary" onClick={() => { const n = addMissingSeedItems(); setNote(`${n} Positionen ergänzt.`) }}>
+                <IconPlus />{missing.length} Positionen übernehmen
+              </Button>
+            }
+          />
+          <ul className="flex flex-wrap gap-1.5">
+            {summariseMissing(missing).map((row) => (
+              <li key={row.key}><Pill tone="amber">{row.count}× {row.name}</Pill></li>
+            ))}
+          </ul>
+          <p className="mt-3 text-[13px] text-muted">
+            Wird nicht automatisch gemacht — sonst kämen auch Positionen zurück, die du absichtlich gelöscht hast.
+          </p>
+        </Card>
+      )}
+
       <Card>
         <SectionTitle title="Verlauf" hint={`${db.activity.length} Einträge · die vollständige Historie liegt zusätzlich als Commit-Log auf GitHub.`} />
         {db.activity.length === 0 ? (
@@ -408,4 +431,16 @@ function CategoryModal({ cat, onClose }: { cat: CategoryDef; onClose: () => void
       </div>
     </Modal>
   )
+}
+
+/** "29× Barriquefass 225 l" reads better than 29 identical lines. */
+function summariseMissing(items: DB['tanks']) {
+  const map = new Map<string, { key: string; name: string; count: number }>()
+  for (const t of items) {
+    const name = `${t.maker === 'Sonstige' ? t.type : `${t.maker} ${t.type}`}${t.litres ? ` ${t.litres} l` : ''}`
+    const hit = map.get(name)
+    if (hit) hit.count += 1
+    else map.set(name, { key: name, name, count: 1 })
+  }
+  return [...map.values()]
 }

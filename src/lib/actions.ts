@@ -1,6 +1,7 @@
 import type { Ad, AdScope, DB, Lead, Quote, Tank, TankStatus } from '../types'
 import { STATUS_LABEL } from '../types'
 import { generateAd, portalOf } from './ads'
+import { SEED } from './seed'
 import { newId, store } from './store'
 
 const now = () => new Date().toISOString()
@@ -154,6 +155,30 @@ export function removeLead(lead: Lead) {
     },
     { kind: 'lead', text: `Interessent gelöscht: ${lead.name}` },
   )
+}
+
+/**
+ * Positions that exist in the shipped inventory but not in this database.
+ *
+ * The migration only ever patches fields on rows that are already there — it
+ * must not silently resurrect anything the user deleted on purpose. Anything
+ * added to the seed later therefore needs this explicit comparison.
+ */
+export function missingFromSeed(db: DB): Tank[] {
+  const have = new Set(db.tanks.map((t) => t.id))
+  return SEED.tanks.filter((t) => !have.has(t.id))
+}
+
+export function addMissingSeedItems(): number {
+  const missing = missingFromSeed(store.getSnapshot().db)
+  if (missing.length === 0) return 0
+  store.mutate(
+    (db) => {
+      db.tanks = [...db.tanks, ...missing.map((t) => ({ ...t, photos: [...t.photos], tags: [...t.tags] }))]
+    },
+    { kind: 'settings', text: `${missing.length} Positionen aus dem Ausgangsbestand ergänzt` },
+  )
+  return missing.length
 }
 
 // ------------------------------------------------------------------- quotes
