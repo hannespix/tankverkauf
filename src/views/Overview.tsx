@@ -3,7 +3,7 @@ import { RankedBars, ShareBar, STATUS_FILL, type BarRow, type Segment } from '..
 import { Card, Pill, SectionTitle, Stat, Button, Input, Field, cx } from '../components/ui'
 import { IconClock, IconMegaphone, IconWarn } from '../components/icons'
 import { adDrift } from '../lib/ads'
-import { patchSettings } from '../lib/actions'
+import { missingFromSeed, patchSettings } from '../lib/actions'
 import { centsPerLitre, eur, num, relativeDE } from '../lib/format'
 import { useStore } from '../lib/store'
 import { byMaker, isOpen, judgeOffer, progress, totals } from '../lib/stats'
@@ -47,7 +47,9 @@ export default function Overview({ go }: { go: (v: View) => void }) {
   const pkgPerL = pkg.litres ? centsPerLitre(s.packagePrice, pkg.litres) : '–'
   const saving = pkg.vb - s.packagePrice
 
+  const missing = missingFromSeed(db)
   const todos = [
+    missing.length > 0 && { icon: <IconWarn />, tone: 'amber' as const, text: `${missing.length} Positionen aus dem Ausgangsbestand fehlen im Bestand`, go: 'settings' as View },
     dueFollowUps.length > 0 && { icon: <IconClock />, tone: 'amber' as const, text: `${dueFollowUps.length} Wiedervorlage${dueFollowUps.length > 1 ? 'n' : ''} fällig`, go: 'leads' as View },
     belowFloor.length > 0 && { icon: <IconWarn />, tone: 'rose' as const, text: `${belowFloor.length} Gebot${belowFloor.length > 1 ? 'e' : ''} unter Untergrenze`, go: 'tanks' as View },
     staleAds.length > 0 && { icon: <IconMegaphone />, tone: 'amber' as const, text: `${staleAds.length} Anzeige${staleAds.length > 1 ? 'n' : ''} nicht mehr aktuell`, go: 'ads' as View },
