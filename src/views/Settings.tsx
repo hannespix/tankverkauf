@@ -478,7 +478,7 @@ export default function Settings() {
       {openWords.length > 0 && (
         <Card className="border-amber/40">
           <SectionTitle
-            title="Wortgrenze für ein Portal liegt bereit"
+            title={openWords.length === 1 ? 'Wortgrenze für ein Portal liegt bereit' : `Wortgrenzen für ${openWords.length} Portale liegen bereit`}
             hint="Manche Portale zählen Wörter statt Zeichen. Ist die Grenze hinterlegt, kürzt sich die Gesamtanzeige selbst, bis sie hineinpasst."
             action={
               <Button variant="primary" onClick={() => { const n = addMissingSeedWordLimits(); setNote(`Wortgrenze für ${n} ${n === 1 ? 'Portal' : 'Portale'} übernommen.`) }}>

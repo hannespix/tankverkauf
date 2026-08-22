@@ -81,7 +81,8 @@ export default function Ads() {
             <span className="min-w-0 flex-1">
               <strong>{uncovered.count} Positionen stehen in keiner Anzeige:</strong>{' '}
               {uncovered.categories.map((c) => `${c.n} × ${c.label}`).join(', ')}. Das Komplettpaket nimmt nur Kategorien,
-              die in den Einstellungen als Paketbestandteil markiert sind — für alles andere braucht es eine eigene Anzeige.
+              die in den Einstellungen als Paketbestandteil markiert sind. Der Zuschnitt „Gesamtanzeige" nimmt alles auf
+              einmal — sonst braucht es je Kategorie eine eigene Anzeige.
             </span>
             <Button size="sm" onClick={() => setCreating(true)}><IconPlus />Anzeige dafür</Button>
           </div>
@@ -288,9 +289,9 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
         {kind === 'gesamt' && (
           <p className="rounded-xl bg-surface-2 p-3 text-[13px] text-muted">
             Eine Anzeige je Portal mit <strong className="text-ink">allen {openCount} offenen Positionen</strong>, nach
-            Kategorien sortiert. Einzel-Paketpreise stehen bewusst nicht drin — unten verweist der Text auf die
-            Käuferliste, wo Fotos und Maße zu jeder Position stehen. Wird etwas verkauft, erzeugst du den Text neu
-            und stellst ihn wieder ein.
+            Kategorien sortiert, mit Einzelpreis je Bauart und der Summe für alles zusammen. Die Paketpreise der
+            Käuferliste bleiben draußen — die verhandelst du im Gespräch. Unten verweist der Text auf die Käuferliste
+            mit Fotos und Maßen. Wird etwas verkauft, erzeugst du den Text neu und stellst ihn wieder ein.
           </p>
         )}
 

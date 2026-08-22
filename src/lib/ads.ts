@@ -1,6 +1,6 @@
 import type { Ad, AdScope, DB, Maker, Portal, Tank } from '../types'
 import { dims as fmtDims, eur, eurExact, centsPerLitre, netOf, num } from './format'
-import { catalogPageUrl } from './catalog'
+import { catalogPageUrl, hash } from './catalog'
 import { isOpen, totals } from './stats'
 
 /** Fallback when a portal was deleted but an ad still points at it. */
@@ -97,7 +97,14 @@ const bullet = (g: Group, shared: string[] = []) => {
   return `• ${g.count}× ${label(g)}${vol}${size ? ` · ${size}` : ''} – je ${eur(g.vb)}${extra.length ? ` (${extra.join(', ')})` : ''}`
 }
 
-/** A fingerprint that changes whenever the ad's facts change. */
+/**
+ * Fingerabdruck der Positionen und Preise, die eine Anzeige bewirbt.
+ *
+ * Reicht als alleiniges Kennzeichen NICHT: er merkt nichts davon, wenn sich
+ * Hersteller, Typ, Literzahl, ein Kategoriename, der MwSt.-Satz, der Standort
+ * oder die Signatur ändern — alles Dinge, die im Anzeigentext stehen. Deshalb
+ * stempelt `generateAd` am Ende über den fertigen Text.
+ */
 export function stampOf(tanks: Tank[], price: number): string {
   const ids = tanks.map((t) => `${t.id}:${t.vb}`).sort().join(',')
   return `${price}|${ids}`
@@ -166,10 +173,23 @@ function featureBlock(tanks: Tank[]): string[] {
 function pickupBlock(db: DB, withPlace = true): string {
   const s = db.settings.seller
   const where = [s.plz, s.location].filter(Boolean).join(' ')
-  return ['ABHOLUNG', s.pickupInfo, withPlace && where ? `Standort: ${where}` : ''].filter(Boolean).join('\n')
+  const lines = [s.pickupInfo, withPlace && where ? `Standort: ${where}` : ''].filter(Boolean)
+  // Ohne Inhalt bliebe die nackte Überschrift "ABHOLUNG" im Text stehen.
+  return lines.length ? ['ABHOLUNG', ...lines].join('\n') : ''
 }
 
+/**
+ * Der Fingerabdruck deckt den fertigen Text ab, nicht nur Positionen und Preise.
+ * Vorher blieb „Text veraltet" aus, sobald sich etwas änderte, das zwar im Text
+ * steht, aber nicht in der Positionsliste — ein umbenannter Hersteller etwa, und
+ * genau das steht bei den 29 Dekofässern noch an.
+ */
 export function generateAd(db: DB, scope: AdScope, portal: Portal | null): GeneratedAd {
+  const gen = buildAd(db, scope, portal)
+  return { ...gen, stamp: hash(`${gen.stamp}\n${gen.title}\n${gen.body}`) }
+}
+
+function buildAd(db: DB, scope: AdScope, portal: Portal | null): GeneratedAd {
   const tanks = tanksInScope(db, scope)
   const t = totals(tanks)
   const s = db.settings
@@ -223,13 +243,29 @@ export function generateAd(db: DB, scope: AdScope, portal: Portal | null): Gener
   }
 
   if (scope.kind === 'gesamt') {
+    // Ist alles weg, gibt es nichts zu bewerben. Ohne diesen Zweig entstünde beim
+    // Neuerzeugen eine Anzeige über "0 Positionen" — und die stellt niemand ein.
+    if (tanks.length === 0) {
+      const body = [`${sellerName} — Betriebsauflösung.`, '', 'Alle Positionen sind verkauft. Vielen Dank für das Interesse.'].join('\n')
+      return { title: trim(`${sellerName} — alles verkauft`, lim.title), body, price: 0, priceType: 'VB', tankIds: [], stamp: stampOf([], 0) }
+    }
+
+    // Reihenfolge wie in den Einstellungen — dieselbe wie in der Käuferliste.
+    // Nach `db.tanks` sortiert begann die Anzeige mit der Kategorie, deren erste
+    // Position zufällig oben stand.
     const byCat = new Map<string, Tank[]>()
-    for (const t of tanks) byCat.set(t.category, [...(byCat.get(t.category) ?? []), t])
+    for (const c of s.categories) {
+      const list = tanks.filter((x) => x.category === c.id)
+      if (list.length) byCat.set(c.id, list)
+    }
+    for (const x of tanks) if (!byCat.has(x.category)) byCat.set(x.category, tanks.filter((y) => y.category === x.category))
     const catName = (id: string) => s.categories.find((c) => c.id === id)?.label ?? id
 
     // Eine Zeile je Bauart, ohne Maße: die stehen samt Fotos in der Liste, auf die
     // unten verwiesen wird. Bei 58 Positionen ist jedes Wort eine Entscheidung.
-    const rows = (withPrice: boolean) => {
+    // `perCat` deckelt die Aufzählung je Kategorie, damit die Kürzung in Stufen
+    // geht statt alle Bauarten auf einmal zu verlieren.
+    const rows = (withPrice: boolean, perCat = Infinity) => {
       const out: string[] = []
       for (const [cat, list] of byCat) {
         const tt = totals(list)
@@ -239,9 +275,20 @@ export function generateAd(db: DB, scope: AdScope, portal: Portal | null): Gener
         const hi = Math.max(...prices)
         // Fällt der Preis aus den Zeilen, wandert er als Spanne in die Überschrift.
         // Eine Anzeige ohne jede Preisangabe bekommt keine ernsthafte Anfrage.
-        const span = withPrice ? '' : ` · ${lo === hi ? eur(lo) : `${num(lo)}–${eur(hi)}`} je Stück`
+        // „1 Stück · 390 € je Stück" — „je Stück" gehört nur dorthin, wo es von
+        // mehreren wirklich eines meint.
+        const span = withPrice ? '' : ` · ${lo === hi ? eur(lo) : `${num(lo)}–${eur(hi)}`}${list.length > 1 ? ' je Stück' : ''}`
         out.push(`${catName(cat).toUpperCase()} — ${list.length} Stück${withVolume && tt.litres > 0 ? `, ${num(tt.litres)} l` : ''}${span}`)
-        for (const g of group(list)) {
+        // Gedeckelt wird nach Wert — die billigen Bauarten fallen weg, nicht die,
+        // für die jemand herfährt. Angezeigt wird trotzdem in der Reihenfolge von
+        // `group` (nach Liter absteigend): nach Preis sortiert stünde der 1.800er
+        // über dem 2.000er, und die Liste läse sich wie ein Versehen.
+        const kinds = group(list)
+        const keep = perCat >= kinds.length
+          ? kinds
+          : [...kinds].sort((a, b) => b.vb - a.vb).slice(0, Math.max(0, perCat))
+        const shown = kinds.filter((g) => keep.includes(g))
+        for (const g of shown) {
           const name = g.maker === 'Sonstige' ? g.type : `${g.maker} ${g.type}`
           const vol = withVolume && g.litres > 0 ? ` ${num(g.litres)} l` : ''
           // "1× Schichtenfilter – je 390 €" liest sich falsch. "je" gehört nur dorthin,
@@ -249,12 +296,15 @@ export function generateAd(db: DB, scope: AdScope, portal: Portal | null): Gener
           const price = withPrice ? ` – ${g.count > 1 ? 'je ' : ''}${eur(g.vb)}` : ''
           out.push(`• ${g.count}× ${name}${vol}${price}`)
         }
+        if (kinds.length > shown.length) out.push(`• und ${kinds.length - shown.length} weitere`)
         out.push('')
       }
       return out
     }
 
-    const link = s.catalog.owner ? catalogPageUrl(s.catalog) : ''
+    // Beide Teile müssen stehen — ohne `repo` entstünde "…github.io//katalog.html",
+    // ein Link, der aussieht wie einer und nirgendwohin führt.
+    const link = s.catalog.owner && s.catalog.repo ? catalogPageUrl(s.catalog) : ''
     // Kleinanzeigen erlaubt 65 Zeichen. Ein abgeschnittener Titel ("… Dekof…")
     // sieht nach Panne aus, deshalb wird gekürzt, indem Wörter wegfallen, nicht
     // Buchstaben: die erste Fassung, die hineinpasst, gewinnt.
@@ -262,13 +312,21 @@ export function generateAd(db: DB, scope: AdScope, portal: Portal | null): Gener
     // hier "Edelstahltanks, Dekofässer, Kellertechnik" — sobald eine Gattung
     // ausverkauft ist, wäre das eine Einladung unter falschen Angaben.
     const catList = [...byCat.keys()].map(catName).join(', ')
+    // „1 Positionen" — dieselbe Regel wie bei „je" in den Aufzählungszeilen.
+    const posWord = t.count === 1 ? 'Position' : 'Positionen'
     const titles = [
-      fach
-        ? `Betriebsauflösung Weingut: ${t.count} Positionen — ${catList}`
-        : `Betriebsauflösung Weingut — ${t.count} Positionen: ${catList}`,
-      `Betriebsauflösung Weingut: ${catList}`,
-      `Betriebsauflösung: ${catList}`,
-      `Betriebsauflösung Weingut — ${t.count} Positionen`,
+      // Ohne Gattungen bliebe ein hängender Doppelpunkt stehen — der Fall tritt
+      // ein, sobald die letzte Position verkauft und der Text neu erzeugt wird.
+      ...(catList
+        ? [
+            fach
+              ? `Betriebsauflösung Weingut: ${t.count} ${posWord} — ${catList}`
+              : `Betriebsauflösung Weingut — ${t.count} ${posWord}: ${catList}`,
+            `Betriebsauflösung Weingut: ${catList}`,
+            `Betriebsauflösung: ${catList}`,
+          ]
+        : []),
+      `Betriebsauflösung Weingut — ${t.count} ${posWord}`,
     ]
     const title = trim(titles.find((x) => x.length <= lim.title) ?? titles[titles.length - 1], lim.title)
 
@@ -277,14 +335,17 @@ export function generateAd(db: DB, scope: AdScope, portal: Portal | null): Gener
     // sieht niemand Fotos und Maße, und genau dafür ist die Anzeige da.
     const head = [
       fach
-        ? `${sellerName} — Betriebsauflösung. ${t.count} Positionen abzugeben, einzeln oder zusammen.`
-        : `Wegen Betriebsaufgabe geben wir unsere komplette Kellerausstattung ab: ${t.count} Positionen, einzeln oder zusammen.`,
+        ? `${sellerName} — Betriebsauflösung. ${t.count} ${posWord} abzugeben, einzeln oder zusammen.`
+        : `Wegen Betriebsaufgabe geben wir unsere komplette Kellerausstattung ab: ${t.count} ${posWord}, einzeln oder zusammen.`,
       '',
     ]
     const tail = [
       'ALLE FOTOS UND MASSE',
       link ? `Vollständige Liste mit Bildern und Maßen zu jeder Position: ${link}` : 'Fotos und Maße auf Anfrage.',
       `Alle Preise brutto inkl. ${Math.round(s.vatRate * 100)} % MwSt., Verhandlungsbasis.`,
+      // Bei Kleinanzeigen steht der Preis groß über der Anzeige. Ohne diese Zeile
+      // stünden dort 35.515 €, ohne dass im Text steht, wofür.
+      `Alles zusammen ${eur(t.vb)} VB, einzeln zu den genannten Preisen.`,
       'Bei Abnahme mehrerer Positionen mache ich einen Preis — bitte anfragen.',
       // Der Standort kostet drei Wörter und entscheidet, ob jemand überhaupt
       // anfragt. Er bleibt auch dann stehen, wenn der Abholtext fällt.
@@ -293,28 +354,35 @@ export function generateAd(db: DB, scope: AdScope, portal: Portal | null): Gener
         : '',
     ].filter(Boolean)
     // Der Standort steht schon im tail — hier würde er sich wiederholen.
-    // Der Standort steht schon im tail — hier würde er sich wiederholen.
     const full = ['', pickupBlock(db, false), '', s.ad.signature]
     const short = ['', s.ad.signature]
 
     const assemble = (list: string[], extra: string[]) => [...head, ...list, ...tail, ...extra].join('\n').replace(/\n{3,}/g, '\n\n')
 
-    // Nach Wert geordnet, nicht nach Länge: die Preisspalte wiegt schwerer als
-    // Abholtext und Signatur, denn ohne sie fragt niemand an. Erst wenn sie
-    // fällt, wandert der Preis als Spanne in die Kategoriezeile; ganz zuletzt
-    // fällt die Aufzählung selbst. Der Verweis auf die Liste bleibt immer —
-    // ohne ihn sieht niemand Fotos und Maße, und genau dafür ist die Anzeige da.
-    const fits = (text: string) => lim.words === 0 || countWords(text) <= lim.words
-    const priced = rows(true)
-    const plain = rows(false)
+    // Eine Rangfolge, keine Treppe: genommen wird die erste Fassung, die
+    // hineinpasst. Nach Wert geordnet, nicht nach Länge — die Preisspalte wiegt
+    // schwerer als Abholtext und Signatur, denn ohne sie fragt niemand an. Erst
+    // wenn sie fällt, wandert der Preis als Spanne in die Kategoriezeile; danach
+    // wird die Aufzählung Stufe um Stufe gedeckelt. Dass manche Fassung länger
+    // ausfällt als eine frühere, ist damit unschädlich: sie passt dann eben auch
+    // nicht. Der Verweis auf die Liste bleibt immer — ohne ihn sieht niemand
+    // Fotos und Maße, und genau dafür ist die Anzeige da.
+    //
+    // Geprüft wird gegen BEIDE Grenzen. Nur nach Wörtern zu kürzen und danach hart
+    // auf die Zeichengrenze zu schneiden hieße, den Link mitten im Wort zu kappen.
+    const fits = (text: string) =>
+      (lim.words === 0 || countWords(text) <= lim.words) && text.length <= lim.body
     const versions = [
-      assemble(priced, full),
-      assemble(priced, short),
-      assemble(priced, []),
-      assemble(plain, full),
-      assemble(plain, short),
-      assemble(plain, []),
-      assemble(plain.filter((l) => !l.startsWith('•')), []),
+      assemble(rows(true), full),
+      assemble(rows(true), short),
+      assemble(rows(true), []),
+      assemble(rows(false), full),
+      assemble(rows(false), short),
+      assemble(rows(false), []),
+      ...[10, 8, 6, 5, 4, 3, 2, 1, 0].map((n) => assemble(rows(false, n), [])),
+      // Wenn selbst die Kategoriezeilen nicht mehr hineinpassen: Kopf und Verweis
+      // auf die Liste. Weniger geht nicht, ohne die Anzeige sinnlos zu machen.
+      assemble([], []),
     ]
     const body = versions.find(fits) ?? versions[versions.length - 1]
 

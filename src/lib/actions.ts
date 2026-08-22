@@ -298,7 +298,10 @@ export function addMissingSeedNotes(): number {
 export function wordLimitsInSeed(db: DB): { id: string; name: string; words: number }[] {
   const seeded = new Map(SEED.settings.portals.filter((p) => p.bodyWords).map((p) => [p.id, p.bodyWords!]))
   return db.settings.portals
-    .filter((p) => !p.bodyWords && seeded.has(p.id))
+    // Nur wo NICHTS steht. Eine bewusst gesetzte 0 heißt "keine Wortgrenze" und ist
+    // eine Entscheidung — bei `!p.bodyWords` käme die Karte nach jedem Abwählen
+    // wieder und würde die 0 überschreiben.
+    .filter((p) => p.bodyWords === undefined && seeded.has(p.id))
     .map((p) => ({ id: p.id, name: p.name, words: seeded.get(p.id)! }))
 }
 
@@ -309,7 +312,7 @@ export function addMissingSeedWordLimits(): number {
   store.mutate(
     (db) => {
       db.settings.portals = db.settings.portals.map((p) =>
-        byId.has(p.id) && !p.bodyWords ? { ...p, bodyWords: byId.get(p.id) } : p,
+        byId.has(p.id) && p.bodyWords === undefined ? { ...p, bodyWords: byId.get(p.id) } : p,
       )
     },
     { kind: 'settings', text: `Wortgrenze für ${todo.length} ${todo.length === 1 ? 'Portal' : 'Portale'} übernommen` },
