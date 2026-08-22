@@ -179,6 +179,49 @@ export function patchDeal(id: string, patch: Partial<DB['deals'][number]>, label
   )
 }
 
+/**
+ * Assign (or clear) the buyer on an already-booked sale. The tanks follow along,
+ * the new lead counts as won, and a previous buyer left without any other sale
+ * drops back to "Angebot" instead of staying falsely marked as won.
+ */
+export function assignDealLead(dealId: string, leadId: string | null) {
+  store.mutate(
+    (db) => {
+      const deal = db.deals.find((d) => d.id === dealId)
+      if (!deal) return
+      const previousId = deal.leadId
+      if (previousId === leadId) return
+
+      deal.leadId = leadId
+      for (const tid of deal.tankIds) {
+        const t = db.tanks.find((x) => x.id === tid)
+        if (t) {
+          t.leadId = leadId
+          t.updatedAt = now()
+        }
+      }
+
+      if (leadId) {
+        const lead = db.leads.find((l) => l.id === leadId)
+        if (lead) {
+          lead.stage = 'gewonnen'
+          lead.updatedAt = now()
+        }
+      }
+
+      if (previousId) {
+        const stillBuying = db.deals.some((d) => d.id !== dealId && d.leadId === previousId)
+        const previous = db.leads.find((l) => l.id === previousId)
+        if (previous && !stillBuying) {
+          previous.stage = 'angebot'
+          previous.updatedAt = now()
+        }
+      }
+    },
+    { kind: 'deal', text: leadId ? 'Käufer zugeordnet' : 'Käufer entfernt' },
+  )
+}
+
 /** Undo a sale — the tanks go back on the market. */
 export function removeDeal(dealId: string) {
   store.mutate(
