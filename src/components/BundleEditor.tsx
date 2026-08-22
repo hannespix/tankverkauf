@@ -39,6 +39,24 @@ export function BundleEditor() {
   )
   const byId = useMemo(() => new Map(db.tanks.map((t) => [t.id, t])), [db.tanks])
 
+  /**
+   * Pakete, die sich Positionen teilen. Auf der Käuferseite gewinnt dann das mit
+   * dem größeren Nachlass und das andere greift nie — es steht nur da und
+   * verwirrt. Beim Nachschnüren eines Pakets ist das der häufigste Fehler.
+   */
+  const overlaps = useMemo(() => {
+    const out = new Map<string, string[]>()
+    const active = db.settings.bundles.filter((b) => b.active)
+    for (const a of active) {
+      const mine = new Set([...a.ids, ...a.giftIds])
+      const hit = active
+        .filter((c) => c.id !== a.id && [...c.ids, ...c.giftIds].some((id) => mine.has(id)))
+        .map((c) => c.label)
+      if (hit.length) out.set(a.id, hit)
+    }
+    return out
+  }, [db.settings.bundles])
+
   function save(next: Bundle) {
     const list = db.settings.bundles.some((b) => b.id === next.id)
       ? db.settings.bundles.map((b) => (b.id === next.id ? next : b))
@@ -88,7 +106,13 @@ export function BundleEditor() {
                         {resolved != null && resolved.price < floor && <Pill tone="rose">unter Untergrenze</Pill>}
                         {resolved != null && resolved.price >= floor && resolved.price < target && <Pill tone="amber">unter Zielpreis</Pill>}
                         {resolved != null && resolved.price >= target && <Pill tone="green">über Zielpreis</Pill>}
+                        {overlaps.has(b.id) && <Pill tone="amber">teilt Positionen</Pill>}
                       </div>
+                      {overlaps.has(b.id) && (
+                        <p className="mt-1 text-[13px] text-amber">
+                          Überschneidet sich mit {overlaps.get(b.id)!.join(', ')} — dem Käufer wird nur das günstigere angeboten.
+                        </p>
+                      )}
                       <div className="tnum mt-1 text-[13px] text-muted">
                         {resolved
                           ? `${resolved.ids.length + resolved.giftIds.length} Positionen · ${eur(resolved.full)} einzeln · Ziel ${eur(target)} · Limit ${eur(floor)}`

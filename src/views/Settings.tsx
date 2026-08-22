@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { Button, Card, Field, Input, Modal, Pill, SectionTitle, Select, Textarea, cx } from '../components/ui'
 import { IconCheck, IconCloud, IconDownload, IconLock, IconPlus, IconRefresh, IconTrash, IconUpload, IconWarn } from '../components/icons'
-import { addMissingSeedDims, addMissingSeedItems, measuredInSeed, missingFromSeed, patchSettings, removeCategory, removePortal, upsertCategory, upsertPortal } from '../lib/actions'
+import { addMissingSeedBundles, addMissingSeedDims, addMissingSeedItems, addMissingSeedNotes, bundlesInSeed, measuredInSeed, missingFromSeed, notesInSeed, patchSettings, removeCategory, removePortal, upsertCategory, upsertPortal } from '../lib/actions'
 import { exportCsv, exportJson, exportXlsx, importXlsx } from '../lib/exporter'
 import { dateTimeDE, dims as fmtDims, num, relativeDE } from '../lib/format'
 import { store, useStore } from '../lib/store'
@@ -22,6 +22,8 @@ export default function Settings() {
   const remembered = rememberedUntil()
   const missing = missingFromSeed(db)
   const unmeasured = measuredInSeed(db)
+  const openNotes = notesInSeed(db)
+  const openBundles = bundlesInSeed(db)
   // The repository serving this page is the one whose code gets deployed. Publishing
   // the catalogue there means the token may rewrite the page itself.
   const servedFrom = location.hostname.match(/^([^.]+)\.github\.io$/)?.[1] ?? ''
@@ -429,6 +431,50 @@ export default function Settings() {
         </Card>
       )}
 
+      {openBundles.length > 0 && (
+        <Card className="border-amber/40">
+          <SectionTitle
+            title="Neue Angebotspakete liegen bereit"
+            hint="Nachträglich geschnürte Pakete. Deine eigenen bleiben unangetastet — prüfe danach, ob sich zwei Pakete dieselben Positionen teilen."
+            action={
+              <Button variant="primary" onClick={() => { const n = addMissingSeedBundles(); setNote(`${n} Pakete ergänzt. Bitte die Überschneidungen prüfen.`) }}>
+                <IconPlus />{openBundles.length} übernehmen
+              </Button>
+            }
+          />
+          <ul className="space-y-2">
+            {openBundles.map((b) => (
+              <li key={b.id} className="rounded-xl bg-surface-2 p-3 text-[13px]">
+                <span className="block font-semibold">{b.label}</span>
+                <span className="block text-muted">{b.blurb}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
+      {openNotes.length > 0 && (
+        <Card className="border-amber/40">
+          <SectionTitle
+            title="Gruppenhinweis liegt bereit"
+            hint="Ein Satz über eine ganze Gruppe für die Käuferliste. Übernommen wird nur, wo bei dir noch nichts steht."
+            action={
+              <Button variant="primary" onClick={() => { const n = addMissingSeedNotes(); setNote(`Hinweis für ${n} ${n === 1 ? 'Kategorie' : 'Kategorien'} übernommen.`) }}>
+                <IconPlus />Übernehmen
+              </Button>
+            }
+          />
+          <ul className="space-y-2">
+            {openNotes.map((c) => (
+              <li key={c.id} className="rounded-xl bg-surface-2 p-3 text-[13px]">
+                <span className="block font-semibold">{c.label}</span>
+                <span className="block text-muted">{c.note}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
       {missing.length > 0 && (
         <Card className="border-amber/40">
           <SectionTitle
@@ -532,6 +578,17 @@ function CategoryModal({ cat, onClose }: { cat: CategoryDef; onClose: () => void
           <Field label="Bezeichnung (Mehrzahl)"><Input value={draft.label} onChange={(e) => set({ label: e.target.value })} placeholder="z. B. Maschinen" autoFocus /></Field>
           <Field label="Einzahl"><Input value={draft.one} onChange={(e) => set({ one: e.target.value })} placeholder="z. B. Maschine" /></Field>
         </div>
+        <Field
+          label="Hinweis für die Käuferliste"
+          hint="Steht unter der Überschrift der Gruppe. Für eine Verwendung, die man der einzelnen Position nicht ansieht."
+        >
+          <Textarea
+            rows={3}
+            value={draft.note ?? ''}
+            onChange={(e) => set({ note: e.target.value })}
+            placeholder="z. B. Wir geben die Fässer als Dekofässer ab — für Garten und Hof, als Stehtisch, Pflanzkübel oder Regentonne."
+          />
+        </Field>
         <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-line bg-surface-2 p-3 text-[13px]">
           <input type="checkbox" checked={draft.hasVolume} onChange={(e) => set({ hasVolume: e.target.checked })} className="mt-0.5 h-4 w-4 accent-[var(--primary)]" />
           <span>
@@ -549,7 +606,7 @@ function CategoryModal({ cat, onClose }: { cat: CategoryDef; onClose: () => void
         <div className="flex justify-end gap-2 border-t border-line pt-4">
           <Button onClick={onClose}>Abbrechen</Button>
           <Button variant="primary" disabled={!draft.label.trim() || !id}
-            onClick={() => { upsertCategory({ ...draft, id, one: draft.one.trim() || draft.label }); onClose() }}>
+            onClick={() => { upsertCategory({ ...draft, id, one: draft.one.trim() || draft.label, note: draft.note?.trim() || undefined }); onClose() }}>
             Speichern
           </Button>
         </div>

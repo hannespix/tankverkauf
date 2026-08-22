@@ -41,6 +41,11 @@ export function buildCatalog(db: DB): Catalog {
       // Hiding this loses the second buyer entirely; showing it turns them into a backup.
       reserved: t.status === 'reserviert',
     })),
+    // Nur Gruppen, in denen wirklich etwas steht — eine leere Überschrift mit
+    // Werbetext darunter wäre ein Angebot für nichts.
+    categories: db.settings.categories
+      .filter((c) => open.some((t) => t.category === c.id))
+      .map((c) => ({ id: c.id, label: c.label, note: c.note ?? '' })),
     // Von einem Paket geht die fertige Zusammenstellung und der fertige Preis raus,
     // nicht der eingestellte Nachlass — und schon gar nicht, gegen welche Untergrenze
     // er gerechnet wurde. Verkaufte Positionen fallen dabei still heraus.
