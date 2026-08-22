@@ -2,7 +2,7 @@ import { StrictMode, useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Card, EmptyState, Input, Textarea, cx } from './components/ui'
 import { IconCheck, IconSearch, IconSun, IconMoon } from './components/icons'
-import { eur, num } from './lib/format'
+import { dims as fmtDims, eur, num } from './lib/format'
 import type { Catalog, CatalogItem } from './types'
 import './index.css'
 
@@ -90,7 +90,7 @@ function App() {
       const key = `${i.maker}|${i.type}|${i.litres}|${i.vb}|${i.reserved ? 'r' : 'f'}`
       const lot = g.lots.find((l) => l.key === key)
       if (lot) lot.ids.push(i.id)
-      else g.lots.push({ key, maker: i.maker, type: i.type, litres: i.litres, vb: i.vb, reserved: i.reserved, ids: [i.id] })
+      else g.lots.push({ key, maker: i.maker, type: i.type, litres: i.litres, vb: i.vb, dims: i.dims, reserved: i.reserved, ids: [i.id] })
       byCat.set(i.category, g)
     }
     return [...byCat.entries()].map(([id, g]) => ({ id, ...g }))
@@ -205,6 +205,7 @@ function App() {
                     <span className="tnum block text-[13px] text-muted">
                       {lot.litres > 0 && `${num(lot.litres)} Liter · `}
                       {many ? `${lot.ids.length} Stück` : 'Einzelstück'}
+                      {fmtDims(lot.dims) && ` · ${fmtDims(lot.dims)}`}
                     </span>
                     {lot.reserved && (
                       <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-soft px-2 py-0.5 text-[11px] font-bold text-amber">
@@ -300,6 +301,7 @@ interface Lot {
   type: string
   litres: number
   vb: number
+  dims: CatalogItem['dims']
   reserved: boolean
   ids: string[]
 }

@@ -6,7 +6,7 @@ import { TagEditor } from '../components/TagEditor'
 import { Button, Card, EmptyState, Field, Input, Modal, Pill, Select, Textarea, cx, type Tone } from '../components/ui'
 import { IconFilter, IconPlus, IconSearch, IconTrash } from '../components/icons'
 import { addTank, createDeal, createQuote, patchTank, removeTank, retypeMany, setTankOffer, setTankStatus, tagMany } from '../lib/actions'
-import { centsPerLitre, eur, num, todayISO } from '../lib/format'
+import { centsPerLitre, dims as fmtDims, eur, num, todayISO } from '../lib/format'
 import { useStore } from '../lib/store'
 import { VERDICT_LABEL, judgeBundle, judgeOffer, totals } from '../lib/stats'
 import { STATUS_LABEL, type Category, type Maker, type Tank, type TankStatus } from '../types'
@@ -360,6 +360,8 @@ function TankDetail({ id, onClose, readOnly }: { id: string | null; onClose: () 
           )}
         </div>
 
+        <DimsFields tank={t} readOnly={readOnly} />
+
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Preisvorstellung (VB)"><Input type="number" disabled={readOnly} value={t.vb} onChange={(e) => patchTank(t.id, { vb: Number(e.target.value) || 0 }, `VB geändert: ${t.maker} ${t.litres} l`)} className="tnum" /></Field>
           <Field label="Aktuelles Gebot"><Input type="number" disabled={readOnly} value={t.offer ?? ''} onChange={(e) => setTankOffer(t, e.target.value === '' ? null : Number(e.target.value))} className="tnum" /></Field>
@@ -589,6 +591,58 @@ function QuoteModal({ open, onClose, tanks }: { open: boolean; onClose: () => vo
         </div>
       </div>
     </Modal>
+  )
+}
+
+/**
+ * Outer dimensions. Round tanks are measured by diameter, everything else by
+ * width and depth — offering all four fields at once invites contradictory
+ * entries, so the shape decides which two are shown.
+ */
+function DimsFields({ tank, readOnly }: { tank: Tank; readOnly: boolean }) {
+  const d = tank.dims ?? {}
+  const round = d.dia != null
+  const set = (patch: Partial<NonNullable<Tank['dims']>>) => {
+    const next = { ...d, ...patch }
+    // A field cleared back to empty should disappear, not linger as 0.
+    for (const k of Object.keys(next) as (keyof typeof next)[]) if (!next[k]) delete next[k]
+    patchTank(tank.id, { dims: Object.keys(next).length ? next : null })
+  }
+  const field = (key: 'w' | 'd' | 'h' | 'dia', label: string) => (
+    <Field label={label}>
+      <Input
+        type="number"
+        disabled={readOnly}
+        value={d[key] ?? ''}
+        placeholder="–"
+        className="tnum"
+        onChange={(e) => set({ [key]: Number(e.target.value) || undefined })}
+      />
+    </Field>
+  )
+
+  return (
+    <div>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <span className="text-[13px] font-semibold text-muted">Maße in cm</span>
+        <span className="flex gap-1">
+          <Button size="sm" variant={round ? 'ghost' : 'primary'} disabled={readOnly}
+            onClick={() => patchTank(tank.id, { dims: { w: d.w ?? d.dia, d: d.d, h: d.h } })}>
+            eckig
+          </Button>
+          <Button size="sm" variant={round ? 'primary' : 'ghost'} disabled={readOnly}
+            onClick={() => patchTank(tank.id, { dims: { dia: d.dia ?? d.w, h: d.h } })}>
+            rund
+          </Button>
+        </span>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-3">
+        {round ? field('dia', 'Durchmesser') : field('w', 'Breite')}
+        {!round && field('d', 'Tiefe')}
+        {field('h', 'Höhe')}
+      </div>
+      {fmtDims(tank.dims) && <p className="mt-2 text-[13px] text-muted">Steht in Anzeige und Katalog als: <strong>{fmtDims(tank.dims)}</strong></p>}
+    </div>
   )
 }
 

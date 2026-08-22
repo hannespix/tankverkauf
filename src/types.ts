@@ -18,6 +18,19 @@ export interface CategoryDef {
 /** Free text — a pump maker is as valid here as a tank maker. */
 export type Maker = string
 
+/**
+ * Outer dimensions in centimetres — what a buyer needs to know before renting a
+ * trailer or measuring the cellar door. Rectangular tanks give width (at the
+ * widest point), depth and height; cylindrical ones give a diameter instead of
+ * width and depth.
+ */
+export interface Dims {
+  w?: number
+  d?: number
+  h?: number
+  dia?: number
+}
+
 export interface Tank {
   id: string
   category: Category
@@ -25,6 +38,8 @@ export interface Tank {
   /** Edelstahltank, Transporttank, Immervolltank … */
   type: string
   litres: number
+  /** Outer size in cm. null while it has not been measured. */
+  dims: Dims | null
   /** Verhandlungsbasis brutto — the public asking price. */
   vb: number
   /** Zielpreis brutto — what we realistically want. */
@@ -199,6 +214,8 @@ export interface CatalogItem {
   type: string
   litres: number
   vb: number
+  /** Outer size in cm — decides whether it fits through the buyer's door. */
+  dims: Dims | null
   /** Already promised to someone. Buyers may still register a backup interest. */
   reserved: boolean
 }

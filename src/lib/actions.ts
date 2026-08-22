@@ -44,6 +44,7 @@ export function addTank(partial: Partial<Tank>) {
         category: partial.category ?? 'tank',
         maker: partial.maker ?? 'Sonstige',
         type: partial.type ?? 'Edelstahltank',
+        dims: partial.dims ?? null,
         litres: partial.litres ?? 0,
         vb,
         target: partial.target ?? Math.round(vb * 0.86),
@@ -210,6 +211,40 @@ export function addMissingSeedItems(): number {
     { kind: 'settings', text: `${missing.length} Positionen aus dem Ausgangsbestand ergänzt` },
   )
   return missing.length
+}
+
+/**
+ * Positions whose measurements exist in the starting stock but not yet in this
+ * database. Same reason the missing-positions reconciliation exists: migrate()
+ * never touches a row that is already there, so anything measured after the
+ * database was created only arrives through a visible, opt-in step.
+ *
+ * Only ever fills an empty field — a measurement typed in by hand always wins.
+ */
+export function measuredInSeed(db: DB): { tank: Tank; dims: NonNullable<Tank['dims']> }[] {
+  const seeded = new Map(SEED.tanks.filter((t) => t.dims).map((t) => [t.id, t.dims!]))
+  return db.tanks
+    .filter((t) => !t.dims && seeded.has(t.id))
+    .map((t) => ({ tank: t, dims: seeded.get(t.id)! }))
+}
+
+export function addMissingSeedDims(): number {
+  const todo = measuredInSeed(store.getSnapshot().db)
+  if (todo.length === 0) return 0
+  const byId = new Map(todo.map((x) => [x.tank.id, x.dims]))
+  store.mutate(
+    (db) => {
+      for (const t of db.tanks) {
+        const d = byId.get(t.id)
+        if (d && !t.dims) {
+          t.dims = { ...d }
+          t.updatedAt = now()
+        }
+      }
+    },
+    { kind: 'settings', text: `Maße für ${todo.length} Positionen übernommen` },
+  )
+  return todo.length
 }
 
 // ------------------------------------------------------------------- quotes

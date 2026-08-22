@@ -83,6 +83,8 @@ export function migrate(raw: unknown): DB {
     ...t,
     category: t.category ?? 'tank',
     photos: t.photos ?? [],
+    // Measured later than the rest; null means "not measured", not "no size".
+    dims: t.dims ?? null,
   }))
   const ads = (db.ads ?? []).map((a) => ({ ...a, portalId: a.portalId ?? fallbackPortal }))
 

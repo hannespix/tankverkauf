@@ -272,6 +272,7 @@ export async function importXlsx(file: File): Promise<ImportResult> {
         id: `IMPORT-${String(n).padStart(3, '0')}`,
         category: 'tank',
         maker,
+        dims: null,
         type,
         litres,
         vb,
