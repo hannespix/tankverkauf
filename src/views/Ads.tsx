@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Button, Card, CopyButton, EmptyState, Field, Input, Modal, Pill, SectionTitle, Select, Textarea, cx, type Tone } from '../components/ui'
 import { IconDownload, IconGrid, IconLink, IconMegaphone, IconPlus, IconRefresh, IconTrash, IconWarn } from '../components/icons'
 import { bumpAd, createAdsForPortals, markAdPublished, patchAd, refreshAd, removeAd } from '../lib/actions'
 import { SCOPE_LABEL, adDrift, countWords, generateAd, limitsOf, limitsOfPortal, portalOf } from '../lib/ads'
-import { collage, download, safeName, zip } from '../lib/bundle'
+import { collageSheets, download, safeName, sheetPlan, zip } from '../lib/bundle'
 import { catalogPageUrl } from '../lib/catalog'
 import { dateDE, eur, num, relativeDE } from '../lib/format'
 import { store, useStore } from '../lib/store'
@@ -395,16 +395,51 @@ function AdPhotos({ ad }: { ad: Ad }) {
   const { db } = useStore()
   const [busy, setBusy] = useState<'' | 'zip' | 'collage'>('')
   const [error, setError] = useState<string | null>(null)
+  const [sheets, setSheets] = useState<{ url: string; name: string; count: number }[]>([])
 
   // Order follows the ad text, so the numbering matches what a reader sees.
-  const items = ad.tankIds
-    .map((id) => db.tanks.find((t) => t.id === id))
-    .filter((t): t is Tank => !!t)
+  // Verkauftes fällt raus: `tankIds` ist der Stand von damals, und ein Foto von
+  // etwas, das es nicht mehr gibt, gehört in keine laufende Anzeige.
+  const listed = ad.tankIds.map((id) => db.tanks.find((t) => t.id === id)).filter((t): t is Tank => !!t)
+  const items = listed.filter(isOpen)
+  const gone = listed.length - items.length
   const withPhoto = items.filter((t) => t.photos.length > 0)
   const missing = items.length - withPhoto.length
-  const total = withPhoto.reduce((a, t) => a + t.photos.length, 0)
 
   const nameOf = (t: Tank) => safeName(t.maker === 'Sonstige' ? t.type : `${t.maker}_${t.type}`)
+  const humanOf = (t: Tank) => (t.maker === 'Sonstige' ? t.type : `${t.maker} ${t.type}`)
+
+  /**
+   * Jedes Bild genau einmal, in der Reihenfolge des Anzeigentexts.
+   *
+   * Ein Gruppenfoto hängt an mehreren Positionen — die 29 Dekofässer teilen sich
+   * eines. Ohne diese Zusammenfassung stünde dasselbe Bild 29-mal in den
+   * Übersichten, und die eigentliche Vielfalt käme nie vor.
+   */
+  const shots = useMemo(() => {
+    const owners = new Map<string, Tank[]>()
+    for (const t of withPhoto) for (const p of t.photos) owners.set(p, [...(owners.get(p) ?? []), t])
+    return [...owners.entries()].map(([path, list]) => ({ path, list }))
+  }, [withPhoto])
+
+  const caption = (list: Tank[]) => {
+    const names = [...new Set(list.map(humanOf))]
+    if (names.length === 1) {
+      const l = list[0].litres > 0 ? ` · ${num(list[0].litres)} l` : ''
+      return `${names[0]}${l}${list.length > 1 ? ` · ${list.length} Stück` : ''}`
+    }
+    const cats = [...new Set(list.map((t) => t.category))]
+    const label = cats.length === 1 ? db.settings.categories.find((c) => c.id === cats[0])?.label : null
+    return `${label ? `${label} · ` : ''}${list.length} Positionen`
+  }
+
+  function clearSheets() {
+    setSheets((old) => {
+      for (const s of old) URL.revokeObjectURL(s.url)
+      return []
+    })
+  }
+  useEffect(() => clearSheets, [])
 
   async function run(kind: 'zip' | 'collage') {
     setBusy(kind)
@@ -425,13 +460,23 @@ function AdPhotos({ ad }: { ad: Ad }) {
         if (files.length === 0) throw new Error('Keine Fotos zum Herunterladen.')
         download(await zip(files), `${safeName(ad.title).slice(0, 40)}_Fotos.zip`)
       } else {
-        // One photo per position — a collage of the same barrel twelve times helps nobody.
+        clearSheets()
         const entries = []
-        for (const t of withPhoto) {
-          const url = await store.photoUrl(t.photos[0])
-          if (url) entries.push({ url, caption: `${t.maker === 'Sonstige' ? t.type : `${t.maker} ${t.type}`}${t.litres > 0 ? ` · ${num(t.litres)} l` : ''}` })
+        for (const { path, list } of shots) {
+          const url = await store.photoUrl(path)
+          if (url) entries.push({ url, caption: caption(list) })
         }
-        download(await collage(entries), `${safeName(ad.title).slice(0, 40)}_Uebersicht.jpg`)
+        if (entries.length === 0) throw new Error('Keine Fotos gefunden.')
+        const blobs = await collageSheets(entries, { header: db.settings.seller.name || 'Betriebsauflösung' })
+        const plan = sheetPlan(entries.length)
+        const stem = safeName(ad.title).slice(0, 40)
+        setSheets(
+          blobs.map((b, i) => ({
+            url: URL.createObjectURL(b),
+            name: blobs.length === 1 ? `${stem}_Uebersicht.jpg` : `${stem}_Uebersicht_${i + 1}von${blobs.length}.jpg`,
+            count: plan[i],
+          })),
+        )
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Hat nicht geklappt.')
@@ -444,21 +489,58 @@ function AdPhotos({ ad }: { ad: Ad }) {
     <div className="rounded-xl border border-line bg-surface-2 p-3">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <span className="text-[13px] font-semibold text-muted">
-          Fotos · {total} {total === 1 ? 'Bild' : 'Bilder'} zu {withPhoto.length} von {items.length} Positionen
+          Fotos · {shots.length} {shots.length === 1 ? 'Bild' : 'verschiedene Bilder'} zu {withPhoto.length} von {items.length} Positionen
         </span>
         <span className="flex flex-wrap gap-2">
-          <Button size="sm" disabled={total === 0 || busy !== ''} onClick={() => void run('zip')}>
+          <Button size="sm" disabled={shots.length === 0 || busy !== ''} onClick={() => void run('zip')}>
             <IconDownload />{busy === 'zip' ? 'Packt …' : 'Alle Fotos (ZIP)'}
           </Button>
-          <Button size="sm" disabled={withPhoto.length < 2 || busy !== ''} onClick={() => void run('collage')}>
-            <IconGrid />{busy === 'collage' ? 'Erzeugt …' : 'Übersichtsbild'}
+          <Button size="sm" variant={sheets.length ? undefined : 'primary'} disabled={shots.length < 2 || busy !== ''} onClick={() => void run('collage')}>
+            <IconGrid />{busy === 'collage' ? 'Erzeugt …' : sheets.length ? 'Neu erzeugen' : `Übersichtsbilder (${sheetPlan(shots.length).length})`}
           </Button>
         </span>
       </div>
+
+      {sheets.length > 0 && (
+        <div className="mb-3 space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-[13px] text-muted">
+              {sheets.length} {sheets.length === 1 ? 'Blatt' : 'Blätter'} mit zusammen {shots.length} Bildern — jedes Foto genau einmal.
+            </span>
+            {sheets.length > 1 && (
+              <Button size="sm" variant="primary" onClick={() => sheets.forEach((s, i) => setTimeout(() => downloadUrl(s.url, s.name), i * 400))}>
+                <IconDownload />Alle herunterladen
+              </Button>
+            )}
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {sheets.map((s, i) => (
+              <figure key={s.url} className="overflow-hidden rounded-xl border border-line bg-surface">
+                <a href={s.url} target="_blank" rel="noreferrer noopener">
+                  <img src={s.url} alt={`Übersicht ${i + 1}`} className="block w-full" />
+                </a>
+                <figcaption className="flex items-center justify-between gap-2 border-t border-line px-3 py-2 text-xs text-muted">
+                  <span>Blatt {i + 1} · {s.count} {s.count === 1 ? 'Bild' : 'Bilder'}</span>
+                  <button type="button" onClick={() => downloadUrl(s.url, s.name)} className="font-semibold text-primary underline underline-offset-2">
+                    Herunterladen
+                  </button>
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+        </div>
+      )}
+
       <p className="text-[13px] text-muted">
         Die Bilder direkt beim Portal hochladen — dort sind sie kostenlos und werden angesehen. Als Link in den
         Anzeigentext gehören sie nicht: Sie liegen im privaten Repository und wären für Käufer nicht erreichbar.
       </p>
+      {gone > 0 && (
+        <p className="mt-1.5 text-[13px] font-semibold text-amber">
+          {gone} beworbene {gone === 1 ? 'Position ist' : 'Positionen sind'} inzwischen verkauft und {gone === 1 ? 'bleibt' : 'bleiben'} aus
+          den Übersichtsbildern draußen. Den Anzeigentext dazu neu erzeugen.
+        </p>
+      )}
       {missing > 0 && (
         <p className="mt-1.5 text-[13px] font-semibold text-amber">
           {missing} {missing === 1 ? 'Position hat' : 'Positionen haben'} noch kein Foto — im Bestand über „ohne Foto“ zu finden.
@@ -467,6 +549,14 @@ function AdPhotos({ ad }: { ad: Ad }) {
       {error && <p className="mt-1.5 text-[13px] font-semibold text-rose">{error}</p>}
     </div>
   )
+}
+
+/** Eine bereits erzeugte Objekt-URL speichern, ohne sie noch einmal zu bauen. */
+function downloadUrl(url: string, name: string) {
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  a.click()
 }
 
 function AdModal({ id, onClose }: { id: string; onClose: () => void }) {

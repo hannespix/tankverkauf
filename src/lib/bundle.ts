@@ -115,12 +115,57 @@ export interface CollageEntry {
 }
 
 /**
+ * Wie viele Bilder auf welches Blatt.
+ *
+ * Nicht 12+12+3, sondern 9+9+9: ein letztes Blatt mit drei Bildern sieht neben
+ * zwei vollen aus wie ein Rest. Die Blattzahl folgt aus der Höchstzahl je Blatt,
+ * die Verteilung darauf ist gleichmäßig.
+ */
+export function sheetPlan(n: number, max = 12): number[] {
+  if (n <= 0) return []
+  const sheets = Math.ceil(n / max)
+  const base = Math.floor(n / sheets)
+  const extra = n % sheets
+  return Array.from({ length: sheets }, (_, i) => base + (i < extra ? 1 : 0))
+}
+
+/**
+ * Übersichtsblätter: so viele, dass jedes Bild genau einmal vorkommt.
+ *
+ * Ein Portal erlaubt ein paar Dutzend Bilder, aber niemand blättert 50 Einzel-
+ * aufnahmen durch. Drei bis vier Blätter mit je einer Handvoll beschrifteter
+ * Kacheln zeigen denselben Bestand in einem Blick.
+ */
+export async function collageSheets(
+  entries: CollageEntry[],
+  opts: { max?: number; width?: number; header?: string } = {},
+): Promise<Blob[]> {
+  if (entries.length === 0) throw new Error('Keine Bilder ausgewählt.')
+  const plan = sheetPlan(entries.length, opts.max ?? 12)
+  const out: Blob[] = []
+  let at = 0
+  for (const [i, count] of plan.entries()) {
+    const slice = entries.slice(at, at + count)
+    at += count
+    const head = [opts.header, plan.length > 1 ? `Übersicht ${i + 1} von ${plan.length}` : '']
+      .filter(Boolean)
+      .join(' · ')
+    out.push(await collage(slice, { width: opts.width, header: head }))
+  }
+  return out
+}
+
+/**
  * One image showing everything at once — the first picture of a listing, the one
  * that has to make somebody stop scrolling. It is not a replacement for the
  * single shots; the portals allow a couple of dozen pictures and every one of
  * them sells better than a link.
  */
-export async function collage(entries: CollageEntry[], width = 1600): Promise<Blob> {
+export async function collage(
+  entries: CollageEntry[],
+  opts: { width?: number; header?: string } = {},
+): Promise<Blob> {
+  const width = opts.width ?? 1600
   const shown = entries.slice(0, 12)
   if (shown.length === 0) throw new Error('Keine Bilder ausgewählt.')
 
@@ -131,7 +176,9 @@ export async function collage(entries: CollageEntry[], width = 1600): Promise<Bl
   const gap = 8
   const cell = Math.floor((width - gap * (cols + 1)) / cols)
   const label = 34
-  const height = gap + rows * (cell + label + gap)
+  // Kopfzeile nur, wenn es eine gibt — sonst bliebe oben ein weißer Streifen.
+  const head = opts.header ? 44 : 0
+  const height = gap + head + rows * (cell + label + gap)
 
   const canvas = document.createElement('canvas')
   canvas.width = width
@@ -140,6 +187,14 @@ export async function collage(entries: CollageEntry[], width = 1600): Promise<Bl
   if (!ctx) throw new Error('Bild konnte nicht erzeugt werden.')
   ctx.fillStyle = '#ffffff'
   ctx.fillRect(0, 0, width, height)
+  if (opts.header) {
+    ctx.fillStyle = '#1a1d1c'
+    ctx.font = '700 26px system-ui, sans-serif'
+    ctx.textBaseline = 'top'
+    let title = opts.header
+    while (ctx.measureText(title).width > width - 2 * gap && title.length > 8) title = `${title.slice(0, -2)}…`
+    ctx.fillText(title, gap, gap + 2)
+  }
 
   const images = await Promise.all(
     shown.map(
@@ -159,7 +214,7 @@ export async function collage(entries: CollageEntry[], width = 1600): Promise<Bl
     // An incomplete last row sits centred instead of clinging to the left edge.
     const rowWidth = inRow * cell + (inRow - 1) * gap
     const x = Math.round((width - rowWidth) / 2) + (i % cols) * (cell + gap)
-    const y = gap + row * (cell + label + gap)
+    const y = gap + head + row * (cell + label + gap)
     ctx.fillStyle = '#f1f3f2'
     ctx.fillRect(x, y, cell, cell)
     if (img) {
