@@ -11,7 +11,7 @@ import {
   pendingPaths as pendingPhotoPaths,
   remove as removePending,
 } from './photoQueue'
-import { buildCatalog, catalogPageUrl } from './catalog'
+import { buildCatalog, catalogPageUrl, catalogStamp, photoStamp, stampOf } from './catalog'
 import {
   ConflictError,
   GitHubError,
@@ -64,6 +64,13 @@ export interface StoreSnapshot {
 
 const CACHE_PREFIX = 'tankverkauf.cache.'
 const SAVE_DEBOUNCE_MS = 1500
+/**
+ * Wie lange nach der letzten Änderung gewartet wird, bevor der Katalog von selbst
+ * rausgeht. Länger als das Speichern: wer eine Preisliste durchgeht, soll einen
+ * Veröffentlichungsvorgang auslösen, nicht zwanzig — jeder davon stößt drüben
+ * einen Seitenbau an.
+ */
+const PUBLISH_DEBOUNCE_MS = 20000
 
 const clone = <T,>(v: T): T => (typeof structuredClone === 'function' ? structuredClone(v) : (JSON.parse(JSON.stringify(v)) as T))
 
@@ -123,6 +130,8 @@ class TankStore {
   private sha: string | null = null
   private sendingPhotos = false
   private saveTimer: ReturnType<typeof setTimeout> | null = null
+  private publishTimer: ReturnType<typeof setTimeout> | null = null
+  private publishing = false
   private saving = false
   private pendingReason = ''
 
@@ -319,6 +328,7 @@ class TankStore {
       this.sha = await putFile(this.token, this.snapshot.config, text, this.sha, message)
       this.pendingReason = ''
       this.emit({ sync: 'saved', dirty: false, lastSyncAt: new Date().toISOString(), error: null })
+      this.scheduleAutoPublish()
       setTimeout(() => {
         if (this.snapshot.sync === 'saved') this.emit({ sync: 'idle' })
       }, 2000)
@@ -466,7 +476,42 @@ class TankStore {
    * Publish the reduced catalogue into the public repo. Deliberately a separate
    * target from the data repo, and the token needs to be allowed to write there.
    */
+  /**
+   * Der Katalog geht nach dem Speichern von selbst raus — aber nur, wenn sich an
+   * dem, was der Käufer sieht, wirklich etwas geändert hat. Ein Zielpreis oder eine
+   * Notiz stehen nicht im Katalog und lösen deshalb auch keine Veröffentlichung aus.
+   */
+  private scheduleAutoPublish() {
+    const s = this.snapshot.db.settings
+    if (!s.autoPublish || !this.token || this.snapshot.mode !== 'online') return
+    if (!s.catalog.owner || !s.catalog.repo || !s.catalog.path) return
+    if (catalogStamp(this.snapshot.db) === s.publishedStamp) return
+    if (this.publishTimer) clearTimeout(this.publishTimer)
+    this.publishTimer = setTimeout(() => {
+      this.publishTimer = null
+      // Läuft gerade schon einer, später noch einmal versuchen — zwei gleichzeitige
+      // Läufe würden sich beim Schreiben derselben Datei in die Quere kommen.
+      if (this.publishing) { this.scheduleAutoPublish(); return }
+      // Still scheitern lassen: ein fehlgeschlagener Hintergrundlauf darf keinen
+      // roten Kasten über die Oberfläche legen. Der Hinweis "nicht auf dem Stand"
+      // bleibt ohnehin stehen, und der Knopf von Hand ist einen Klick entfernt.
+      void this.publishCatalog().catch(() => {})
+    }, PUBLISH_DEBOUNCE_MS)
+  }
+
   async publishCatalog(onProgress?: (done: number, total: number) => void): Promise<string> {
+    // Zwei gleichzeitige Läufe würden dieselbe Datei schreiben und sich gegenseitig
+    // den sha unter den Füßen wegziehen.
+    if (this.publishing) throw new Error('Es läuft bereits eine Veröffentlichung.')
+    this.publishing = true
+    try {
+      return await this.writeCatalog(onProgress)
+    } finally {
+      this.publishing = false
+    }
+  }
+
+  private async writeCatalog(onProgress?: (done: number, total: number) => void): Promise<string> {
     if (!this.token) throw new Error('Nicht angemeldet.')
     const c = this.snapshot.db.settings.catalog
     if (!c.owner || !c.repo || !c.path) throw new Error('Zielrepository für den Katalog ist nicht eingetragen.')
@@ -478,9 +523,15 @@ class TankStore {
     // stays cheap once the pictures are across.
     const dir = c.path.replace(/\/[^/]+$/, '')
     const wanted = [...new Set(catalog.items.flatMap((i) => i.photos))]
+    // Hat sich an den Bildern nichts geändert, kostet ein Veröffentlichen nur noch
+    // einen einzigen Schreibvorgang statt einer Abfrage je Bild. Das ist der
+    // Unterschied, der das automatische Veröffentlichen überhaupt vertretbar macht.
+    const stamp = photoStamp(this.snapshot.db)
+    const skipPhotos = stamp !== '' && stamp === this.snapshot.db.settings.publishedPhotos
     let moved = 0
-    onProgress?.(0, wanted.length)
-    for (const [i, photo] of wanted.entries()) {
+    let lost = 0
+    onProgress?.(0, skipPhotos ? 0 : wanted.length)
+    for (const [i, photo] of (skipPhotos ? [] : wanted).entries()) {
       const at: RepoConfig = { ...cfg, path: dir ? `${dir}/${photo}` : photo }
       const already = await headFile(this.token, at, at.path).catch(() => null)
       if (!already) {
@@ -488,6 +539,11 @@ class TankStore {
         if (blob) {
           await putBinary(this.token, at, at.path, await blobToBase64(blob), `Foto für den Katalog: ${photo}`)
           moved += 1
+        } else {
+          // Noch nicht hochgeladen oder nicht lesbar. Dann darf der Fingerabdruck
+          // nicht gemerkt werden, sonst wird der Durchlauf künftig übersprungen und
+          // das Bild kommt nie an.
+          lost += 1
         }
       }
       onProgress?.(i + 1, wanted.length)
@@ -498,7 +554,7 @@ class TankStore {
     const photoDir = dir ? `${dir}/fotos` : 'fotos'
     const keep = new Set(wanted.map((w) => w.replace(/^.*\//, '')))
     let removed = 0
-    for (const name of await listDir(this.token, cfg, photoDir).catch(() => [])) {
+    for (const name of skipPhotos ? [] : await listDir(this.token, cfg, photoDir).catch(() => [])) {
       if (keep.has(name)) continue
       await deleteBinary(this.token, { ...cfg, path: `${photoDir}/${name}` }, `${photoDir}/${name}`, `Foto nicht mehr im Katalog: ${name}`)
       removed += 1
@@ -507,7 +563,23 @@ class TankStore {
     const text = `${JSON.stringify(catalog, null, 2)}\n`
     const existing = await getFile(this.token, cfg).catch(() => null)
     await putFile(this.token, cfg, text, existing?.sha ?? null, `Katalog aktualisiert (${catalog.items.length} Positionen)`)
-    this.mutate(() => {}, { kind: 'settings', text: `Katalog veröffentlicht: ${catalog.items.length} Positionen, ${moved} neue Fotos${removed ? `, ${removed} entfernt` : ''}` })
+
+    // Aus der Datei, die gerade geschrieben wurde — nicht aus dem aktuellen Stand.
+    // Wer während der Übertragung noch einen Preis ändert, bekäme sonst einen
+    // Fingerabdruck, der eine Änderung als veröffentlicht ausweist, die es nicht ist.
+    const done = stampOf(catalog)
+    this.mutate(
+      (db) => {
+        db.settings.publishedStamp = done
+        db.settings.publishedAt = new Date().toISOString()
+        if (lost === 0) db.settings.publishedPhotos = skipPhotos ? db.settings.publishedPhotos : stamp
+      },
+      // Ein Lauf im Hintergrund schreibt keine Zeile in den Verlauf — sonst besteht
+      // er nach einem Abend am Rechner nur noch aus "Katalog veröffentlicht".
+      onProgress
+        ? { kind: 'settings', text: `Katalog veröffentlicht: ${catalog.items.length} Positionen, ${moved} neue Fotos${removed ? `, ${removed} entfernt` : ''}` }
+        : undefined,
+    )
     return catalogPageUrl(c)
   }
 

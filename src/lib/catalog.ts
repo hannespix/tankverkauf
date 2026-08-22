@@ -66,3 +66,37 @@ export function catalogRawUrl(c: DB['settings']['catalog']): string {
 export function catalogPageUrl(c: DB['settings']['catalog']): string {
   return `https://${c.owner}.github.io/${c.repo}/katalog.html`
 }
+
+/**
+ * Ein kurzer Fingerabdruck dessen, was den Käufer erreicht.
+ *
+ * Damit lässt sich beantworten, ob der veröffentlichte Stand noch dem entspricht,
+ * was in der Datenbank steht — ohne die ganze Datei zu vergleichen und ohne sie in
+ * der Datenbank abzulegen. FNV-1a genügt: es geht um "gleich oder nicht", nicht um
+ * Fälschungssicherheit.
+ */
+function hash(text: string): string {
+  let h = 0x811c9dc5
+  for (let i = 0; i < text.length; i += 1) {
+    h ^= text.charCodeAt(i)
+    h = Math.imul(h, 0x01000193)
+  }
+  return (h >>> 0).toString(36)
+}
+
+/** Fingerabdruck einer fertig gebauten Liste. */
+export function stampOf(catalog: Catalog): string {
+  // updatedAt wird bei jedem Bauen neu gesetzt und würde jeden Vergleich verderben.
+  const { updatedAt: _ignored, ...rest } = catalog
+  return hash(JSON.stringify(rest))
+}
+
+export function catalogStamp(db: DB): string {
+  return stampOf(buildCatalog(db))
+}
+
+/** Nur die Bilder. Stimmen sie noch, muss beim Veröffentlichen keine Datei angefasst werden. */
+export function photoStamp(db: DB): string {
+  const all = db.tanks.filter(isOpen).flatMap((t) => t.photos)
+  return hash([...new Set(all)].sort().join('|'))
+}
