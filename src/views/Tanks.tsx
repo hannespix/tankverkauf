@@ -2,9 +2,10 @@ import { useMemo, useState } from 'react'
 import { PriceLadder, STATUS_FILL } from '../components/charts'
 import { PhotoStrip } from '../components/PhotoStrip'
 import { LeadPicker } from '../components/LeadPicker'
+import { TagEditor } from '../components/TagEditor'
 import { Button, Card, EmptyState, Field, Input, Modal, Pill, Select, Textarea, cx, type Tone } from '../components/ui'
 import { IconFilter, IconPlus, IconSearch, IconTrash } from '../components/icons'
-import { addTank, createDeal, createQuote, patchTank, removeTank, setTankOffer, setTankStatus } from '../lib/actions'
+import { addTank, createDeal, createQuote, patchTank, removeTank, setTankOffer, setTankStatus, tagMany } from '../lib/actions'
 import { centsPerLitre, eur, num, todayISO } from '../lib/format'
 import { useStore } from '../lib/store'
 import { VERDICT_LABEL, judgeBundle, judgeOffer, totals } from '../lib/stats'
@@ -36,6 +37,7 @@ export default function Tanks() {
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [dealOpen, setDealOpen] = useState(false)
   const [quoteOpen, setQuoteOpen] = useState(false)
+  const [tagOpen, setTagOpen] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
 
   const rows = useMemo(() => {
@@ -169,6 +171,7 @@ export default function Tanks() {
               </span>
               <Button size="sm" variant="primary" onClick={() => setQuoteOpen(true)}>Angebot erstellen</Button>
               <Button size="sm" onClick={() => setDealOpen(true)}>Als Verkauf buchen</Button>
+              <Button size="sm" onClick={() => setTagOpen(true)}>Merkmal setzen</Button>
               <Button size="sm" variant="ghost" onClick={() => setPicked(new Set())}>Leeren</Button>
             </span>
           )}
@@ -295,6 +298,7 @@ export default function Tanks() {
       <TankDetail id={detail} onClose={() => setDetail(null)} readOnly={readOnly} />
       <DealModal open={dealOpen} onClose={() => { setDealOpen(false); setPicked(new Set()) }} tanks={pickedTanks} />
       <QuoteModal open={quoteOpen} onClose={() => { setQuoteOpen(false); setPicked(new Set()) }} tanks={pickedTanks} />
+      <BulkTagModal open={tagOpen} onClose={() => setTagOpen(false)} tanks={pickedTanks} />
       <AddTankModal open={addOpen} onClose={() => setAddOpen(false)} />
     </div>
   )
@@ -353,6 +357,8 @@ function TankDetail({ id, onClose, readOnly }: { id: string | null; onClose: () 
           </Field>
           <Field label="Abholung"><Input type="date" disabled={readOnly} value={t.pickup ?? ''} onChange={(e) => patchTank(t.id, { pickup: e.target.value || null })} /></Field>
         </div>
+
+        <TagEditor tags={t.tags} category={t.category} onChange={(tags) => patchTank(t.id, { tags })} />
 
         <PhotoStrip tank={t} />
 
@@ -566,6 +572,49 @@ function QuoteModal({ open, onClose, tanks }: { open: boolean; onClose: () => vo
           <Button variant="primary" disabled={value <= 0}
             onClick={() => { createQuote({ label, tankIds: tanks.map((x) => x.id), askPrice: value, leadId: leadId || null, portalId: portalId || null, note }); onClose() }}>
             Angebot speichern
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+/** Set one feature on everything currently selected — 21 tanks in one go. */
+function BulkTagModal({ open, onClose, tanks }: { open: boolean; onClose: () => void; tanks: Tank[] }) {
+  const [tag, setTag] = useState('')
+  if (!open) return null
+
+  const value = tag.trim()
+  const already = value ? tanks.filter((t) => t.tags.includes(value)).length : 0
+  const category = tanks[0]?.category ?? 'tank'
+
+  return (
+    <Modal open onClose={onClose} title={`Merkmal für ${tanks.length} Positionen`}>
+      <div className="space-y-4">
+        <p className="text-sm text-muted">
+          Setzt oder entfernt ein Ausstattungsmerkmal auf allen ausgewählten Positionen. Der Anzeigentext übernimmt es
+          automatisch, wenn es auf alle beworbenen Positionen zutrifft.
+        </p>
+
+        <TagEditor tags={value ? [value] : []} category={category} label="Merkmal" onChange={(tags) => setTag(tags[tags.length - 1] ?? '')} />
+
+        {value && (
+          <p className="rounded-xl bg-surface-2 p-3 text-[13px] text-muted">
+            {already === 0
+              ? `Noch bei keiner der ${tanks.length} Positionen gesetzt.`
+              : already === tanks.length
+                ? `Bereits bei allen ${tanks.length} Positionen gesetzt.`
+                : `Bereits bei ${already} von ${tanks.length} Positionen gesetzt.`}
+          </p>
+        )}
+
+        <div className="flex flex-wrap justify-end gap-2 border-t border-line pt-4">
+          <Button onClick={onClose}>Abbrechen</Button>
+          <Button variant="danger" disabled={!value || already === 0} onClick={() => { tagMany(tanks.map((t) => t.id), value, false); onClose() }}>
+            Entfernen
+          </Button>
+          <Button variant="primary" disabled={!value || already === tanks.length} onClick={() => { tagMany(tanks.map((t) => t.id), value, true); onClose() }}>
+            Bei allen setzen
           </Button>
         </div>
       </div>

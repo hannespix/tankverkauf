@@ -57,6 +57,8 @@ interface Group {
   litres: number
   count: number
   vb: number
+  /** Features every item in this group shares. */
+  tags: string[]
 }
 
 function group(tanks: Tank[]): Group[] {
@@ -64,16 +66,23 @@ function group(tanks: Tank[]): Group[] {
   for (const t of tanks) {
     const key = `${t.maker}|${t.type}|${t.litres}|${t.vb}`
     const hit = map.get(key)
-    if (hit) hit.count += 1
-    else map.set(key, { maker: t.maker, type: t.type, litres: t.litres, count: 1, vb: t.vb })
+    if (hit) {
+      hit.count += 1
+      // Only keep features that every item in the group actually has.
+      hit.tags = hit.tags.filter((tag) => t.tags.includes(tag))
+    } else {
+      map.set(key, { maker: t.maker, type: t.type, litres: t.litres, count: 1, vb: t.vb, tags: [...t.tags] })
+    }
   }
   return [...map.values()].sort((a, b) => b.litres - a.litres)
 }
 
 const label = (g: Group) => (g.maker === 'Sonstige' ? g.type : `${g.maker} ${g.type}`)
 
-const bullet = (g: Group) =>
-  `• ${g.count}× ${label(g)} ${num(g.litres)} l – je ${eur(g.vb)}`
+const bullet = (g: Group, shared: string[] = []) => {
+  const extra = g.tags.filter((t) => !shared.includes(t))
+  return `• ${g.count}× ${label(g)} ${num(g.litres)} l – je ${eur(g.vb)}${extra.length ? ` (${extra.join(', ')})` : ''}`
+}
 
 /** A fingerprint that changes whenever the ad's facts change. */
 export function stampOf(tanks: Tank[], price: number): string {
@@ -106,6 +115,20 @@ const conditionBlock = [
   'Restabläufe teilweise vorhanden. Besichtigung jederzeit möglich.',
 ].join('\n')
 
+/**
+ * Features shared by every advertised item become one AUSSTATTUNG block —
+ * claiming "stapelbar" for the lot is only honest if it holds for all of them.
+ */
+function sharedFeatures(tanks: Tank[]): string[] {
+  if (tanks.length === 0) return []
+  return tanks[0].tags.filter((tag) => tanks.every((t) => t.tags.includes(tag)))
+}
+
+function featureBlock(tanks: Tank[]): string[] {
+  const shared = sharedFeatures(tanks)
+  return shared.length > 0 ? ['AUSSTATTUNG', ...shared.map((f) => `• ${f}`), ''] : []
+}
+
 function pickupBlock(db: DB): string {
   const s = db.settings.seller
   const where = [s.plz, s.location].filter(Boolean).join(' ')
@@ -137,6 +160,7 @@ export function generateAd(db: DB, scope: AdScope, portal: Portal | null): Gener
       `• Preis: ${eur(tank.vb)} VB (brutto inkl. ${Math.round(s.vatRate * 100)} % MwSt.)`,
       `• Preis je Liter: ${centsPerLitre(tank.vb, tank.litres)}`,
       '',
+      ...featureBlock([tank]),
       conditionBlock,
       '',
       pickupBlock(db),
@@ -155,8 +179,9 @@ export function generateAd(db: DB, scope: AdScope, portal: Portal | null): Gener
       `${t.count} ${maker}-Edelstahltanks mit zusammen ${num(t.litres)} Litern aus Betriebsauflösung.`,
       '',
       'BESTAND',
-      ...groups.map(bullet),
+      ...groups.map((g) => bullet(g, sharedFeatures(tanks))),
       '',
+      ...featureBlock(tanks),
       'PREIS',
       `Einzelabgabe zu den genannten Preisen, Summe ${eur(t.vb)} VB.`,
       'Bei Abnahme mehrerer Tanks Preisnachlass — einfach anfragen.',
@@ -174,10 +199,12 @@ export function generateAd(db: DB, scope: AdScope, portal: Portal | null): Gener
     const cat = db.settings.categories.find((c) => c.id === scope.category)
     const volume = cat?.hasVolume ?? false
     const isBarrel = scope.category === 'fass'
-    const perPiece = groups.map((g) =>
-      volume
-        ? `• ${g.count}× ${g.type} ${num(g.litres)} l – je ${eur(g.vb)}`
-        : `• ${g.count}× ${g.maker === 'Sonstige' ? g.type : `${g.maker} ${g.type}`} – je ${eur(g.vb)}`)
+    const shared = sharedFeatures(tanks)
+    const perPiece = groups.map((g) => {
+      const extra = g.tags.filter((x) => !shared.includes(x))
+      const name = volume ? `${g.type} ${num(g.litres)} l` : g.maker === 'Sonstige' ? g.type : `${g.maker} ${g.type}`
+      return `• ${g.count}× ${name} – je ${eur(g.vb)}${extra.length ? ` (${extra.join(', ')})` : ''}`
+    })
 
     const title = trim(
       isBarrel
@@ -207,6 +234,7 @@ export function generateAd(db: DB, scope: AdScope, portal: Portal | null): Gener
       'BESTAND',
       ...perPiece,
       '',
+      ...featureBlock(tanks),
       ...condition,
       '',
       'PREIS',
@@ -226,7 +254,7 @@ export function generateAd(db: DB, scope: AdScope, portal: Portal | null): Gener
     const body = [
       `Wegen Betriebsauflösung: ${t.count} Edelstahltanks, zusammen ${num(t.litres)} Liter.`,
       '',
-      ...groups.map(bullet),
+      ...groups.map((g) => bullet(g, sharedFeatures(tanks))),
       '',
       `Komplett: ${eur(s.packagePrice)} VB brutto (${centsPerLitre(s.packagePrice, t.litres)}). Einzelabgabe möglich.`,
       s.seller.pickupInfo,
@@ -250,8 +278,9 @@ export function generateAd(db: DB, scope: AdScope, portal: Portal | null): Gener
       : `Wegen Aufgabe des Betriebs verkaufe ich meinen kompletten Edelstahltank-Bestand: ${t.count} Tanks mit insgesamt ${num(t.litres)} Litern Volumen.`,
     '',
     'BESTAND',
-    ...groups.map(bullet),
+    ...groups.map((g) => bullet(g, sharedFeatures(tanks))),
     '',
+    ...featureBlock(tanks),
     priceBlock(db, t.vb, s.packagePrice, t.litres, fach),
     '',
     conditionBlock,

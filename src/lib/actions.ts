@@ -59,6 +59,25 @@ export function addTank(partial: Partial<Tank>) {
   )
 }
 
+/** Add or remove one feature across a whole selection at once. */
+export function tagMany(tankIds: string[], tag: string, on: boolean) {
+  const value = tag.trim()
+  if (!value) return
+  store.mutate(
+    (db) => {
+      for (const id of tankIds) {
+        const t = db.tanks.find((x) => x.id === id)
+        if (!t) continue
+        const has = t.tags.includes(value)
+        if (on && !has) t.tags = [...t.tags, value]
+        if (!on && has) t.tags = t.tags.filter((x) => x !== value)
+        t.updatedAt = now()
+      }
+    },
+    { kind: 'tank', text: `${on ? 'Merkmal gesetzt' : 'Merkmal entfernt'}: ${value} (${tankIds.length} Positionen)` },
+  )
+}
+
 export function removeTank(tank: Tank) {
   store.mutate(
     (db) => {
