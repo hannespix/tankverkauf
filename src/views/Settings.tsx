@@ -6,6 +6,7 @@ import { exportCsv, exportJson, exportXlsx, importXlsx } from '../lib/exporter'
 import { dateTimeDE, relativeDE } from '../lib/format'
 import { store, useStore } from '../lib/store'
 import { clearVault, forgetDevice, rememberedUntil } from '../lib/vault'
+import { catalogPageUrl } from '../lib/catalog'
 import { STYLE_LABEL, type CategoryDef, type DB, type Portal, type PortalStyle } from '../types'
 
 export default function Settings() {
@@ -17,6 +18,20 @@ export default function Settings() {
   const [editPortal, setEditPortal] = useState<Portal | null>(null)
   const [editCat, setEditCat] = useState<CategoryDef | null>(null)
   const remembered = rememberedUntil()
+  const [publishing, setPublishing] = useState(false)
+
+  async function publish() {
+    setPublishing(true)
+    setNote(null)
+    try {
+      const url = await store.publishCatalog()
+      setNote(`Liste veröffentlicht. Sie ist unter ${url} erreichbar — je nach GitHub-Zwischenspeicher nach ein bis zwei Minuten.`)
+    } catch (err) {
+      setNote(err instanceof Error ? err.message : 'Veröffentlichen fehlgeschlagen.')
+    } finally {
+      setPublishing(false)
+    }
+  }
   const xlsxRef = useRef<HTMLInputElement>(null)
   const jsonRef = useRef<HTMLInputElement>(null)
 
@@ -125,7 +140,10 @@ export default function Settings() {
           <Field label="Name / Betrieb"><Input value={s.seller.name} disabled={readOnly} onChange={(e) => patchSettings({ seller: { ...s.seller, name: e.target.value } })} /></Field>
           <Field label="Ort"><Input value={s.seller.location} disabled={readOnly} onChange={(e) => patchSettings({ seller: { ...s.seller, location: e.target.value } })} placeholder="z. B. Ihringen" /></Field>
           <Field label="PLZ"><Input value={s.seller.plz} disabled={readOnly} onChange={(e) => patchSettings({ seller: { ...s.seller, plz: e.target.value } })} placeholder="79241" /></Field>
-          <Field label="Kontakt (optional)"><Input value={s.seller.contact} disabled={readOnly} onChange={(e) => patchSettings({ seller: { ...s.seller, contact: e.target.value } })} placeholder="Telefonnummer für Rückfragen" /></Field>
+          <Field label="Telefon (optional)"><Input value={s.seller.contact} disabled={readOnly} onChange={(e) => patchSettings({ seller: { ...s.seller, contact: e.target.value } })} placeholder="Telefonnummer für Rückfragen" /></Field>
+          <Field label="E-Mail für Anfragen" hint="Hierhin gehen Anfragen aus der öffentlichen Liste.">
+            <Input type="email" value={s.seller.email} disabled={readOnly} onChange={(e) => patchSettings({ seller: { ...s.seller, email: e.target.value } })} placeholder="verkauf@example.de" inputMode="email" />
+          </Field>
         </div>
         <Field label="Hinweis zu Besichtigung & Abholung" className="mt-3">
           <Textarea rows={2} value={s.seller.pickupInfo} disabled={readOnly} onChange={(e) => patchSettings({ seller: { ...s.seller, pickupInfo: e.target.value } })} />
@@ -217,6 +235,53 @@ export default function Settings() {
           ))}
           {s.portals.length === 0 && <p className="text-sm text-muted">Keine Portale angelegt.</p>}
         </div>
+      </Card>
+
+      <Card>
+        <SectionTitle
+          title="Öffentliche Liste für Käufer"
+          hint="Eine reduzierte Fassung des Bestands, die Interessenten ansehen und ankreuzen können."
+          action={
+            <Button variant="primary" disabled={readOnly || publishing || !s.catalog.owner} onClick={() => void publish()}>
+              <IconCloud />{publishing ? 'Wird veröffentlicht …' : 'Jetzt veröffentlichen'}
+            </Button>
+          }
+        />
+
+        <div className="mb-3 rounded-xl border border-line bg-surface-2 p-3.5 text-[13px] leading-relaxed text-muted">
+          <strong className="text-ink">Was veröffentlicht wird:</strong> Kategorie, Hersteller, Bezeichnung, Volumen und
+          die VB — nur von Positionen, die noch nicht verkauft sind. <strong className="text-ink">Was nicht:</strong>{' '}
+          Zielpreise, Untergrenzen, Gebote, Notizen, Interessenten und Fotos. Die Liste wird nach Whitelist gebaut, es
+          kann also nichts versehentlich mitrutschen.
+          <br />
+          <br />
+          Das Ziel ist bewusst das <em>öffentliche</em> Repository — dafür muss dein Token auch dort schreiben dürfen
+          (im Token unter „Repository access" zusätzlich {s.catalog.repo || 'tankverkauf'} auswählen).
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-4">
+          <Field label="Benutzer"><Input value={s.catalog.owner} disabled={readOnly} onChange={(e) => patchSettings({ catalog: { ...s.catalog, owner: e.target.value.trim() } })} placeholder="hannespix" /></Field>
+          <Field label="Repository (öffentlich)"><Input value={s.catalog.repo} disabled={readOnly} onChange={(e) => patchSettings({ catalog: { ...s.catalog, repo: e.target.value.trim() } })} /></Field>
+          <Field label="Branch"><Input value={s.catalog.branch} disabled={readOnly} onChange={(e) => patchSettings({ catalog: { ...s.catalog, branch: e.target.value.trim() } })} /></Field>
+          <Field label="Datei"><Input value={s.catalog.path} disabled={readOnly} onChange={(e) => patchSettings({ catalog: { ...s.catalog, path: e.target.value.trim() } })} /></Field>
+        </div>
+
+        <Field label="Einleitungstext" className="mt-3">
+          <Textarea rows={2} value={s.catalog.intro} disabled={readOnly} onChange={(e) => patchSettings({ catalog: { ...s.catalog, intro: e.target.value } })} />
+        </Field>
+
+        {s.catalog.owner && (
+          <p className="mt-3 text-[13px] text-muted">
+            Link zum Weitergeben:{' '}
+            <a href={catalogPageUrl(s.catalog)} target="_blank" rel="noreferrer noopener" className="font-semibold text-primary underline">
+              {catalogPageUrl(s.catalog)}
+            </a>
+          </p>
+        )}
+        <p className="mt-1.5 text-xs text-faint">
+          Nicht aus einer Kleinanzeige heraus verlinken — dort sind Links auf eigene Angebotsseiten heikel. Nach dem
+          Erstkontakt per Mail oder Messenger verschicken ist unproblematisch.
+        </p>
       </Card>
 
       <Card>

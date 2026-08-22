@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react'
 import type { Activity, ActivityKind, DB } from '../types'
 import { SEED } from './seed'
 import { cachedUrl, forgetUrl, photoPath, rememberUrl } from './photos'
+import { buildCatalog, catalogPageUrl } from './catalog'
 import {
   ConflictError,
   GitHubError,
@@ -344,6 +345,23 @@ class TankStore {
     if (!this.token) return null
     const blob = await getBinary(this.token, this.snapshot.config, path)
     return blob ? rememberUrl(path, blob) : null
+  }
+
+  /**
+   * Publish the reduced catalogue into the public repo. Deliberately a separate
+   * target from the data repo, and the token needs to be allowed to write there.
+   */
+  async publishCatalog(): Promise<string> {
+    if (!this.token) throw new Error('Nicht angemeldet.')
+    const c = this.snapshot.db.settings.catalog
+    if (!c.owner || !c.repo || !c.path) throw new Error('Zielrepository für den Katalog ist nicht eingetragen.')
+    const cfg: RepoConfig = { owner: c.owner, repo: c.repo, branch: c.branch || 'main', path: c.path }
+    const catalog = buildCatalog(this.snapshot.db)
+    const text = `${JSON.stringify(catalog, null, 2)}\n`
+    const existing = await getFile(this.token, cfg).catch(() => null)
+    await putFile(this.token, cfg, text, existing?.sha ?? null, `Katalog aktualisiert (${catalog.items.length} Positionen)`)
+    this.mutate(() => {}, { kind: 'settings', text: `Katalog veröffentlicht: ${catalog.items.length} Positionen` })
+    return catalogPageUrl(c)
   }
 
   async updateConfig(cfg: RepoConfig) {
