@@ -33,7 +33,7 @@ export default function Ads() {
       <Card>
         <SectionTitle
           title="Anzeigen"
-          hint="Der Text wird je Portal aus dem aktuellen Bestand erzeugt. Verkaufst du einen Tank, meldet sich jede betroffene Anzeige."
+          hint="Der Text wird je Portal aus dem aktuellen Bestand erzeugt. Verkaufst du eine Position, meldet sich jede betroffene Anzeige."
           action={<Button variant="primary" onClick={() => setCreating(true)}><IconPlus />Anzeige erstellen</Button>}
         />
 
@@ -171,7 +171,7 @@ function AdCard({ ad, portal, onOpen }: { ad: Ad; portal: Portal | null; onOpen:
           </div>
           <h3 className="mt-2 font-bold">{ad.title || <span className="text-faint">ohne Titel</span>}</h3>
           <p className="tnum mt-0.5 text-[13px] text-muted">
-            {eur(ad.price)} {ad.priceType} · {ad.tankIds.length} Tank{ad.tankIds.length === 1 ? '' : 's'}
+            {eur(ad.price)} {ad.priceType} · {ad.tankIds.length} Position{ad.tankIds.length === 1 ? '' : 'en'}
             {ad.publishedAt && ` · online seit ${dateDE(ad.publishedAt)}`}
             {ad.bumpedAt && ` · hochgeholt ${relativeDE(ad.bumpedAt)}`}
           </p>
@@ -234,7 +234,7 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
             <option value="paket">Komplettpaket — alles, was zum Paket gehört</option>
             <option value="kategorie">Ganze Kategorie</option>
             <option value="maker">Hersteller-Bundle — alles einer Marke</option>
-            <option value="tank">Einzelner Tank</option>
+            <option value="tank">Einzelne Position</option>
             <option value="restposten">Restposten — Kurzfassung</option>
           </Select>
         </Field>
@@ -264,7 +264,7 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
         )}
 
         {kind === 'tank' && (
-          <Field label="Tank">
+          <Field label="Position">
             <Select value={tankId} onChange={(e) => setTankId(e.target.value)}>
               {db.tanks.filter(isOpen).map((t) => (
                 <option key={t.id} value={t.id}>{t.maker === 'Sonstige' ? t.type : `${t.maker} ${t.type}`}{t.litres > 0 && ` · ${num(t.litres)} l`} · {eur(t.vb)}</option>

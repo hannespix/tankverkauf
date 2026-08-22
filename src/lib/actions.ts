@@ -61,7 +61,7 @@ export function addTank(partial: Partial<Tank>) {
         updatedAt: now(),
       })
     },
-    { kind: 'tank', text: `Tank angelegt: ${partial.maker ?? ''} ${partial.litres ?? 0} l` },
+    { kind: 'tank', text: `Position angelegt: ${partial.maker ?? ''} ${partial.type ?? ''}`.replace(/\s+/g, ' ').trim() },
   )
 }
 
@@ -123,7 +123,7 @@ export function removeTank(tank: Tank) {
         l.tankIds = l.tankIds.filter((id) => id !== tank.id)
       })
     },
-    { kind: 'tank', text: `Tank gelöscht: ${tankName(tank)}` },
+    { kind: 'tank', text: `Position gelöscht: ${tankName(tank)}` },
   )
 }
 

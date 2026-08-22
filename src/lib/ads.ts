@@ -27,7 +27,7 @@ export const SCOPE_LABEL: Record<AdScope['kind'], string> = {
   paket: 'Komplettpaket',
   kategorie: 'Ganze Kategorie',
   maker: 'Hersteller-Bundle',
-  tank: 'Einzelner Tank',
+  tank: 'Einzelne Position',
   restposten: 'Restposten (Kurzfassung)',
   custom: 'Freier Text',
 }
@@ -169,7 +169,7 @@ export function generateAd(db: DB, scope: AdScope, portal: Portal | null): Gener
   if (scope.kind === 'tank') {
     const tank = tanks[0]
     if (!tank) {
-      return { title: '', body: 'Tank nicht gefunden.', price: 0, priceType: 'VB', tankIds: [], stamp: '' }
+      return { title: '', body: 'Position nicht gefunden.', price: 0, priceType: 'VB', tankIds: [], stamp: '' }
     }
     const name = tank.maker === 'Sonstige' ? tank.type : `${tank.maker} ${tank.type}`
     // Without a maker's plate the shape is the name, so the word buyers actually
@@ -212,7 +212,7 @@ export function generateAd(db: DB, scope: AdScope, portal: Portal | null): Gener
       ...featureBlock(tanks),
       'PREIS',
       `Einzelabgabe zu den genannten Preisen, Summe ${eur(t.vb)} VB.`,
-      'Bei Abnahme mehrerer Tanks Preisnachlass — einfach anfragen.',
+      'Bei Abnahme mehrerer Positionen Preisnachlass — einfach anfragen.',
       '',
       conditionBlock,
       '',
@@ -298,18 +298,28 @@ export function generateAd(db: DB, scope: AdScope, portal: Portal | null): Gener
 
   // Komplettpaket
   const makerList = [...new Set(groups.map((g) => g.maker))].filter((m) => m !== 'Sonstige').join(', ')
+  // The package holds whatever is marked as belonging to it. Marking the barrels
+  // too used to advertise "61 Edelstahltanks" over a mixed lot — so the noun only
+  // names a kind while there is exactly one, and stays neutral otherwise.
+  const kinds = [...new Set(tanks.map((x) => x.category))]
+  const noun = kinds.length === 1
+    ? `${db.settings.categories.find((c) => c.id === kinds[0])?.label ?? 'Positionen'}`
+    : 'Positionen'
+  const volume = t.litres > 0 ? ` ${num(t.litres)} l` : ''
   const title = trim(
     fach
-      ? `Betriebsauflösung: ${t.count} Edelstahltanks, ${num(t.litres)} l gesamt${makerList ? ` — ${makerList}` : ''}`
-      : `${t.count} Edelstahltanks ${num(t.litres)} l Weintank Lagertank Betriebsauflösung`,
+      ? `Betriebsauflösung: ${t.count} ${noun}${t.litres > 0 ? `, ${num(t.litres)} l gesamt` : ''}${makerList ? ` — ${makerList}` : ''}`
+      // Die Suchbegriffe gehören in den Titel, aber nur solange sie stimmen —
+      // über einen gemischten Posten wäre "Weintank Lagertank" gelogen.
+      : `${t.count} ${noun}${volume}${kinds.length === 1 && kinds[0] === 'tank' ? ' Weintank Lagertank' : ''} Betriebsauflösung Weingut`,
     lim.title,
   )
   const body = [
-    fach ? `${sellerName} — Betriebsauflösung, kompletter Edelstahltank-Bestand` : `${sellerName} — Betriebsauflösung`,
+    fach ? `${sellerName} — Betriebsauflösung, kompletter Bestand` : `${sellerName} — Betriebsauflösung`,
     '',
     fach
-      ? `${t.count} Tanks mit zusammen ${num(t.litres)} Litern aus laufendem Kellerbetrieb. Abgabe komplett oder einzeln.`
-      : `Wegen Aufgabe des Betriebs verkaufe ich meinen kompletten Edelstahltank-Bestand: ${t.count} Tanks mit insgesamt ${num(t.litres)} Litern Volumen.`,
+      ? `${t.count} ${noun}${t.litres > 0 ? ` mit zusammen ${num(t.litres)} Litern` : ''} aus laufendem Kellerbetrieb. Abgabe komplett oder einzeln.`
+      : `Wegen Aufgabe des Betriebs verkaufe ich meinen kompletten Bestand: ${t.count} ${noun}${t.litres > 0 ? ` mit insgesamt ${num(t.litres)} Litern Volumen` : ''}.`,
     '',
     'BESTAND',
     ...groups.map((g) => bullet(g, sharedFeatures(tanks))),
@@ -317,7 +327,7 @@ export function generateAd(db: DB, scope: AdScope, portal: Portal | null): Gener
     ...featureBlock(tanks),
     priceBlock(db, t.vb, s.packagePrice, t.litres, fach),
     '',
-    conditionBlock,
+    kinds.length === 1 ? conditionFor(kinds[0]) : conditionFor('gemischt'),
     '',
     pickupBlock(db),
     '',
