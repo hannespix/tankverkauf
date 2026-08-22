@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Button, Card, CopyButton, EmptyState, Field, Input, Modal, Pill, SectionTitle, Select, Textarea, cx, type Tone } from '../components/ui'
 import { IconDownload, IconGrid, IconLink, IconMegaphone, IconPlus, IconRefresh, IconTrash, IconWarn } from '../components/icons'
 import { bumpAd, createAdsForPortals, markAdPublished, patchAd, refreshAd, removeAd } from '../lib/actions'
-import { SCOPE_LABEL, adDrift, generateAd, limitsOf, portalOf } from '../lib/ads'
+import { SCOPE_LABEL, adDrift, countWords, generateAd, limitsOf, limitsOfPortal, portalOf } from '../lib/ads'
 import { collage, download, safeName, zip } from '../lib/bundle'
 import { catalogPageUrl } from '../lib/catalog'
 import { dateDE, eur, num, relativeDE } from '../lib/format'
@@ -81,7 +81,8 @@ export default function Ads() {
             <span className="min-w-0 flex-1">
               <strong>{uncovered.count} Positionen stehen in keiner Anzeige:</strong>{' '}
               {uncovered.categories.map((c) => `${c.n} × ${c.label}`).join(', ')}. Das Komplettpaket nimmt nur Kategorien,
-              die in den Einstellungen als Paketbestandteil markiert sind — für alles andere braucht es eine eigene Anzeige.
+              die in den Einstellungen als Paketbestandteil markiert sind. Der Zuschnitt „Gesamtanzeige" nimmt alles auf
+              einmal — sonst braucht es je Kategorie eine eigene Anzeige.
             </span>
             <Button size="sm" onClick={() => setCreating(true)}><IconPlus />Anzeige dafür</Button>
           </div>
@@ -191,6 +192,10 @@ function AdCard({ ad, portal, onOpen }: { ad: Ad; portal: Portal | null; onOpen:
   const drift = adDrift(db, ad)
   const bumpDays = ad.bumpedAt ? Math.floor((Date.now() - new Date(ad.bumpedAt).getTime()) / 86_400_000) : null
   const needsBump = ad.status === 'online' && bumpDays !== null && bumpDays >= db.settings.ad.bumpAfterDays
+  // Nach dem Bearbeiten von Hand kann der Text über die Wortgrenze des Portals
+  // gewachsen sein — das fällt sonst erst beim Einstellen auf.
+  const maxWords = limitsOfPortal(portal).words
+  const tooLong = maxWords > 0 && countWords(ad.body) > maxWords
 
   return (
     <Card>
@@ -200,6 +205,7 @@ function AdCard({ ad, portal, onOpen }: { ad: Ad; portal: Portal | null; onOpen:
             <Pill tone={STATUS_TONE[ad.status]}>{STATUS_LABEL[ad.status]}</Pill>
             <Pill tone="neutral">{SCOPE_LABEL[ad.scope.kind]}</Pill>
             {drift.stale && <Pill tone="amber"><IconWarn className="h-3 w-3" />Text veraltet</Pill>}
+            {tooLong && <Pill tone="amber"><IconWarn className="h-3 w-3" />{countWords(ad.body)} von max. {maxWords} Wörtern</Pill>}
             {needsBump && <Pill tone="sky">seit {bumpDays} Tagen nicht hochgeholt</Pill>}
           </div>
           <h3 className="mt-2 font-bold">{ad.title || <span className="text-faint">ohne Titel</span>}</h3>
@@ -271,6 +277,7 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
       <div className="space-y-4">
         <Field label="Was soll beworben werden?" hint={`${covered} von ${openCount} noch offenen Positionen`}>
           <Select value={kind} onChange={(e) => setKind(e.target.value as AdScopeKind)}>
+            <option value="gesamt">Gesamtanzeige — alles, was noch offen ist ({openCount})</option>
             <option value="paket">Komplettpaket — die Kategorien im Paket ({inPackage})</option>
             <option value="kategorie">Ganze Kategorie</option>
             <option value="maker">Hersteller-Bundle — alles einer Marke</option>
@@ -278,6 +285,15 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
             <option value="restposten">Restposten — Kurzfassung ({inPackage})</option>
           </Select>
         </Field>
+
+        {kind === 'gesamt' && (
+          <p className="rounded-xl bg-surface-2 p-3 text-[13px] text-muted">
+            Eine Anzeige je Portal mit <strong className="text-ink">allen {openCount} offenen Positionen</strong>, nach
+            Kategorien sortiert, mit Einzelpreis je Bauart und der Summe für alles zusammen. Die Paketpreise der
+            Käuferliste bleiben draußen — die verhandelst du im Gespräch. Unten verweist der Text auf die Käuferliste
+            mit Fotos und Maßen. Wird etwas verkauft, erzeugst du den Text neu und stellst ihn wieder ein.
+          </p>
+        )}
 
         {(kind === 'paket' || kind === 'restposten') && inPackage < openCount && (
           <p className="flex items-start gap-2 rounded-xl bg-amber-soft/50 p-3 text-[13px] text-amber">
@@ -347,7 +363,12 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
           <div key={portal?.id} className="rounded-xl border border-line bg-surface-2 p-3">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold text-muted uppercase">Vorschau · {portal?.name}</span>
-              <Counter value={gen.title.length} limit={limitsOf(portal).title} />
+              <span className="flex items-center gap-2">
+                <Counter value={gen.title.length} limit={limitsOf(portal).title} />
+                {limitsOfPortal(portal).words > 0 && (
+                  <Counter value={countWords(gen.body)} limit={limitsOfPortal(portal).words} unit="Wörter" />
+                )}
+              </span>
             </div>
             <div className="mt-1 font-bold">{gen.title}</div>
             <pre className="mt-2 max-h-44 overflow-y-auto text-[13px] leading-relaxed whitespace-pre-wrap text-muted">{gen.body}</pre>
@@ -454,6 +475,10 @@ function AdModal({ id, onClose }: { id: string; onClose: () => void }) {
   if (!ad) return null
   const portal = portalOf(db, ad.portalId)
   const lim = limitsOf(portal)
+  // Manche Portale zählen Wörter statt Zeichen. Wo eine Grenze hinterlegt ist,
+  // steht sie neben der Zeichenzahl — sonst merkt man die Überschreitung erst
+  // beim Einstellen.
+  const words = limitsOfPortal(portal).words
   const drift = adDrift(db, ad)
 
   return (
@@ -477,7 +502,11 @@ function AdModal({ id, onClose }: { id: string; onClose: () => void }) {
         <div>
           <div className="mb-1 flex items-end justify-between">
             <span className="text-[13px] font-semibold text-muted">Beschreibung</span>
-            <span className="flex items-center gap-2"><Counter value={ad.body.length} limit={lim.body} /><CopyButton text={ad.body} /></span>
+            <span className="flex items-center gap-2">
+              <Counter value={ad.body.length} limit={lim.body} />
+              {words > 0 && <Counter value={countWords(ad.body)} limit={words} unit="Wörter" />}
+              <CopyButton text={ad.body} />
+            </span>
           </div>
           <Textarea rows={14} value={ad.body} onChange={(e) => patchAd(ad.id, { body: e.target.value })} className="font-mono text-[13px]" />
         </div>
@@ -536,11 +565,11 @@ function AdModal({ id, onClose }: { id: string; onClose: () => void }) {
   )
 }
 
-function Counter({ value, limit }: { value: number; limit: number }) {
+function Counter({ value, limit, unit }: { value: number; limit: number; unit?: string }) {
   const over = value > limit
   return (
     <span className={cx('tnum text-xs font-bold', over ? 'text-rose' : value > limit * 0.9 ? 'text-amber' : 'text-faint')}>
-      {value}/{limit}
+      {value}/{limit}{unit ? ` ${unit}` : ''}
     </span>
   )
 }

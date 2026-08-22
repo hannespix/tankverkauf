@@ -75,7 +75,7 @@ export function catalogPageUrl(c: DB['settings']['catalog']): string {
  * der Datenbank abzulegen. FNV-1a genügt: es geht um "gleich oder nicht", nicht um
  * Fälschungssicherheit.
  */
-function hash(text: string): string {
+export function hash(text: string): string {
   let h = 0x811c9dc5
   for (let i = 0; i < text.length; i += 1) {
     h ^= text.charCodeAt(i)

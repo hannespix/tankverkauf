@@ -83,8 +83,25 @@ export interface Lead {
   lastContact: string | null
   nextFollowUp: string | null
   note: string
+  /**
+   * Eingegangene Nachrichten samt dem, was daraus übernommen wurde. Sie hängen am
+   * Interessenten und nicht an einem eigenen Wurzelschlüssel: migrate() baut sein
+   * Rückgabeobjekt aus einer festen Liste und würde alles Neue beim Laden
+   * verwerfen — ein Feld an Lead reist unverändert mit, auch durch replaceAll().
+   */
+  messages?: LeadMessage[]
   createdAt: string
   updatedAt: string
+}
+
+export interface LeadMessage {
+  at: string
+  /** Der Wortlaut, gekappt. Bei einem Bild das, was die KI abgelesen hat. */
+  text: string
+  /** War es ein Bild? Dann ist text ein Transkript und kein Original. */
+  fromImage?: boolean
+  /** Was daraus übernommen wurde, im Klartext. */
+  applied: string[]
 }
 
 export interface Deal {
@@ -121,7 +138,7 @@ export interface Quote {
   updatedAt: string
 }
 
-export type AdScopeKind = 'paket' | 'kategorie' | 'maker' | 'tank' | 'restposten' | 'custom'
+export type AdScopeKind = 'gesamt' | 'paket' | 'kategorie' | 'maker' | 'tank' | 'restposten' | 'custom'
 
 export interface AdScope {
   kind: AdScopeKind
@@ -142,6 +159,12 @@ export interface Portal {
   postUrl: string
   titleLimit: number
   bodyLimit: number
+  /**
+   * Höchstzahl an WÖRTERN im Anzeigentext. Manche Portale zählen Wörter statt
+   * Zeichen — bei 58 Positionen ist das die Schranke, die zuerst greift.
+   * 0 oder fehlend heißt: keine Wortgrenze.
+   */
+  bodyWords?: number
   style: PortalStyle
   /** Free note, e.g. costs or the right category to pick. */
   notes: string

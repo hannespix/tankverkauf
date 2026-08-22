@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { Button, Card, Field, Input, Modal, Pill, SectionTitle, Select, Textarea, Toggle, cx } from '../components/ui'
 import { IconCheck, IconCloud, IconDownload, IconLock, IconPlus, IconRefresh, IconTrash, IconUpload, IconWarn } from '../components/icons'
-import { addMissingSeedBundles, addMissingSeedDims, addMissingSeedItems, addMissingSeedNotes, bundlesInSeed, measuredInSeed, missingFromSeed, notesInSeed, patchSettings, removeCategory, removePortal, upsertCategory, upsertPortal } from '../lib/actions'
+import { addMissingSeedBundles, addMissingSeedDims, addMissingSeedItems, addMissingSeedNotes, addMissingSeedWordLimits, bundlesInSeed, measuredInSeed, missingFromSeed, notesInSeed, patchSettings, removeCategory, removePortal, upsertCategory, upsertPortal, wordLimitsInSeed } from '../lib/actions'
 import { exportCsv, exportJson, exportXlsx, importXlsx } from '../lib/exporter'
 import { dateTimeDE, dims as fmtDims, num, relativeDE } from '../lib/format'
 import { store, useStore } from '../lib/store'
@@ -24,6 +24,7 @@ export default function Settings() {
   const unmeasured = measuredInSeed(db)
   const openNotes = notesInSeed(db)
   const openBundles = bundlesInSeed(db)
+  const openWords = wordLimitsInSeed(db)
   // Ob die veröffentlichte Liste noch dem entspricht, was hier steht.
   const catalogBehind = !!db.settings.catalog.owner && catalogStamp(db) !== db.settings.publishedStamp
   // The repository serving this page is the one whose code gets deployed. Publishing
@@ -274,6 +275,7 @@ export default function Settings() {
                 </div>
                 <div className="tnum mt-0.5 text-[13px] text-muted">
                   Titel max. {portal.titleLimit} · Text max. {portal.bodyLimit} Zeichen
+                  {portal.bodyWords ? ` · max. ${portal.bodyWords} Wörter` : ''}
                 </div>
                 {portal.notes && <div className="mt-0.5 text-xs text-faint">{portal.notes}</div>}
               </div>
@@ -473,6 +475,28 @@ export default function Settings() {
         </Card>
       )}
 
+      {openWords.length > 0 && (
+        <Card className="border-amber/40">
+          <SectionTitle
+            title={openWords.length === 1 ? 'Wortgrenze für ein Portal liegt bereit' : `Wortgrenzen für ${openWords.length} Portale liegen bereit`}
+            hint="Manche Portale zählen Wörter statt Zeichen. Ist die Grenze hinterlegt, kürzt sich die Gesamtanzeige selbst, bis sie hineinpasst."
+            action={
+              <Button variant="primary" onClick={() => { const n = addMissingSeedWordLimits(); setNote(`Wortgrenze für ${n} ${n === 1 ? 'Portal' : 'Portale'} übernommen.`) }}>
+                <IconPlus />Übernehmen
+              </Button>
+            }
+          />
+          <ul className="space-y-2">
+            {openWords.map((p) => (
+              <li key={p.id} className="rounded-xl bg-surface-2 p-3 text-[13px]">
+                <span className="block font-semibold">{p.name}</span>
+                <span className="tnum block text-muted">höchstens {p.words} Wörter im Anzeigentext</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
       {openNotes.length > 0 && (
         <Card className="border-amber/40">
           <SectionTitle
@@ -561,17 +585,24 @@ function PortalModal({ portal, onClose }: { portal: Portal; onClose: () => void 
         <Field label="Seite zum Anzeigen-Aufgeben">
           <Input value={draft.postUrl} onChange={(e) => set({ postUrl: e.target.value })} placeholder="https://…" inputMode="url" />
         </Field>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-3">
           <Field label="Titel max. Zeichen"><Input type="number" min={10} className="tnum" value={draft.titleLimit} onChange={(e) => set({ titleLimit: Math.max(10, Number(e.target.value) || 65) })} /></Field>
           <Field label="Text max. Zeichen"><Input type="number" min={100} className="tnum" value={draft.bodyLimit} onChange={(e) => set({ bodyLimit: Math.max(100, Number(e.target.value) || 4000) })} /></Field>
+          <Field label="Text max. Wörter">
+            <Input type="number" min={0} className="tnum" value={draft.bodyWords ?? 0} onChange={(e) => set({ bodyWords: Math.max(0, Number(e.target.value) || 0) })} />
+          </Field>
         </div>
+        <p className="-mt-1 text-xs text-faint">
+          Manche Portale zählen Wörter statt Zeichen; 0 heißt: keine Wortgrenze. Steht die Grenze hier, kürzt sich die
+          Gesamtanzeige von selbst, bis sie hineinpasst — zuerst fallen Abholtext und Signatur, dann die Preisspalte.
+        </p>
         <Field label="Tonlage" hint="Fachportale bekommen Branchensprache und den Netto-/MwSt.-Hinweis.">
           <Select value={draft.style} onChange={(e) => set({ style: e.target.value as PortalStyle })}>
             {(['privat', 'fach'] as PortalStyle[]).map((v) => <option key={v} value={v}>{STYLE_LABEL[v]}</option>)}
           </Select>
         </Field>
         <Field label="Notiz" hint="Kosten, passende Kategorie, Besonderheiten.">
-          <Textarea rows={2} value={draft.notes} onChange={(e) => set({ notes: e.target.value })} />
+          <Textarea rows={3} value={draft.notes} onChange={(e) => set({ notes: e.target.value })} />
         </Field>
         <div className="flex justify-end gap-2 border-t border-line pt-4">
           <Button onClick={onClose}>Abbrechen</Button>
