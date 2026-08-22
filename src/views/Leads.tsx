@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { Button, Card, EmptyState, Field, Input, Modal, Pill, SectionTitle, Select, Textarea, cx, type Tone } from '../components/ui'
-import { IconPlus, IconSpark, IconTrash } from '../components/icons'
-import { addLead, patchLead, removeLead } from '../lib/actions'
+import { IconCheck, IconPlus, IconSpark, IconTrash } from '../components/icons'
+import { addLead, createQuote, patchLead, patchQuote, removeLead } from '../lib/actions'
 import { parseMessage } from '../lib/ads'
 import { dateDE, eur, num, relativeDE, todayISO } from '../lib/format'
+import { totals } from '../lib/stats'
 import { useStore } from '../lib/store'
 import { STAGE_LABEL, SOURCE_LABEL, type Lead, type LeadSource, type LeadStage } from '../types'
 
@@ -210,13 +211,23 @@ function ParseModal({ onClose }: { onClose: () => void }) {
           placeholder={'Hallo,\nist der Möschle 1650 l noch zu haben? Ich würde ihn nächste Woche abholen.\nTel. 0176 12345678\nViele Grüße\nMax Mustermann'} />
 
         {parsed && (
-          <div className="rounded-xl border border-line bg-surface-2 p-3 text-sm">
-            <div className="mb-2 font-bold">Erkannt</div>
+          <div className={cx('rounded-xl border p-3 text-sm', parsed.exact ? 'border-primary/50 bg-primary-soft/40' : 'border-line bg-surface-2')}>
+            <div className="mb-2 flex items-center gap-2 font-bold">
+              {parsed.exact ? <><IconCheck className="text-primary" />Exakt gelesen</> : 'Erkannt'}
+            </div>
+            {parsed.exact && (
+              <p className="mb-2 text-[13px] text-muted">
+                Die Nachricht stammt aus deiner Käuferliste — Positionen und Angebot wurden übernommen, nicht geraten.
+              </p>
+            )}
             <dl className="grid gap-1.5 sm:grid-cols-2">
               <Detail label="Name" value={parsed.name || '– nicht erkannt –'} />
               <Detail label="Telefon" value={parsed.phone || '–'} />
               <Detail label="E-Mail" value={parsed.email || '–'} />
-              <Detail label="Genannte Größen" value={parsed.litresMentioned.length ? parsed.litresMentioned.map((l) => `${num(l)} l`).join(', ') : '–'} />
+              <Detail label={parsed.exact ? 'Angebot' : 'Genannte Größen'}
+                value={parsed.exact
+                  ? (parsed.offer != null ? eur(parsed.offer) : 'keines genannt')
+                  : (parsed.litresMentioned.length ? parsed.litresMentioned.map((l) => `${num(l)} l`).join(', ') : '–')} />
             </dl>
             {parsed.matchedTankIds.length > 0 && (
               <div className="mt-2.5 border-t border-line pt-2.5">
@@ -235,15 +246,29 @@ function ParseModal({ onClose }: { onClose: () => void }) {
           <Button variant="primary" disabled={!parsed}
             onClick={() => {
               if (!parsed) return
-              addLead({
-                name: parsed.name || 'Anfrage Kleinanzeigen',
+              const leadId = addLead({
+                name: parsed.name || 'Anfrage aus Käuferliste',
                 phone: parsed.phone, email: parsed.email,
-                source: 'kleinanzeigen', stage: 'neu',
+                source: 'kleinanzeigen', stage: parsed.matchedTankIds.length ? 'angebot' : 'neu',
                 tankIds: parsed.matchedTankIds, note: text.trim(),
               })
+              // A named price is already a negotiation — record it as an offer straight away.
+              if (parsed.matchedTankIds.length > 0) {
+                const picked = db.tanks.filter((t) => parsed.matchedTankIds.includes(t.id))
+                const t = totals(picked)
+                const quoteId = createQuote({
+                  label: `Anfrage ${parsed.name || 'Käuferliste'} · ${picked.length} Positionen`,
+                  tankIds: parsed.matchedTankIds,
+                  askPrice: t.vb,
+                  leadId,
+                  portalId: null,
+                  note: text.trim(),
+                })
+                if (parsed.offer != null) patchQuote(quoteId, { buyerOffer: parsed.offer, status: 'verhandlung' })
+              }
               onClose()
             }}>
-            Interessent anlegen
+            {parsed?.matchedTankIds.length ? 'Interessent & Angebot anlegen' : 'Interessent anlegen'}
           </Button>
         </div>
       </div>
