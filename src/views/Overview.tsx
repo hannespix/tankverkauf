@@ -14,9 +14,12 @@ export default function Overview({ go }: { go: (v: View) => void }) {
   const { db } = useStore()
   const p = useMemo(() => progress(db), [db])
   const open = db.tanks.filter(isOpen)
-  const openTanks = open.filter((t) => t.category === 'tank')
-  const openBarrels = open.filter((t) => t.category === 'fass')
+  const inPackage = new Set(db.settings.categories.filter((c) => c.inPackage).map((c) => c.id))
+  const openTanks = open.filter((t) => inPackage.has(t.category))
   const pkg = totals(openTanks)
+  const byCat = db.settings.categories
+    .map((c) => ({ cat: c, items: open.filter((t) => t.category === c.id) }))
+    .filter((g) => g.items.length > 0)
 
   const statusSegments: Segment[] = (['verfuegbar', 'kontakt', 'reserviert', 'verkauft'] as TankStatus[]).map((s) => ({
     key: s,
@@ -70,7 +73,7 @@ export default function Overview({ go }: { go: (v: View) => void }) {
       )}
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-6">
-        <Stat label="Noch da" value={p.open.count} sub={`${openTanks.length} Tanks · ${openBarrels.length} Fässer`} />
+        <Stat label="Noch da" value={p.open.count} sub={byCat.map((g) => `${g.items.length} ${g.cat.label}`).join(' · ') || 'alles verkauft'} />
         <Stat label="Im Kontakt" value={db.tanks.filter((t) => t.status === 'kontakt').length} sub="laufende Gespräche" />
         <Stat label="Reserviert" value={db.tanks.filter((t) => t.status === 'reserviert').length} sub="fest vorgemerkt" />
         <Stat label="Verkauft" value={p.sold.count} sub={`${num(p.sold.litres)} l abgegeben`} />
@@ -116,14 +119,14 @@ export default function Overview({ go }: { go: (v: View) => void }) {
 
       <Card>
         <SectionTitle
-          title="Tank-Komplettpaket"
-          hint="Rechnet nur mit den noch verfügbaren Edelstahltanks — Fässer bleiben außen vor."
+          title="Komplettpaket"
+          hint={`Rechnet nur mit Kategorien, die als Paketbestandteil markiert sind (${db.settings.categories.filter((c) => c.inPackage).map((c) => c.label).join(', ') || 'keine'}).`}
           action={<Pill tone={s.packagePrice >= s.packageFloor ? 'green' : 'rose'}>{s.packagePrice >= s.packageFloor ? 'über Untergrenze' : 'unter Untergrenze'}</Pill>}
         />
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-xl bg-surface-2 p-3">
             <div className="text-xs font-semibold text-muted uppercase">Im Paket</div>
-            <div className="tnum mt-1 text-xl font-extrabold">{pkg.count} Tanks</div>
+            <div className="tnum mt-1 text-xl font-extrabold">{pkg.count} Positionen</div>
             <div className="text-[13px] text-muted">{num(pkg.litres)} l</div>
           </div>
           <Field label="Paketpreis brutto (VB)">

@@ -158,9 +158,14 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
   const [kind, setKind] = useState<AdScopeKind>('paket')
   const [maker, setMaker] = useState<Maker>(byMaker(db.tanks.filter(isOpen))[0]?.maker ?? 'Möschle')
   const [tankId, setTankId] = useState(db.tanks.find(isOpen)?.id ?? '')
+  const [category, setCategory] = useState(db.settings.categories[0]?.id ?? 'tank')
   const [picked, setPicked] = useState<string[]>(portals.filter((p) => p.active).map((p) => p.id))
 
-  const scope: AdScope = kind === 'maker' ? { kind, maker } : kind === 'tank' ? { kind, tankId } : { kind }
+  const scope: AdScope =
+    kind === 'maker' ? { kind, maker }
+    : kind === 'tank' ? { kind, tankId }
+    : kind === 'kategorie' ? { kind, category }
+    : { kind }
   const previews = useMemo(
     () => picked.map((pid) => ({ portal: portalOf(db, pid), gen: generateAd(db, scope, portalOf(db, pid)) })),
     [db, scope, picked],
@@ -171,13 +176,27 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
       <div className="space-y-4">
         <Field label="Was soll beworben werden?">
           <Select value={kind} onChange={(e) => setKind(e.target.value as AdScopeKind)}>
-            <option value="paket">Tank-Komplettpaket — alle verfügbaren Edelstahltanks</option>
-            <option value="faesser">Holzfässer — Barriques und Tonneaus</option>
+            <option value="paket">Komplettpaket — alles, was zum Paket gehört</option>
+            <option value="kategorie">Ganze Kategorie</option>
             <option value="maker">Hersteller-Bundle — alle Tanks einer Marke</option>
             <option value="tank">Einzelner Tank</option>
             <option value="restposten">Restposten — Kurzfassung</option>
           </Select>
         </Field>
+
+        {kind === 'kategorie' && (
+          <Field label="Kategorie">
+            <Select value={category} onChange={(e) => setCategory(e.target.value)}>
+              {db.settings.categories
+                .filter((c) => db.tanks.some((t) => t.category === c.id && isOpen(t)))
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.label} ({db.tanks.filter((t) => t.category === c.id && isOpen(t)).length})
+                  </option>
+                ))}
+            </Select>
+          </Field>
+        )}
 
         {kind === 'maker' && (
           <Field label="Hersteller">

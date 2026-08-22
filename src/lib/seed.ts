@@ -95,6 +95,14 @@ export const SEED: DB = {
   ads: [],
   settings: {
     vatRate: 0.19,
+    categories: [
+      { id: 'tank', label: 'Edelstahltanks', one: 'Edelstahltank', hasVolume: true, inPackage: true },
+      { id: 'fass', label: 'Holzfässer', one: 'Holzfass', hasVolume: true, inPackage: false },
+      { id: 'gitterbox', label: 'Gitterboxen', one: 'Gitterbox', hasVolume: false, inPackage: false },
+      { id: 'maschine', label: 'Maschinen', one: 'Maschine', hasVolume: false, inPackage: false },
+      { id: 'armatur', label: 'Armaturen & Schläuche', one: 'Armatur', hasVolume: false, inPackage: false },
+      { id: 'sonstiges', label: 'Sonstiges', one: 'Position', hasVolume: false, inPackage: false },
+    ],
     portals: [
       {
         id: 'kleinanzeigen',
