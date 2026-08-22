@@ -26,6 +26,9 @@ export function buildCatalog(db: DB): Catalog {
       litres: t.litres,
       vb: t.vb,
       dims: t.dims,
+      // A used stainless tank whose condition nobody can see is always guessed
+      // worse than it is. The files themselves are copied by publishCatalog.
+      photos: t.photos,
       // Hiding this loses the second buyer entirely; showing it turns them into a backup.
       reserved: t.status === 'reserviert',
     })),
