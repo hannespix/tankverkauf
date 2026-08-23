@@ -317,7 +317,7 @@ function idRanges(ids: string[]): string {
   function mailto(): string {
     if (!catalog) return '#'
     const lines = summarise(chosen).map(
-      (r) => `- ${r.count}× ${r.name}${r.litres ? ` (${num(r.litres)} l)` : ''} – je ${eur(r.vb)}${r.count > 1 ? `, zusammen ${eur(r.total)}` : ''}${r.reserved ? ' [reserviert — Ersatzinteresse]' : ''}`)
+      (r) => `- ${r.count}× ${r.name}${r.litres ? ` (${num(r.litres)} l)` : ''} – je ${eur(r.vb)}${r.count > 1 ? `, zusammen ${eur(r.total)}` : ''}${r.reserved ? ' [derzeit reserviert — bitte vormerken]' : ''}`)
     // The block goes FIRST. Selecting everything makes the mail 2.642 characters
     // long, and several mail clients cut a mailto link off at about 2.048 — at the
     // end, which is exactly where this block used to sit. Losing it turns an exact
@@ -376,9 +376,9 @@ function idRanges(ids: string[]): string {
         <h1 className="text-xl font-extrabold tracking-tight sm:text-2xl">Kellertechnik aus Betriebsauflösung</h1>
         {catalog.intro && <p className="mt-2 text-sm leading-relaxed text-muted">{catalog.intro}</p>}
         <p className="tnum mt-3 text-[13px] text-muted">
-          {/* „verfügbar" galt bisher auch für vergebene Ware. */}
+          {/* „verfügbar" galt bisher auch für reservierte Ware. */}
           {catalog.items.filter((i) => !i.reserved).length} Positionen verfügbar
-          {catalog.items.some((i) => i.reserved) && `, ${catalog.items.filter((i) => i.reserved).length} vergeben`}
+          {catalog.items.some((i) => i.reserved) && `, ${catalog.items.filter((i) => i.reserved).length} reserviert`}
           {catalog.location && ` · Standort ${catalog.location}`}
           {' · '}Preise brutto inkl. {Math.round(catalog.vatRate * 100)} % MwSt.
         </p>
@@ -546,7 +546,7 @@ function idRanges(ids: string[]): string {
                     /*
                       Zurückgenommen wird über die Fläche, nicht über die
                       Deckkraft. `opacity` auf der ganzen Zeile multipliziert
-                      sich den Baum hinunter — der Hinweis „schon vergeben"
+                      sich den Baum hinunter — der Hinweis „reserviert"
                       konnte sich daraus nicht befreien und war mit 2,87:1 das
                       schwächste Zeichen der Zeile, ausgerechnet das einzige,
                       das die Sache trägt. Gemessen: 0,7 auch mit opacity-100
@@ -624,11 +624,13 @@ function idRanges(ids: string[]): string {
                     {lot.reserved && (
                       <span className="mt-1 block">
                         <span className="inline-flex items-center rounded-full bg-amber-soft px-2 py-0.5 text-[11px] font-bold text-amber">
-                          schon vergeben
+                          reserviert
                         </span>
                         <span className="mt-0.5 block text-[12px] text-muted">
-                          {lot.ids.length > 1 ? 'Diese Stücke sind' : 'Bereits'} einem anderen Interessenten zugesagt.
-                          {' '}Melden Sie sich trotzdem — platzt die Zusage, sind Sie der Nächste.
+                          Ein anderer Interessent hat sie vorgemerkt — verkauft
+                          {' '}{lot.ids.length > 1 ? 'sind sie' : 'ist sie'} damit nicht. Entscheidet er sich anders,
+                          {' '}{lot.ids.length > 1 ? 'werden sie' : 'wird sie'} wieder frei. Melden Sie sich gern,
+                          {' '}dann sind Sie der Nächste.
                         </span>
                       </span>
                     )}
@@ -657,7 +659,7 @@ function idRanges(ids: string[]): string {
                             : 'border-line-strong bg-surface hover:border-primary hover:text-primary',
                         )}
                       >
-                        {/* Wer sich auf vergebene Ware meldet, kauft nicht — er
+                        {/* Wer sich auf reservierte Ware meldet, kauft nicht — er
                             stellt sich an. Derselbe Knopf mit demselben Wort
                             hätte das verschwiegen. */}
                         {taken > 0
@@ -718,7 +720,7 @@ function idRanges(ids: string[]): string {
                   <span>
                     {r.count > 1 && <strong>{r.count}× </strong>}{r.name}{r.litres > 0 && ` · ${num(r.litres)} l`}
                     {/* Das Feld gab es schon in `summarise`, nur zeigte es
-                        niemand — im Warenkorb sah vergebene Ware aus wie jede
+                        niemand — im Warenkorb sah reservierte Ware aus wie jede
                         andere. */}
                     {r.reserved && <span className="ml-1 text-[12px] font-semibold text-amber">· vorgemerkt</span>}
                   </span>
@@ -728,10 +730,10 @@ function idRanges(ids: string[]): string {
             </ul>
             {vorgemerkt.length > 0 && (
               <p className="mt-3 rounded-xl bg-amber-soft p-3 text-[13px] text-amber">
-                {vorgemerkt.length === 1 ? 'Eine Position ist' : `${vorgemerkt.length} Positionen sind`} bereits
-                {' '}vergeben und {vorgemerkt.length === 1 ? 'steht' : 'stehen'} zum Einzelpreis darin — ein Mengenpreis
-                {' '}gilt dafür nicht, solange die Zusage hält. Wird {vorgemerkt.length === 1 ? 'sie' : 'eine'} frei,
-                {' '}rechnen wir neu.
+                {vorgemerkt.length === 1 ? 'Eine Position ist' : `${vorgemerkt.length} Positionen sind`} für jemand
+                {' '}anderen reserviert und {vorgemerkt.length === 1 ? 'steht' : 'stehen'} zum Einzelpreis darin — ein
+                {' '}Mengenpreis gilt dafür nicht, solange die Reservierung besteht. Wird {vorgemerkt.length === 1 ? 'sie' : 'eine'}
+                {' '}wieder frei, rechnen wir neu.
               </p>
             )}
             <div className="mt-3 flex flex-wrap items-baseline justify-between gap-2 border-t border-line pt-3">
