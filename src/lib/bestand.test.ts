@@ -474,3 +474,27 @@ test('B27 · ein geschrumpftes Paket sagt, wie viel fehlt', () => {
   assert.equal(b.short, 2, 'zwei der vier sind weg')
   assert.deepEqual(b.ids, ['T-1', 'T-2'])
 })
+
+test('B28 · reservieren geht auch ohne zugeordneten Interessenten', () => {
+  /*
+   * Die Sperre, die hier stand, war ein Fehlgriff.
+   *
+   * Wer ein Angebot aus dem Bestand heraus anlegt, wählt im Dialog keinen
+   * Interessenten — das Feld steht auf „– keiner –". Genau dann lagen Knopf und
+   * Häkchen grau da, ohne dass irgendwo lesbar stand, warum. Eine Position in
+   * einem benannten Angebot ist nicht „niemandem zugeordnet": das Angebot ist
+   * der Beleg, und heldByQuote findet sie.
+   */
+  setDb({
+    tanks: [tank('T-1'), tank('T-2')],
+    quotes: [quote('Q-1', { leadId: null, tankIds: ['T-1', 'T-2'], askPrice: 2000 })],
+  })
+  setQuoteReserved('Q-1', ['T-1', 'T-2'], true)
+  for (const t of db().tanks) {
+    assert.equal(t.status, 'reserviert', 'die Ware ist festgehalten')
+    assert.equal(t.leadId, null, 'ein Name wird nicht erfunden')
+  }
+  // Und wieder lösen geht genauso — sonst wäre es die Einbahnstraße von vorher.
+  setQuoteReserved('Q-1', ['T-1', 'T-2'], false)
+  assert.equal(db().tanks[0]!.status, 'kontakt', 'Q-1 führt sie weiter')
+})
