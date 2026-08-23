@@ -7,7 +7,7 @@
   "imprintUrl": "https://www.weingut-pix.de/impressum/",
   "privacy": "Verantwortlich für diese Seite: Weingut Pix, 79241 Ihringen, info@weingut-pix.de. Vollständige Anschrift im Impressum.\n\nDiese Seite wird von GitHub Inc. (GitHub Pages) ausgeliefert. Beim Aufruf überträgt Ihr Browser technisch bedingt Ihre IP-Adresse an GitHub; GitHub speichert sie in Server-Protokollen. Rechtsgrundlage ist Art. 6 Abs. 1 lit. f DSGVO — ohne diese Übertragung lässt sich keine Seite ausliefern.\n\nDie Seite setzt keine Cookies, misst kein Nutzungsverhalten und bindet keine fremden Inhalte ein. Schrift und Bilder werden von derselben Adresse geladen wie die Seite selbst.\n\nIhre Auswahl bleibt in Ihrem Browser und wird nirgends gespeichert. Klicken Sie auf „Anfrage senden“, öffnet sich Ihr eigenes E-Mail-Programm mit einem vorbereiteten Text. Abgeschickt wird die Nachricht erst von Ihnen. Was Sie uns dabei schreiben — Name, Adresse, Telefonnummer — verarbeiten wir ausschließlich, um Ihre Anfrage zu beantworten und ein Geschäft abzuwickeln (Art. 6 Abs. 1 lit. b DSGVO), und löschen es, sobald die gesetzlichen Aufbewahrungsfristen abgelaufen sind.\n\nSie haben das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung der Verarbeitung, Datenübertragbarkeit und Widerspruch sowie das Recht, sich bei einer Aufsichtsbehörde zu beschweren.",
   "vatRate": 0.19,
-  "updatedAt": "2026-08-23T08:09:10.372Z",
+  "updatedAt": "2026-08-23T14:26:01.720Z",
   "items": [
     {
       "id": "T-03",
@@ -1109,7 +1109,8 @@
         "M-03"
       ],
       "full": 4140,
-      "price": 3500
+      "price": 3500,
+      "short": 1
     },
     {
       "id": "raumspar",
@@ -1125,7 +1126,8 @@
       ],
       "giftIds": [],
       "full": 5400,
-      "price": 4600
+      "price": 4600,
+      "short": 0
     },
     {
       "id": "grossgebinde",
@@ -1140,7 +1142,8 @@
       ],
       "giftIds": [],
       "full": 9300,
-      "price": 8000
+      "price": 8000,
+      "short": 0
     },
     {
       "id": "clemens-paar",
@@ -1152,7 +1155,8 @@
       ],
       "giftIds": [],
       "full": 2500,
-      "price": 2200
+      "price": 2200,
+      "short": 0
     },
     {
       "id": "stapelpaar",
@@ -1164,7 +1168,8 @@
       ],
       "giftIds": [],
       "full": 1800,
-      "price": 1600
+      "price": 1600,
+      "short": 0
     },
     {
       "id": "tonneaux",
@@ -1179,7 +1184,8 @@
         "M-06"
       ],
       "full": 760,
-      "price": 500
+      "price": 500,
+      "short": 2
     },
     {
       "id": "deko-faesser",
@@ -1220,7 +1226,8 @@
       ],
       "giftIds": [],
       "full": 5575,
-      "price": 4200
+      "price": 4200,
+      "short": 0
     },
     {
       "id": "fasspflege",
@@ -1234,7 +1241,8 @@
         "M-06"
       ],
       "full": 1460,
-      "price": 1200
+      "price": 1200,
+      "short": 2
     }
   ],
   "tiers": [
