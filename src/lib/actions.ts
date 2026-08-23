@@ -1,5 +1,5 @@
 import type { Ad, AdScope, DB, Lead, Quote, Tank, TankStatus } from '../types'
-import { MAX_PER_LEAD, askFor, describe, resolvePick, trimMessage, type Proposal } from './inbox'
+import { MAX_PER_LEAD, askFor, collapseIds, describe, resolvePick, trimMessage, type Proposal } from './inbox'
 import { STATUS_LABEL } from '../types'
 import { generateAd, portalOf } from './ads'
 import { SEED } from './seed'
@@ -393,7 +393,15 @@ export function attachTanks(leadId: string, tankIds: string[]) {
  * Einen geprüften Vorschlag ausführen. Gibt zurück, welcher Interessent danach
  * gilt — nachfolgende Vorschläge hängen daran.
  */
-export function applyProposal(p: Proposal, leadId: string | null, message: string): { leadId: string | null; done: string } {
+/**
+ * Einen Vorschlag ausführen.
+ *
+ * `done` leer heißt: es ist NICHTS passiert, und `skipped` sagt warum. Vorher
+ * wertete die Oberfläche ein leeres `done` als Erfolg (`res.done || p.title`) —
+ * ein Gebot ohne Angebot und ein Angebot ohne Positionen meldeten Vollzug und
+ * schrieben nichts.
+ */
+export function applyProposal(p: Proposal, leadId: string | null, message: string): { leadId: string | null; done: string; skipped?: string } {
   const db = store.getSnapshot().db
   const target = p.leadId ?? leadId
 
@@ -405,40 +413,45 @@ export function applyProposal(p: Proposal, leadId: string | null, message: strin
       return { leadId: id, done: p.title }
     }
     case 'lead.notiz': {
-      if (!target) return { leadId, done: '' }
+      if (!target) return { leadId, done: '', skipped: 'kein Interessent vorhanden' }
       noteOnLead(target, message, [describe(p)])
       return { leadId: target, done: p.title }
     }
     case 'lead.phase': {
-      if (!target || !p.stage) return { leadId, done: '' }
+      if (!target || !p.stage) return { leadId, done: '', skipped: 'kein Interessent vorhanden' }
       patchLead(target, { stage: p.stage }, p.title)
       return { leadId: target, done: p.title }
     }
     case 'positionen': {
-      if (!target) return { leadId, done: '' }
+      if (!target) return { leadId, done: '', skipped: 'kein Interessent vorhanden' }
       const ids = p.pick ? resolvePick(db, p.pick) : p.tankIds
-      if (ids.length === 0) return { leadId: target, done: '' }
+      if (ids.length === 0) return { leadId: target, done: '', skipped: 'keine dieser Positionen ist noch frei' }
       attachTanks(target, ids)
-      return { leadId: target, done: `${p.title} (${ids.join(', ')})` }
+      return { leadId: target, done: `${p.title} (${collapseIds(ids)})` }
     }
     case 'gebot': {
-      if (p.amount == null) return { leadId, done: '' }
+      if (p.amount == null) return { leadId, done: '', skipped: 'kein Betrag' }
       const quote = target ? db.quotes.find((q) => q.leadId === target && q.status !== 'abgelehnt') : null
       if (quote) {
         patchQuote(quote.id, { buyerOffer: p.amount }, `Gebot ${p.amount} € vermerkt`)
-      } else {
-        for (const id of p.tankIds) {
-          const t = db.tanks.find((x) => x.id === id)
-          if (t) setTankOffer(t, p.amount)
-        }
+        return { leadId: target, done: p.title }
       }
+      const hit = p.tankIds.map((id) => db.tanks.find((x) => x.id === id)).filter((t): t is Tank => !!t)
+      if (hit.length === 0) return { leadId: target, done: '', skipped: 'kein Angebot und keine Position, an der es hängen könnte' }
+      for (const t of hit) setTankOffer(t, p.amount)
       return { leadId: target, done: p.title }
     }
     case 'angebot': {
-      if (!target) return { leadId, done: '' }
+      if (!target) return { leadId, done: '', skipped: 'kein Interessent vorhanden' }
       const lead = db.leads.find((l) => l.id === target)
-      const ids = p.tankIds.length ? p.tankIds : (lead?.tankIds ?? [])
-      if (ids.length === 0) return { leadId: target, done: '' }
+      // Verkauftes gehört in kein neues Angebot. `lead.tankIds` behält gekaufte
+      // Positionen — ohne diesen Filter entstand aus „Hätten Sie noch etwas
+      // Passendes?“ ein Angebot über Ware, die derselbe Mensch schon besitzt.
+      const wanted = p.tankIds.length ? p.tankIds : (lead?.tankIds ?? [])
+      const ids = wanted.filter((id) => db.tanks.some((t) => t.id === id && t.status !== 'verkauft'))
+      if (ids.length === 0) {
+        return { leadId: target, done: '', skipped: wanted.length ? 'alle diese Positionen sind verkauft' : 'keine Positionen zugeordnet' }
+      }
       // Der geforderte Preis kommt aus dem Bestand. Ein Preis, den ein
       // Sprachmodell nennt, hat in einem Angebot nichts verloren.
       createQuote({
@@ -461,7 +474,7 @@ export function applyProposal(p: Proposal, leadId: string | null, message: strin
     }
     default:
       // verkauf.vorbereiten schreibt nichts — die Oberfläche öffnet den Dialog.
-      return { leadId: target, done: '' }
+      return { leadId: target, done: '', skipped: 'wird über den Verkaufsdialog gebucht' }
   }
 }
 
@@ -654,22 +667,94 @@ export function assignDealLead(dealId: string, leadId: string | null) {
 }
 
 /** Undo a sale — the tanks go back on the market. */
+/**
+ * Einen Verkauf vollständig zurücknehmen.
+ *
+ * Vorher blieb dreierlei stehen: der Käufer auf „gewonnen", `leadId` an der
+ * Position (womit `resolvePick` sie dauerhaft übersprang) und ein über ein
+ * Angebot gebuchter Verkauf ließ das Angebot auf „angenommen". Solange das so
+ * war, durfte Buchen nirgends bequem werden — genau das ist jetzt der Punkt.
+ */
 export function removeDeal(dealId: string) {
   store.mutate(
     (db) => {
       const deal = db.deals.find((d) => d.id === dealId)
       if (!deal) return
+      const others = db.deals.filter((d) => d.id !== dealId)
+
       for (const tid of deal.tankIds) {
         const t = db.tanks.find((x) => x.id === tid)
-        if (t && t.dealId === dealId) {
-          t.dealId = null
-          t.status = 'verfuegbar'
+        if (!t) continue
+        // Führt ein ANDERER Verkauf dieselbe Position, bleibt sie verkauft.
+        // `t.dealId` zeigt nur auf den zuletzt gebuchten; ohne diese Prüfung kam
+        // sie als frei zurück, während der ältere Verkauf sie noch führte — und
+        // ließ sich ein drittes Mal verkaufen.
+        const heldElsewhere = others.find((d) => d.tankIds.includes(tid))
+        if (heldElsewhere) {
+          t.dealId = heldElsewhere.id
           t.updatedAt = now()
+          continue
+        }
+        t.dealId = null
+        // Der Käufer hängt nicht mehr dran. Ohne das übersprang `resolvePick`
+        // die Position auf Dauer — sie war „verfügbar" und trotzdem unsichtbar.
+        t.leadId = null
+        t.status = 'verfuegbar'
+        t.updatedAt = now()
+      }
+
+      // Nur das Angebot, das wirklich zu diesem Verkauf gehört. Ein Verkauf trägt
+      // keine Angebotsnummer, also entscheiden die Positionen — über `leadId`
+      // allein wurde jedes angenommene Angebot desselben Käufers zurückgesetzt,
+      // auch das eines anderen, noch gebuchten Verkaufs.
+      const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x))
+      for (const q of db.quotes) {
+        if (q.status !== 'angenommen') continue
+        if (q.leadId !== deal.leadId || !sameSet(q.tankIds, deal.tankIds)) continue
+        if (others.some((d) => sameSet(d.tankIds, q.tankIds))) continue
+        q.status = 'gesendet'
+        q.updatedAt = now()
+      }
+
+      // Dieselbe Rückstufung, die assignDealLead beim Umhängen schon macht.
+      if (deal.leadId) {
+        const stillBuying = others.some((d) => d.leadId === deal.leadId)
+        const lead = db.leads.find((l) => l.id === deal.leadId)
+        if (lead && !stillBuying && lead.stage === 'gewonnen') {
+          lead.stage = db.quotes.some((q) => q.leadId === lead.id) ? 'angebot' : 'kontakt'
+          lead.updatedAt = now()
         }
       }
       db.deals = db.deals.filter((d) => d.id !== dealId)
     },
     { kind: 'deal', text: 'Verkauf zurückgenommen' },
+  )
+}
+
+/**
+ * Positionen wieder von einem Interessenten lösen.
+ *
+ * Das Gegenstück zu attachTanks hat gefehlt: hakte man im Interessentendialog
+ * eine Position ab, blieb sie auf „im Kontakt" mit gesetztem `leadId` hängen und
+ * war für jeden anderen Käufer unsichtbar verbraucht.
+ */
+export function detachTanks(leadId: string, tankIds: string[]) {
+  if (tankIds.length === 0) return
+  store.mutate(
+    (db) => {
+      const l = db.leads.find((x) => x.id === leadId)
+      if (l) l.tankIds = l.tankIds.filter((id) => !tankIds.includes(id))
+      for (const id of tankIds) {
+        const t = db.tanks.find((x) => x.id === id)
+        // Verkauftes und Reserviertes bleibt, wo es ist — das löst kein Abhaken.
+        if (t && t.leadId === leadId && t.status === 'kontakt') {
+          t.leadId = null
+          t.status = 'verfuegbar'
+          t.updatedAt = now()
+        }
+      }
+    },
+    { kind: 'tank', text: `${tankIds.length} ${tankIds.length === 1 ? 'Position' : 'Positionen'} freigegeben` },
   )
 }
 
