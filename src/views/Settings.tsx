@@ -339,8 +339,9 @@ export default function Settings(_: ViewProps) {
         </div>
 
         <div className="mb-3 rounded-xl border border-line bg-surface-2 p-3.5 text-[13px] leading-relaxed text-muted">
-          <strong className="text-ink">Was veröffentlicht wird:</strong> Kategorie, Hersteller, Bezeichnung, Volumen und
-          die VB, die Maße und die Fotos. Verkaufte Positionen stehen als Beleg mit dabei — ohne Preis und ohne Foto.{' '}
+          <strong className="text-ink">Was veröffentlicht wird:</strong> Kategorie, Hersteller, Bezeichnung, Volumen,
+          die VB, die Maße, die Ausstattungsmerkmale und die Fotos. Verkaufte Positionen stehen als Beleg mit dabei —
+          benannt und mit Merkmalen, aber ohne Preis und ohne Foto.{' '}
           <strong className="text-ink">Was nicht:</strong> Zielpreise, Untergrenzen, Gebote, Notizen und Interessenten.
           Die Liste wird nach Whitelist gebaut, es kann also nichts versehentlich mitrutschen.
           <br />

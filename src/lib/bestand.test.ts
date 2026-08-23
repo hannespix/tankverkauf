@@ -744,12 +744,21 @@ test('B43 · Verkauftes steht neben der Liste, nicht darin', () => {
 
 test('B44 · von verkaufter Ware geht weder Preis noch Foto hinaus', () => {
   const c = katalogVon({
-    tanks: [tank('T-1', { status: 'verkauft', dealId: 'D-1', vb: 1234, photos: ['fotos/a.jpg'] })],
+    tanks: [tank('T-1', {
+      status: 'verkauft', dealId: 'D-1', leadId: 'L-9', vb: 1234, photos: ['fotos/a.jpg'],
+      target: 900, floor: 800, offer: 777, note: 'am Telefon besprochen',
+    })],
+    deals: [deal('D-1', { tankIds: ['T-1'], price: 4242 })],
   })
   const v = (c.soldItems ?? [])[0]!
-  const felder = Object.keys(v).sort()
-  assert.ok(!felder.includes('vb'), 'die VB ist nicht der erzielte Preis und hat hier nichts verloren')
-  assert.ok(!felder.includes('photos'), 'ohne Fotos bleibt die Bildmenge die der lieferbaren Ware')
+  /*
+   * Die vollständige Liste, nicht zwei Stichproben.
+   *
+   * Zwei `assert.ok(!felder.includes(...))` blieben grün, wenn später jemand
+   * `note` oder `dealId` mit hinausgäbe — also genau dann, wenn es darauf
+   * ankommt. Eine Weißliste prüft man gegen die ganze Liste.
+   */
+  assert.deepEqual(Object.keys(v).sort(), ['category', 'categoryLabel', 'dims', 'id', 'litres', 'maker', 'tags', 'type'])
   assert.equal(v.maker, 'Speidel', 'benannt wird die Position trotzdem')
 })
 

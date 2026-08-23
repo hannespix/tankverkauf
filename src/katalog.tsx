@@ -186,7 +186,7 @@ function App() {
     const needle = q.trim().toLowerCase()
     const bundle = onlyBundle ? (catalog.bundles ?? []).find((b) => b.id === onlyBundle) : null
     const inBundle = bundle ? new Set([...bundle.ids, ...bundle.giftIds]) : null
-    const items = [...(catalog.items as Zeile[]), ...verkauft].filter((i) => {
+    const items: Zeile[] = [...catalog.items, ...verkauft].filter((i) => {
       // Ein Paket zeigt nur, was dazugehört — und verkauft ist daraus nichts:
       // `resolveBundle` löst gegen den offenen Bestand auf.
       if (inBundle && !inBundle.has(i.id)) return false
@@ -566,14 +566,18 @@ function idRanges(ids: string[]): string {
 
       <div ref={liste} className="scroll-mt-20" />
 
-      {groups.map((g, gi) => (
+      {groups.map((g, gi) => {
+        const gFrei = g.lots.filter((l) => !l.sold).reduce((a, l) => a + l.ids.length, 0)
+        const gWeg = g.lots.filter((l) => l.sold).reduce((a, l) => a + l.ids.length, 0)
+        return (
         <Card key={g.id} pad={false} className="rise-in" style={{ '--d': `${140 + gi * 70}ms` } as React.CSSProperties}>
           <div className="border-b border-line px-4 py-3">
             <div className="flex items-baseline justify-between gap-3">
               <h2 className="font-bold">{g.label}</h2>
               <span className="tnum text-[13px] text-muted">
-                {g.lots.filter((l) => !l.sold).reduce((a, l) => a + l.ids.length, 0)} Positionen
-                {g.lots.some((l) => l.sold) && ` · ${g.lots.filter((l) => l.sold).reduce((a, l) => a + l.ids.length, 0)} verkauft`}
+                {gFrei > 0 && `${gFrei} ${gFrei === 1 ? 'Position' : 'Positionen'}`}
+                {gFrei > 0 && gWeg > 0 && ' · '}
+                {gWeg > 0 && `${gFrei > 0 ? '' : 'alle '}${gWeg} verkauft`}
               </span>
             </div>
             {/* Ein Satz über die ganze Gruppe — die Verwendung, die man der einzelnen
@@ -703,7 +707,7 @@ function idRanges(ids: string[]): string {
                       vierzigmal auf einer Seite.
                     */}
                     {lot.sold && (
-                      <span className="mt-0.5 block text-[12px] text-faint">
+                      <span className="mt-0.5 block text-[12px] text-muted">
                         {lot.ids.length > 1 ? 'Diese sind' : 'Diese ist'} bereits verkauft
                         {' '}und {lot.ids.length > 1 ? 'stehen' : 'steht'} nur noch als Beleg hier.
                       </span>
@@ -731,7 +735,13 @@ function idRanges(ids: string[]): string {
                     Handy-Preis ganz aus und die Preisspalte am Schreibtisch
                     rutschte in die falsche Spur.
                   */}
-                  <span className="col-start-2 flex items-center justify-between gap-3 sm:col-start-3 sm:justify-center">
+                  <span className={cx(
+                    'col-start-2 flex items-center gap-3 sm:col-start-3 sm:justify-center',
+                    // Ein einzelnes Kind rutscht bei `justify-between` nach LINKS.
+                    // Am Handy stand die Marke damit dort, wo sonst „Auswählen"
+                    // steht, statt rechts, wo sonst der Preis steht.
+                    lot.sold ? 'justify-end' : 'justify-between',
+                  )}>
                     {lot.sold ? (
                       <span className="sm:hidden"><SoldMark /></span>
                     ) : many ? (
@@ -808,7 +818,8 @@ function idRanges(ids: string[]): string {
             })}
           </ul>
         </Card>
-      ))}
+        )
+      })}
 
       {/*
         Drei Fälle, nicht einer. „Nichts gefunden — Suche anpassen" war der
@@ -818,7 +829,7 @@ function idRanges(ids: string[]): string {
         UNGEFILTERTEN Bestand — sonst meldete eine Suche nach „Speidel" das
         Ende der ganzen Auflösung, nur weil die Speidel weg sind.
       */}
-      {catalog.items.length === 0 ? (
+      {catalog.items.length === 0 && groups.length > 0 ? (
         <Card>
           <EmptyState
             title="Alle Positionen sind verkauft"
