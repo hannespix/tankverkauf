@@ -24,13 +24,37 @@ import { useStore } from '../lib/store'
 
 const DRAFT_KEY = 'tankverkauf.inbox.draft'
 
+/** Kurze deutsche Überschriften für das, was die KI aus einer Nachricht liest. */
+const ASK_LABEL: Record<string, string> = {
+  masse: 'Maße',
+  verfuegbarkeit: 'Verfügbarkeit',
+  zustand: 'Zustand',
+  preis: 'Preis',
+  abholung: 'Abholung',
+  zahlung: 'Zahlung',
+  termin: 'Termin',
+  ort: 'Ort',
+  betrieb: 'Betrieb',
+  bedingung: 'Bedingung',
+  sonstiges: 'Sonstiges',
+}
+
 export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: () => void; initialText?: string }) {
   const { db } = useStore()
   const [text, setText] = useState('')
   const [images, setImages] = useState<{ img: AiImage; url: string }[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [read, setRead] = useState<{ summary: string; intent: string; transcript: string; dropped: string[] } | null>(null)
+  const [read, setRead] = useState<{
+    summary: string
+    intent: string
+    transcript: string
+    dropped: string[]
+    /** Worauf der Käufer eine Antwort erwartet — ging bisher komplett verloren. */
+    asks: { topic: string; quote: string; positionIds?: string[] }[]
+    /** Was sonst in der Nachricht steht und abgelegt gehört. */
+    notes: { topic: string; quote: string }[]
+  } | null>(null)
   const [proposals, setProposals] = useState<Proposal[]>([])
   const [applied, setApplied] = useState<Record<string, string>>({})
   const [leadId, setLeadId] = useState<string | null>(null)
@@ -136,7 +160,7 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
       // ohne ihn hätte die Prüfung nichts, woran sie sich halten könnte.
       const against = [source, res.transcript].filter(Boolean).join('\n')
       const checked = checkProposals(res.proposals, against, db)
-      setRead({ summary: res.summary, intent: res.intent, transcript: res.transcript, dropped: checked.dropped })
+      setRead({ summary: res.summary, intent: res.intent, transcript: res.transcript, dropped: checked.dropped, asks: res.asks, notes: res.notes })
       setProposals(checked.proposals)
     } catch (err) {
       setError(err instanceof AiError ? err.message : 'Die Nachricht konnte nicht gelesen werden.')
@@ -223,7 +247,9 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
   function context(): MessageContext {
     return {
       summary: read?.summary?.trim() ?? '',
-      notes: plan.notes,
+      // Die Hinweise des Vorgangs UND was die KI sonst noch gelesen hat. Ohne das
+      // stand die Abholung im Dialog und war nach dem Schließen weg.
+      notes: [...plan.notes, ...(read?.notes ?? []).map((n) => `${ASK_LABEL[n.topic] ?? n.topic}: ${n.quote}`)],
       steps: chosen.map((s) => effective(s).title),
       fromImage: !!read?.transcript,
     }
@@ -435,6 +461,30 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
           anlegen, anhängen, Angebot, Gebot. Was binnen einer Minute öffentlich
           wird, steht getrennt darunter und bleibt zweistufig.
         */}
+        {/*
+          Worauf der Käufer eine Antwort erwartet.
+          Der wichtigste Zugewinn und zugleich das, was am leichtesten untergeht:
+          „Ich bräuchte noch Tiefe und Breite sowie die Gesamthöhe des höchsten
+          Stapels" war die Bedingung, an der das ganze Geschäft hing — und stand
+          nirgends. Hier hängt nichts an, es sagt nur, was in die Antwort muss.
+        */}
+        {(read?.asks?.length ?? 0) > 0 && (
+          <div className="rounded-xl border border-sky/50 bg-sky-soft/30 p-3">
+            <p className="text-[11px] font-bold text-sky uppercase">Er wartet auf Antwort</p>
+            <ul className="mt-1.5 space-y-1.5 text-[13px]">
+              {read!.asks.map((a, i) => (
+                <li key={i}>
+                  <span className="font-semibold">{ASK_LABEL[a.topic] ?? a.topic}</span>
+                  {a.positionIds && a.positionIds.length > 0 && (
+                    <span className="tnum text-muted"> · {a.positionIds.join(', ')}</span>
+                  )}
+                  <span className="block text-muted">„{a.quote}“</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {/* Was in der Nachricht steht, aber nirgends hin kann — lieber sagen als schlucken. */}
         {plan.notes.length > 0 && !ran && (
           <ul className="space-y-1 rounded-xl bg-surface-2 p-3 text-[13px] text-muted">

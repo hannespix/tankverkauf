@@ -239,8 +239,28 @@ export function checkProposals(raw: RawProposal[], text: string, db: DB): { prop
       case 'positionen': {
         const ids = (p.positionIds ?? []).map((x) => String(x).toUpperCase())
         const open = ids.map((id) => db.tanks.find((t) => t.id === id)).filter((t): t is Tank => !!t && isOpen(t))
-        const good = open.filter((t) => positionProven(t, text, db))
-        const ambiguous = open.filter((t) => !positionProven(t, text, db))
+        const conf = String(p.confidence ?? '')
+        const grund = String(p.reason ?? '').trim()
+
+        /*
+         * Der genannte Preis als Schlüssel — nachgeprüft, nicht geglaubt.
+         *
+         * „1 × 1.000 l – 750 € VB": drei Positionen haben 1.000 l, aber nur T-15
+         * kostet 750 €. Die Regel verbot der KI bisher, das zu nutzen, und der
+         * Code warf ihre Auflösung wieder weg. Deshalb hingen T-09 und T-07 an
+         * der Anfrage statt T-15 und T-16.
+         *
+         * Übernommen wird die Auflösung nur, wenn der Preis dieser Position
+         * WÖRTLICH als Geldbetrag in der Nachricht steht und die Nachricht die
+         * Warengruppe überhaupt anspricht. Das ist keine Vertrauensfrage — es
+         * rechnet sich am Text nach.
+         */
+        const erschlossen = (t: Tank) =>
+          conf === 'erschlossen' && t.vb > 0 && amountInText(t.vb, text) && groupMentioned(t, text)
+        const belegt = (t: Tank) => positionProven(t, text, db) || erschlossen(t)
+
+        const good = open.filter(belegt)
+        const ambiguous = open.filter((t) => !belegt(t))
 
         // Eine Vermutung braucht wenigstens einen Anhaltspunkt im Text. Sonst ist
         // sie nichts als ein Einfall des Modells.
@@ -249,7 +269,11 @@ export function checkProposals(raw: RawProposal[], text: string, db: DB): { prop
           dropped.push('Positionen: die Nachricht spricht diese Ware gar nicht an')
           continue
         }
-        if (hinted.length > 0 || (p.count && p.count > 0 && good.length === 0)) {
+        // Nur wenn NICHTS eindeutig war. Vorher gewann dieser Zweig, sobald auch
+        // nur eine Position im selben Vorschlag mehrdeutig blieb — und warf mit
+        // `base.tankIds = []` die bereits aufgelösten weg. Aus sechs gewollten
+        // Positionen wurde so eine.
+        if (good.length === 0 && (hinted.length > 0 || (p.count && p.count > 0))) {
           // Bei baugleicher Ware gibt es keine richtige Nummer. Der Vorschlag
           // nennt deshalb Anzahl und Art, die Zuordnung passiert beim Bestätigen
           // nach einer festen Regel — sichtbar, nicht als Modellentscheidung.
@@ -285,8 +309,23 @@ export function checkProposals(raw: RawProposal[], text: string, db: DB): { prop
           const held = good.filter((t) => t.leadId && t.leadId !== base.leadId)
           base.title = `${good.length === 1 ? itemLabel(good[0]) : `${good.length} Positionen`} anhängen`
           base.effect = 'Sie stehen danach auf „im Kontakt“ und sind für andere Käufer weg.'
-          if (held.length > 0) {
-            base.warning = `${held.map((t) => t.id).join(', ')} ${held.length === 1 ? 'hängt' : 'hängen'} schon bei jemand anderem.`
+          const hinweise = [
+            held.length > 0
+              ? `${held.map((t) => t.id).join(', ')} ${held.length === 1 ? 'hängt' : 'hängen'} schon bei jemand anderem.`
+              : '',
+            // Was im selben Vorschlag nicht aufzulösen war, verschwindet nicht
+            // stillschweigend — sonst bestätigt der Verkäufer eine Liste, in der
+            // Ware fehlt, ohne es zu merken.
+            ambiguous.length > 0
+              ? `Nicht zuzuordnen und deshalb nicht dabei: ${ambiguous.map((t) => t.id).join(', ')}.`
+              : '',
+          ].filter(Boolean)
+          if (hinweise.length) base.warning = hinweise.join(' ')
+          // „geraten" sagt die KI selbst. Dann bleibt der Schritt unsicher und
+          // ist im Vorgang von vornherein ausgehakt.
+          if (conf === 'geraten') {
+            base.proven = false
+            base.warning = [grund || 'Welche Position gemeint ist, bleibt offen.', ...hinweise].join(' ')
           }
         }
         break
@@ -296,6 +335,22 @@ export function checkProposals(raw: RawProposal[], text: string, db: DB): { prop
         const amount = typeof p.amount === 'number' ? p.amount : null
         if (amount == null || !amountInText(amount, text)) {
           dropped.push(`Gebot ${p.amount ?? '?'}: steht nicht als Geldbetrag in der Nachricht`)
+          continue
+        }
+        /*
+         * Wer unsere Preisliste abtippt, bietet nicht — er nimmt an.
+         *
+         * Das war der teuerste Fehler des Falls Wallhäuser: „Gebot 1.050 €" für
+         * sechs Tanks, für die er in Wahrheit 5.400 € zugesagt hatte. Als Verkauf
+         * gebucht wären das 4.350 € zu wenig gewesen, und die Angebotskarte hätte
+         * den zahlungswilligsten Käufer rot als Preisdrücker geführt.
+         *
+         * Die KI erkennt den Fall — sie schrieb es in ihre Zusammenfassung, hatte
+         * aber kein Feld dafür. Jetzt hat sie eins, und der Betrag wird zum
+         * Hinweis statt zum Gebot.
+         */
+        if (p.amountKind === 'unser_preis') {
+          dropped.push(`${eur(amount)}: unser eigener Preis, den der Käufer zurückzitiert — kein Gebot.`)
           continue
         }
         base.amount = amount
