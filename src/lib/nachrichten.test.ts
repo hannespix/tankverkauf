@@ -299,3 +299,38 @@ test('N32 · kein Abholsatz, keine erfundene Notiz', () => {
   assert.deepEqual(r.pickupHints, [])
   assert.equal(r.place, '')
 })
+
+test('N33 · eine Preisliste ist kein Gebot', () => {
+  // Wallhäuser, echter Fall: er zitiert unsere Listenpreise für T-14 bis T-19
+  // zurück, zusammen 5.400 €. Gebucht wurde daraus „Gebot 1.050 €" — nicht weil
+  // die Zahl etwas bedeutet, sondern weil sie unten steht. Stünde die Liste
+  // andersherum, hieße es 650 €.
+  const r = read('1 x 800 l für 650 €\n1 x 1.000 l für 750 €\n1 x 1.250 l für 850 €\n3 x 1.650 l für je 1.050 €')
+  assert.equal(r.offer, null)
+  assert.equal(r.priceList, true)
+  // Verschwiegen wird nichts: die Beträge stehen weiter zur Verfügung.
+  assert.deepEqual(r.amounts, [650, 750, 850, 1050])
+})
+
+test('N34 · in einer Verhandlung gilt weiter der letzte Betrag', () => {
+  // Der Fall, für den die „letzter Treffer"-Regel einmal gebaut wurde — und der
+  // seither nie geprüft war. Ein Satz, eine Zeile: das ist keine Preisliste.
+  assert.equal(read('4.200 EUR sind mir zu viel. Ich biete 3.600 EUR.').offer, 3600)
+  assert.equal(read('Ich biete 3.600 EUR für die Fässer.').offer, 3600)
+  // Und eine Zusage zum Listenpreis bleibt ein Gebot.
+  assert.equal(read('Einverstanden, ich zahle die 1.050 € für den Koffertank.').offer, 1050)
+})
+
+test('N35 · ein Nachname in Versalien mit Umlaut zerbricht nicht', () => {
+  // `[\wäöüß-]` kannte keine großen Umlaute: „MÜLLER" traf gar nicht,
+  // „SCHRÖDER" wurde zu „SCHR", „WALLHÄUSER" zu „WALLH".
+  assert.equal(read('Ist der noch da?\nViele Grüße HANS MÜLLER').name, 'HANS MÜLLER')
+  assert.equal(read('Ist der noch da?\nGruß, Jürgen Schröder').name, 'Jürgen Schröder')
+})
+
+test('N36 · die Grußformel reicht nicht in den Briefkopf', () => {
+  // Über `[,\s]+` griff die Regel über die Leerzeile hinweg und nahm die erste
+  // Zeile des Briefkopfs — ein Naturschutz-Siegel — als Absendernamen.
+  const r = read('Ich hätte Interesse.\n\nMit freundlichen Grüßen\n\nPartnerbetrieb Naturschutz\n\nWINZERHOF WALLHÄUSER')
+  assert.notEqual(r.name, 'Partnerbetrieb Naturschutz')
+})
