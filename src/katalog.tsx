@@ -69,6 +69,21 @@ function App() {
   // steht der Käufer vor 58 Zeilen und sucht, was er gerade angeklickt hat.
   const [onlyBundle, setOnlyBundle] = useState<string | null>(null)
   const [lightbox, setLightbox] = useState<{ photos: string[]; index: number; title: string } | null>(null)
+  /**
+   * Welche Zeilen aufgeklappt sind.
+   *
+   * Maße und Ausstattung waren gepflegt, erreichten den Käufer aber nie — er sah
+   * von einer Pumpe nur Namen und Preis. Alles auszuschreiben würde die Liste
+   * über 58 Positionen unlesbar machen; deshalb aufklappbar, und der Knopf
+   * erscheint nur, wo wirklich etwas dahinter steht.
+   */
+  const [open, setOpen] = useState<Set<string>>(new Set())
+  const toggleDetails = (key: string) =>
+    setOpen((prev) => {
+      const next = new Set(prev)
+      if (!next.delete(key)) next.add(key)
+      return next
+    })
   const [privacy, setPrivacy] = useState(false)
   const auswahl = useRef<HTMLDivElement>(null)
   const liste = useRef<HTMLDivElement>(null)
@@ -120,11 +135,14 @@ function App() {
       // photos fehlt in der allerersten veröffentlichten Datei ganz — ohne ?? []
       // wirft der Zugriff mitten im Render und die Seite bleibt weiß.
       const pics = i.photos ?? []
+      // ?? []: eine ältere veröffentlichte Datei kennt die Merkmale noch nicht.
+      const tags = i.tags ?? []
       if (lot) {
         lot.ids.push(i.id)
         for (const pic of pics) if (!lot.photos.includes(pic)) lot.photos.push(pic)
+        lot.tags = lot.tags.filter((t) => tags.includes(t))
       } else {
-        g.lots.push({ key, maker: i.maker, type: i.type, litres: i.litres, vb: i.vb, dims: i.dims, photos: [...new Set(pics)], reserved: i.reserved, ids: [i.id] })
+        g.lots.push({ key, maker: i.maker, type: i.type, litres: i.litres, vb: i.vb, dims: i.dims, photos: [...new Set(pics)], tags: [...tags], reserved: i.reserved, ids: [i.id] })
       }
       byCat.set(i.category, g)
     }
@@ -420,6 +438,11 @@ function idRanges(ids: string[]): string {
             {g.lots.map((lot) => {
               const taken = lot.ids.filter((id) => picked.has(id)).length
               const many = lot.ids.length > 1
+              // Der Knopf erscheint nur, wo wirklich etwas dahinter steht — eine
+              // leere Klappe ist schlimmer als keine. Bei den Maschinen fehlen die
+              // Maße noch, dort trägt die Ausstattung allein.
+              const hasDetails = !!fmtDims(lot.dims) || lot.tags.length > 0 || many
+              const shown = open.has(lot.key)
               return (
                 <li
                   key={lot.key}
@@ -465,10 +488,30 @@ function idRanges(ids: string[]): string {
 
                   <span className="min-w-0">
                     <span className="block font-semibold">{lot.maker === 'Sonstige' ? lot.type : `${lot.maker} ${lot.type}`}</span>
-                    <span className="tnum block text-[13px] text-muted">
-                      {lot.litres > 0 && `${num(lot.litres)} Liter · `}
-                      {many ? `${lot.ids.length} Stück` : 'Einzelstück'}
-                      {fmtDims(lot.dims) && ` · ${fmtDims(lot.dims)}`}
+                    <span className="tnum flex flex-wrap items-center gap-x-1.5 text-[13px] text-muted">
+                      <span>
+                        {lot.litres > 0 && `${num(lot.litres)} Liter · `}
+                        {many ? `${lot.ids.length} Stück` : 'Einzelstück'}
+                        {fmtDims(lot.dims) && ` · ${fmtDims(lot.dims)}`}
+                      </span>
+                      {/* In der Unterzeile statt darunter: eine eigene Zeile schob
+                          „Auswählen" vom Namen weg und trennte die Position von
+                          ihrer Bedienung. */}
+                      {hasDetails && (
+                        <button
+                          type="button"
+                          onClick={() => toggleDetails(lot.key)}
+                          aria-expanded={shown}
+                          aria-controls={`d-${lot.key}`}
+                          className="tx -my-1 inline-flex min-h-8 items-center gap-0.5 py-1 font-semibold text-primary hover:underline"
+                        >
+                          {shown ? 'weniger' : 'Details'}
+                          <svg viewBox="0 0 24 24" aria-hidden className={cx('tx h-3.5 w-3.5', shown && 'rotate-180')}
+                            fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="m6 9 6 6 6-6" />
+                          </svg>
+                        </button>
+                      )}
                     </span>
                     {lot.reserved && (
                       <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-soft px-2 py-0.5 text-[11px] font-bold text-amber">
@@ -513,6 +556,39 @@ function idRanges(ids: string[]): string {
                     <span className="block font-bold">{eur(lot.vb)}</span>
                     {many && <span className="block text-[11px] font-medium text-muted">je Stück</span>}
                   </span>
+
+                  {/* Über die volle Breite unter der Zeile — eingerückt auf die
+                      Textspalte, damit der Bildplatz die Zeile weiter trägt. */}
+                  {shown && (
+                    <div id={`d-${lot.key}`} className="col-start-2 -mt-1 border-t border-line pt-2.5 sm:col-span-3">
+                      <dl className="grid gap-x-4 gap-y-1.5 text-[13px] sm:grid-cols-[7rem_1fr]">
+                        {fmtDims(lot.dims) && (
+                          <>
+                            <dt className="font-semibold text-muted">Maße</dt>
+                            <dd className="tnum">{fmtDims(lot.dims)}</dd>
+                          </>
+                        )}
+                        {lot.tags.length > 0 && (
+                          <>
+                            <dt className="font-semibold text-muted">Ausstattung</dt>
+                            <dd>
+                              <ul className="flex flex-wrap gap-1.5">
+                                {lot.tags.map((t) => (
+                                  <li key={t} className="rounded-full bg-surface-2 px-2 py-0.5 ring-1 ring-line">{t}</li>
+                                ))}
+                              </ul>
+                            </dd>
+                          </>
+                        )}
+                        {many && (
+                          <>
+                            <dt className="font-semibold text-muted">Verfügbar</dt>
+                            <dd className="tnum">{lot.ids.length} Stück, einzeln oder zusammen</dd>
+                          </>
+                        )}
+                      </dl>
+                    </div>
+                  )}
                 </li>
               )
             })}
@@ -862,6 +938,14 @@ interface Lot {
   /** Alle Bilder des Loses, ohne Dubletten. Vorher stand hier nur das erste —
    *  zweite Aufnahmen einer Position waren veröffentlicht, aber unerreichbar. */
   photos: string[]
+  /**
+   * Nur Merkmale, die JEDE Position des Loses hat.
+   *
+   * 29 Fässer sind eine Zeile mit Stückzahl. Stünde dort ein Merkmal, das nur
+   * eines von ihnen trägt, gälte es für den Käufer für alle 29 — dieselbe Regel
+   * wie im Anzeigentext.
+   */
+  tags: string[]
   reserved: boolean
   ids: string[]
 }

@@ -40,6 +40,9 @@ export function buildCatalog(db: DB): Catalog {
       // A used stainless tank whose condition nobody can see is always guessed
       // worse than it is. The files themselves are copied by publishCatalog.
       photos: t.photos,
+      // Was an der Ware dransteht, nicht was über sie besprochen wurde: `note`
+      // bleibt in der privaten Datenbank, `tags` gehen hinaus.
+      tags: t.tags,
       // Hiding this loses the second buyer entirely; showing it turns them into a backup.
       reserved: t.status === 'reserviert',
     })),

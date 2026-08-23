@@ -305,6 +305,15 @@ export interface CatalogItem {
   dims: Dims | null
   /** Paths relative to this file, published alongside it. Empty when none exist. */
   photos: string[]
+  /**
+   * Ausstattungsmerkmale — „Baujahr 2018", „12.000 l/h", „19 Schichten".
+   *
+   * Sie waren gepflegt, aber nur intern sichtbar: der Käufer sah von einer
+   * Pumpe nur Name und Preis. Genau diese Zeilen beantworten seine Fragen,
+   * bevor er sie stellt. Die Notiz bleibt draußen — dort steht, was am Telefon
+   * besprochen wurde.
+   */
+  tags: string[]
   /** Already promised to someone. Buyers may still register a backup interest. */
   reserved: boolean
 }

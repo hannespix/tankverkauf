@@ -152,7 +152,18 @@ body {
 *::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; border: 3px solid transparent; background-clip: content-box; }
 *::-webkit-scrollbar-track { background: transparent; }
 
-input, select, textarea, button { font: inherit; color: inherit; }
+/*
+ * In @layer base, sonst schlägt dieser Reset jede Utility-Klasse.
+ *
+ * Tailwind legt seine Utilities in @layer utilities; ungeschichtete Regeln
+ * gewinnen in der Kaskade gegen jede geschichtete, ganz gleich wie spezifisch.
+ * `text-primary` auf einem <button> war damit wirkungslos — überall in der App,
+ * nicht nur an einer Stelle. Aufgefallen ist es an einem grauen „Details"-Link,
+ * der grün sein sollte: gemessen rgb(93,107,99) statt #15803d.
+ */
+@layer base {
+  input, select, textarea, button { font: inherit; color: inherit; }
+}
 
 /* iOS zooms in on focus for anything under 16px. */
 @media (max-width: 700px) {
