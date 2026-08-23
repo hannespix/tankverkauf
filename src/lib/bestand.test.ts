@@ -28,6 +28,7 @@ import { applyProposal, createAd, createDeal, createQuote, detachTanks, noteOnLe
 import { quoteMail } from './mail'
 import { resolveBundle } from './bundles'
 import { adDrift, generateAd } from './ads'
+import { buildCatalog, catalogStamp, photoStamp } from './catalog'
 import { openQuotesOf, quoteMetrics, quoteRelation } from './stats'
 import type { AdScope, DB, Deal, Lead, Quote, Tank } from '../types'
 
@@ -710,4 +711,112 @@ test('B42 · geänderte Angaben im Text bekommen einen eigenen Grund', () => {
   const d = adDrift(db(), db().ads.find((a) => a.id === adId)!)
   assert.equal(d.stale, true)
   assert.equal(d.otherOnly, true, 'ohne diesen Grund stünde die Überschrift über nichts')
+})
+
+
+/*
+ * B43 bis B49 — die Käuferliste.
+ *
+ * `catalog.ts` war in keinem einzigen Prüffall, obwohl es das einzige Stück
+ * Code ist, dessen Ergebnis das private Repo verlässt. Diese Fälle sichern die
+ * Grenze: was hinausgeht, und was ausdrücklich nicht.
+ */
+
+function katalogVon(patch: Partial<DB>) {
+  setDb(patch)
+  return buildCatalog(store.getSnapshot().db)
+}
+
+test('B43 · Verkauftes steht neben der Liste, nicht darin', () => {
+  /*
+   * Der entscheidende Punkt der ganzen Änderung. Die Käuferseite holt die Datei
+   * bei jeder Rückkehr in den Tab neu, ihr eigenes Programm aber nie — eine
+   * ältere Fassung liest also die neue Datei. Ein Kennzeichen INNERHALB von
+   * `items` überliest sie und böte Verkauftes zum Ankreuzen an; ein unbekanntes
+   * Feld überliest sie folgenlos.
+   */
+  const c = katalogVon({
+    tanks: [tank('T-1'), tank('T-2', { status: 'verkauft', dealId: 'D-1' })],
+  })
+  assert.deepEqual(c.items.map((i) => i.id), ['T-1'], 'nur Lieferbares steht in items')
+  assert.deepEqual((c.soldItems ?? []).map((i) => i.id), ['T-2'], 'Verkauftes steht daneben')
+})
+
+test('B44 · von verkaufter Ware geht weder Preis noch Foto hinaus', () => {
+  const c = katalogVon({
+    tanks: [tank('T-1', { status: 'verkauft', dealId: 'D-1', vb: 1234, photos: ['fotos/a.jpg'] })],
+  })
+  const v = (c.soldItems ?? [])[0]!
+  const felder = Object.keys(v).sort()
+  assert.ok(!felder.includes('vb'), 'die VB ist nicht der erzielte Preis und hat hier nichts verloren')
+  assert.ok(!felder.includes('photos'), 'ohne Fotos bleibt die Bildmenge die der lieferbaren Ware')
+  assert.equal(v.maker, 'Speidel', 'benannt wird die Position trotzdem')
+})
+
+test('B45 · der Fingerabdruck der Bilder deckt genau das ab, was übertragen wird', () => {
+  /*
+   * Liefen die beiden auseinander, hinge ein Foto an einer Position, die nie
+   * kopiert wird: der Katalog-Fingerabdruck ändert sich, veröffentlicht wird,
+   * der Bilddurchlauf wird übersprungen — und die Liste zeigt dauerhaft ein
+   * totes Bild, während das Werkzeug „aktuell" meldet.
+   */
+  setDb({
+    tanks: [
+      tank('T-1', { photos: ['fotos/frei.jpg'] }),
+      tank('T-2', { status: 'verkauft', dealId: 'D-1', photos: ['fotos/weg.jpg'] }),
+    ],
+  })
+  const db = store.getSnapshot().db
+  const c = buildCatalog(db)
+  const ausListe = [...new Set(c.items.flatMap((i) => i.photos))].sort().join('|')
+  assert.equal(ausListe, 'fotos/frei.jpg', 'das Bild der verkauften Position wird nicht angefordert')
+  assert.equal(photoStamp(db), hashOf(ausListe))
+})
+
+// Derselbe Fingerabdruck wie in catalog.ts — hier nachgebaut, damit der Prüffall
+// die Rechnung belegt und nicht nur sich selbst.
+function hashOf(text: string): string {
+  let h = 0x811c9dc5
+  for (let i = 0; i < text.length; i += 1) {
+    h ^= text.charCodeAt(i)
+    h = Math.imul(h, 0x01000193)
+  }
+  return (h >>> 0).toString(36)
+}
+
+test('B46 · ein Verkauf stößt eine Veröffentlichung an', () => {
+  // Ohne Fingerabdruckwechsel erreicht die Kennzeichnung den Käufer nie.
+  setDb({ tanks: [tank('T-1'), tank('T-2')] })
+  const vorher = catalogStamp(store.getSnapshot().db)
+  store.mutate((x) => { x.tanks[1]!.status = 'verkauft'; x.tanks[1]!.dealId = 'D-1' })
+  assert.notEqual(catalogStamp(store.getSnapshot().db), vorher)
+})
+
+test('B47 · ein Paket schnürt nichts Verkauftes ein', () => {
+  setDb({
+    tanks: [tank('T-1', { vb: 1000 }), tank('T-2', { vb: 1000, status: 'verkauft', dealId: 'D-1' })],
+  })
+  store.mutate((x) => {
+    x.settings.bundles = [{ id: 'B-1', label: 'Zwei Tanks', blurb: '', ids: ['T-1', 'T-2'], giftIds: [], discount: 0.1, minItems: 1, active: true }]
+  })
+  const b = buildCatalog(store.getSnapshot().db).bundles[0]!
+  assert.deepEqual(b.ids, ['T-1'], 'die verkaufte Position fällt heraus')
+  assert.equal(b.short, 1, 'und der Käufer erfährt, dass der Zuschnitt kleiner ist')
+})
+
+test('B48 · eine restlos verkaufte Gattung behält keinen Werbetext', () => {
+  // „Wir geben die Fässer als Dekofässer ab …" über nichts wäre ein Angebot
+  // für nichts. Die Überschrift trägt die verkaufte Zeile, der Werbetext nicht.
+  const c = katalogVon({ tanks: [tank('T-1', { status: 'verkauft', dealId: 'D-1' })] })
+  assert.deepEqual(c.categories, [], 'keine Gattung mit Inhalt')
+  assert.equal(c.items.length, 0)
+  assert.equal((c.soldItems ?? []).length, 1, 'sichtbar bleibt sie trotzdem')
+})
+
+test('B49 · reservierte Ware bleibt lieferbar und in der Liste', () => {
+  // Die Abgrenzung nach unten: reserviert ist NICHT verkauft.
+  const c = katalogVon({ tanks: [tank('T-1', { status: 'reserviert', leadId: 'L-1' })] })
+  assert.deepEqual(c.items.map((i) => i.id), ['T-1'])
+  assert.equal(c.items[0]!.reserved, true)
+  assert.deepEqual(c.soldItems ?? [], [], 'sie ist nicht verkauft')
 })

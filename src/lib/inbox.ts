@@ -519,7 +519,12 @@ export function askFor(db: DB, tankIds: string[]): number {
   if (chosen.length === 0) return 0
   const cat = buildCatalog(db)
   const priced = chosen.map((t) => ({ id: t.id, category: t.category, vb: t.vb }))
-  const stock = new Map(cat.items.map((i) => [i.id, { id: i.id, category: i.category, vb: i.vb }]))
+  // Wie in `buildCatalog`: als Bestand zählt nur, was auch zu haben ist.
+  // Reserviertes stand hier mit — der Staffelhinweis in `priceSelection` hätte
+  // damit mit Ware gerechnet, die schon jemandem zugesagt ist.
+  const stock = new Map(
+    cat.items.filter((i) => !i.reserved).map((i) => [i.id, { id: i.id, category: i.category, vb: i.vb }]),
+  )
   const label = (id: string) => db.settings.categories.find((c) => c.id === id)?.label ?? id
   return priceSelection(priced, cat.bundles, cat.tiers, label, stock).price
 }

@@ -1,4 +1,4 @@
-import type { Catalog, CatalogBundle, DB } from '../types'
+import type { Catalog, CatalogBundle, DB, SoldItem } from '../types'
 import { resolveBundle } from './bundles'
 import { isOpen } from './stats'
 
@@ -11,6 +11,18 @@ import { isOpen } from './stats'
 export function buildCatalog(db: DB): Catalog {
   const label = (id: string) => db.settings.categories.find((c) => c.id === id)?.label ?? id
   const open = db.tanks.filter(isOpen)
+  /*
+   * Verkauftes bleibt sichtbar — als Beleg, nicht als Angebot.
+   *
+   * Wer „2× Barriquefass" liest, kann nicht unterscheiden, ob zwei übrig sind
+   * oder ob es nie mehr gab. Steht darunter „27× Barriquefass · verkauft",
+   * beziffert die Liste den Rest gegen den Ausgangsbestand.
+   *
+   * Es geht ausdrücklich NICHT in `items`: dort läge es in `stock`, im
+   * Mengenpreis, im Kopfzähler und in der Anfrage-Mail, und eine ältere
+   * Fassung der Käuferseite böte es zum Ankreuzen an.
+   */
+  const sold = db.tanks.filter((t) => !isOpen(t))
   // Reservierte Positionen bleiben in der Liste — ein zweiter Interessent ist Gold
   // wert, wenn die Reservierung platzt. In einem Paket haben sie nichts verloren:
   // ein Paketpreis ist ein festes Angebot, und was schon jemandem zugesagt ist,
@@ -46,8 +58,20 @@ export function buildCatalog(db: DB): Catalog {
       // Hiding this loses the second buyer entirely; showing it turns them into a backup.
       reserved: t.status === 'reserviert',
     })),
+    // Ohne Preis und ohne Fotos — die Begründung steht am Typ `SoldItem`.
+    soldItems: sold.map((t): SoldItem => ({
+      id: t.id,
+      category: t.category,
+      categoryLabel: label(t.category),
+      maker: t.maker,
+      type: t.type,
+      litres: t.litres,
+      dims: t.dims,
+      tags: t.tags,
+    })),
     // Nur Gruppen, in denen wirklich etwas steht — eine leere Überschrift mit
-    // Werbetext darunter wäre ein Angebot für nichts.
+    // Werbetext darunter wäre ein Angebot für nichts. Der Werbetext gehört zu
+    // Ware, die es gibt: `open`, nicht `sold`.
     categories: db.settings.categories
       .filter((c) => open.some((t) => t.category === c.id))
       .map((c) => ({ id: c.id, label: c.label, note: c.note ?? '' })),
