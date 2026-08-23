@@ -29,18 +29,28 @@ function useTheme() {
 }
 
 /**
- * Where to look for the published list, in order:
- *  1. same origin — served from the build, once the deploy after a publish is through
- *  2. raw.githubusercontent — bridges the minute between publishing and that deploy
- *  3. the repo root, where the very first version of the publisher wrote to
+ * Wo die veröffentlichte Liste liegt.
+ *
+ * Zwei Quellen, und beide werden gefragt — nicht die erste, die antwortet.
+ *
+ * Der Kommentar hier behauptete, die zweite Quelle überbrücke „die Minute
+ * zwischen Veröffentlichen und Deploy". Sie tat es nie: die Schleife nahm den
+ * ersten Treffer mit `res.ok`, und die gleiche Herkunft antwortet IMMER mit 200
+ * — mit der alten Datei, weil sie beim Bauen mitkopiert wird. Zwischen dem
+ * Reservieren und dem fertigen Deploy sah der Käufer also den alten Stand, ohne
+ * dass die Notfallquelle je an die Reihe kam.
+ *
+ * Jetzt entscheidet `updatedAt`, nicht die Reihenfolge.
  */
 function sources(): string[] {
   const list = ['katalog/katalog.json']
   const host = location.hostname.match(/^([^.]+)\.github\.io$/)
   const repo = location.pathname.split('/').filter(Boolean)[0]
   if (host && repo) {
-    const base = `https://raw.githubusercontent.com/${host[1]}/${repo}/main`
-    list.push(`${base}/public/katalog/katalog.json`, `${base}/katalog/katalog.json`)
+    // Nur der gepflegte Pfad. Die alte Ablage im Wurzelverzeichnis existiert
+    // noch, trägt aber einen Stand von vor Tagen und kein `reserved`-Feld —
+    // als Notnagel richtete sie mehr Schaden an, als sie abfing.
+    list.push(`https://raw.githubusercontent.com/${host[1]}/${repo}/main/public/katalog/katalog.json`)
   }
   return list
 }
@@ -90,26 +100,51 @@ function App() {
 
   useEffect(() => {
     let alive = true
-    void (async () => {
+
+    async function laden() {
       // No override parameter: it let anyone point this page at their own file and
       // present foreign prices and a foreign contact address under this very address.
+      const treffer: { url: string; data: Catalog }[] = []
       for (const url of sources()) {
         try {
           const res = await fetch(url, { cache: 'no-store' })
           if (!res.ok) continue
-          const data = (await res.json()) as Catalog
-          if (alive) {
-            setBase(new URL(url, location.href).href.replace(/\/[^/]*$/, '/'))
-            setCatalog(data)
-          }
-          return
+          treffer.push({ url, data: (await res.json()) as Catalog })
         } catch {
-          /* try the next candidate */
+          /* die nächste Quelle versuchen */
         }
       }
-      if (alive) setError('Die Liste konnte nicht geladen werden. Bitte später noch einmal versuchen.')
-    })()
-    return () => { alive = false }
+      if (!alive) return
+      if (treffer.length === 0) {
+        setError('Die Liste konnte nicht geladen werden. Bitte später noch einmal versuchen.')
+        return
+      }
+      // Der jüngste Stand gewinnt. Ein fehlendes oder unlesbares `updatedAt`
+      // zählt als ältest, damit eine kaputte Datei nie eine gute verdrängt.
+      const zeit = (c: Catalog) => Date.parse(c.updatedAt ?? '') || 0
+      const beste = treffer.reduce((a, b) => (zeit(b.data) > zeit(a.data) ? b : a))
+      setError(null)
+      setBase(new URL(beste.url, location.href).href.replace(/\/[^/]*$/, '/'))
+      setCatalog(beste.data)
+    }
+
+    void laden()
+
+    /*
+     * Noch einmal nachsehen, wenn der Besucher zurückkommt.
+     *
+     * Die Seite lud genau einmal — kein Intervall, kein Neuladen. Wer sie offen
+     * liegen ließ, bekam eine Reservierung nie zu sehen, egal wie lange er
+     * wartete. Und weil zwischen Veröffentlichen und Auslieferung der Deploy und
+     * ein CDN mit zehn Minuten Vorhaltezeit liegen, ist genau das der Moment, in
+     * dem sich das Nachsehen lohnt.
+     */
+    const wieder = () => { if (document.visibilityState === 'visible') void laden() }
+    document.addEventListener('visibilitychange', wieder)
+    return () => {
+      alive = false
+      document.removeEventListener('visibilitychange', wieder)
+    }
   }, [])
 
   const groups = useMemo(() => {
