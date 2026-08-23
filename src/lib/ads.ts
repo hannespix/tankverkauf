@@ -609,6 +609,13 @@ export interface ParsedMessage {
   pickupHints: string[]
   /** Eine deutsche Postleitzahl mit Ort, falls die Nachricht eine nennt. */
   place: string
+  /**
+   * Jeder Betrag, den die Nachricht nennt — auch wenn keiner davon als Gebot
+   * durchgeht. Sonst verschwiegen wir dem Verkäufer, dass Zahlen dastanden.
+   */
+  amounts: number[]
+  /** Die Beträge lesen sich als Preisliste, nicht als ein Gebot. */
+  priceList: boolean
 }
 
 /**
@@ -779,13 +786,41 @@ export function parseMessage(text: string, db: DB): ParsedMessage {
     .filter((n) => !(n >= 1900 && n <= 2099))
   const bids = money.length ? money : bare
   const plausible = bids.filter((n) => n >= 50 && n <= 500000)
+
+  // Eine Preisliste ist kein Gebot.
+  //
+  // Ein Käufer, der unseren Katalog abtippt, schreibt einen Posten je Zeile:
+  //   1 x 800 l für 650 €
+  //   1 x 1.000 l für 750 €
+  //   3 x 1.650 l für je 1.050 €
+  // Bisher gewann daraus der letzte Treffer — nicht weil er das Gebot wäre,
+  // sondern weil er unten steht. Bei Wallhäuser wurden so 1.050 € als sein
+  // Gebot gebucht, während er in Wahrheit 5.400 € zusagte: 800 € mehr, als wir
+  // selbst verlangt hätten. Stünde die Liste andersherum, hieße es 650 €.
+  //
+  // Eine Verhandlung dagegen steht in einem Satz auf einer Zeile: "4.200 EUR
+  // sind mir zu viel, ich biete 3.600 EUR." Dort ist der letzte Treffer richtig
+  // — und nur dort wird er noch genommen.
+  const priced = buyerWrote
+    .split(/\r?\n/)
+    .filter((l) => [...l.matchAll(withCurrency)].some((m) => {
+      const n = Number((m[1] ?? m[2]).replace(/[.\s]/g, ''))
+      return n >= 50 && n <= 500000
+    }))
+  const distinct = new Set(plausible)
+  const priceList = distinct.size > 1 && priced.length > 1
+
   const offer = offerLine
     ? Number(offerLine[1].replace(/\./g, '')) || null
-    : plausible.length
-      // Der letzte Treffer: "4.200 sind mir zu viel, ich biete 3.600" nannte
-      // sonst unseren eigenen Preis als sein Gebot.
-      ? plausible[plausible.length - 1]
-      : null
+    : priceList
+      ? null
+      : plausible.length
+        // Der letzte Treffer: "4.200 EUR sind mir zu viel, ich biete 3.600 EUR"
+        // nannte sonst unseren eigenen Preis als sein Gebot.
+        ? plausible[plausible.length - 1]
+        : null
+  /** Alles, was nach Betrag aussah — auch wenn daraus kein Gebot wurde. */
+  const amounts = [...new Set(plausible)]
 
   const byLitres = db.tanks.filter((t) => all.includes(t.litres) && isOpen(t))
   // Nicht jede Ware hat ein Volumen. "Die Impellerpumpe nehme ich" fand bisher
@@ -822,9 +857,22 @@ export function parseMessage(text: string, db: DB): ParsedMessage {
     .join('\n')
   const lines = prose.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
 
-  // "Viele Grüße, Martin Kessler" — the name rides along on the greeting line.
+  /*
+   * "Viele Grüße, Martin Kessler" — der Name steht auf der Grußzeile selbst.
+   *
+   * Die Brücke war `[,\s]+`, und `\s` schließt den Zeilenumbruch ein. Damit
+   * reichte die Regel über die Leerzeile hinweg in den Briefkopf und nahm, was
+   * dort zuerst stand — bei einer echten Geschäftsmail das Naturschutz-Siegel
+   * „Partnerbetrieb Naturschutz" statt des Absenders. Jetzt nur noch dieselbe
+   * Zeile.
+   *
+   * `\p{Lu}\p{L}*` statt `[A-ZÄÖÜ][\wäöüß-]+`: die alte Klasse kannte keine
+   * großen Umlaute. „WALLHÄUSER" wurde zu „WALLH", „SCHRÖDER" zu „SCHR", und
+   * „MÜLLER" traf gar nicht — ein deutscher Nachname in Versalien zerbrach die
+   * Erkennung.
+   */
   const afterGreeting = prose.match(
-    /(?:mit freundlichen grüßen|viele grüße|beste grüße|liebe grüße|grüße|gruß|mfg|lg)[,\s]+([A-ZÄÖÜ][\wäöüß-]+(?:\s+[A-ZÄÖÜ][\wäöüß-]+){0,2})\s*$/im,
+    /(?:mit freundlichen grüßen|viele grüße|beste grüße|liebe grüße|grüße|gruß|mfg|lg)[,;]?[ \t]+(\p{Lu}[\p{L}'’-]*(?:[ \t]+\p{Lu}[\p{L}'’-]*){0,2})[ \t]*$/imu,
   )
 
   const stop = /^(hallo|hi|guten|sehr|mit freundlichen|viele grüße|liebe|mfg|lg|danke|gruß|grüße|ich |positionen|angebot|summe|diese|von|an|betreff|gesendet|datum|cc|kopie|from|to|subject|sent|date|antwort an)\b/i
@@ -846,5 +894,5 @@ export function parseMessage(text: string, db: DB): ParsedMessage {
   const placeMatch = body.match(/\b(\d{5})\s+([A-ZÄÖÜ][\wäöüß.-]+(?:[ -][A-ZÄÖÜ][\wäöüß.-]+)?)/)
   const place = placeMatch ? `${placeMatch[1]} ${placeMatch[2]}` : ''
 
-  return { name, phone, email, litresMentioned: all, matchedTankIds, offer, packagePrice, exact: exactIds.length > 0, broadMatch, pickupHints, place }
+  return { name, phone, email, litresMentioned: all, matchedTankIds, offer, packagePrice, exact: exactIds.length > 0, broadMatch, pickupHints, place, amounts, priceList }
 }
