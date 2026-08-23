@@ -18,5 +18,11 @@ jobs:
       - run: npm ci
       - name: Typecheck
         run: npm run typecheck
+      # Die zehn Nachrichten aus dem echten Geschäft. Was sie prüfen, ist nicht
+      # die KI, sondern was ohne sie aus einem Text gelesen wird — und vor allem,
+      # was NICHT: unser eigener Paketpreis als Käufergebot, eine Robot-Adresse
+      # als Interessent, 29 Fässer an einer Frage nach einem.
+      - name: Tests
+        run: npm test
       - name: Build
         run: npm run build
