@@ -709,7 +709,17 @@ function bodyOf(text: string): string {
 
 export function parseMessage(text: string, db: DB): ParsedMessage {
   const body = bodyOf(text)
-  const email = (body.match(/[\w.+-]+@[\w-]+\.[\w.]{2,}/g) ?? []).find((a) => !RELAY_ADDRESS.test(a)) ?? ''
+  /*
+   * Bei einer weitergeleiteten Mail wird der Kopfblock abgeschnitten — bei einer
+   * Portalmail zu Recht, denn dort steht die Roboteradresse. Wird aber eine
+   * gewöhnliche E-Mail weitergeleitet, steht in „Von:" der Käufer selbst, und
+   * die Adresse ging verloren. Ohne Kontaktweg verwirft der Vorgang dann alles.
+   * Genommen wird sie nur, wenn im Text selbst keine steht und sie keine
+   * Roboteradresse ist.
+   */
+  const fromHeader = text.match(/^\s*(?:Von|From)\s*:.*?([\w.+-]+@[\w-]+\.[\w.]{2,})/im)?.[1] ?? ''
+  const inBody = (body.match(/[\w.+-]+@[\w-]+\.[\w.]{2,}/g) ?? []).find((a) => !RELAY_ADDRESS.test(a)) ?? ''
+  const email = inBody || (RELAY_ADDRESS.test(fromHeader) ? '' : fromHeader)
   const phoneRaw = body.match(/(?:\+49|0)[\d\s/().-]{7,}\d/)?.[0] ?? ''
   const phone = phoneRaw.replace(/[^\d+]/g, '').replace(/^(\+49)/, '+49 ')
 
@@ -872,15 +882,23 @@ export function parseMessage(text: string, db: DB): ParsedMessage {
    * Erkennung.
    */
   const afterGreeting = prose.match(
-    /(?:mit freundlichen grüßen|viele grüße|beste grüße|liebe grüße|grüße|gruß|mfg|lg)[,;]?[ \t]+(\p{Lu}[\p{L}'’-]*(?:[ \t]+\p{Lu}[\p{L}'’-]*){0,2})[ \t]*$/imu,
+    /(?:mit freundlichen grüßen|viele grüße|beste grüße|liebe grüße|grüße|gruß|mfg|lg)[,;]?[ \t]+(\p{L}[\p{L}'’-]*(?:[ \t]+\p{L}[\p{L}'’-]*){0,2})[ \t]*$/imu,
   )
+  /*
+   * Unter dem i-Flag faltet JavaScript auch `\p{Lu}` — die Klasse trifft dann
+   * jeden Buchstaben. „Viele Grüße von der Nahe" ergab deshalb den Absendernamen
+   * „von der Nahe". Die Großschreibung wird jetzt in Code geprüft, nicht in der
+   * Regex, denn das i-Flag brauchen wir für die Grußformel selbst.
+   */
+  const greeted = afterGreeting?.[1]?.trim()
+  const looksLikeName = !!greeted && greeted.split(/\s+/).every((w) => /^\p{Lu}/u.test(w))
 
   const stop = /^(hallo|hi|guten|sehr|mit freundlichen|viele grüße|liebe|mfg|lg|danke|gruß|grüße|ich |positionen|angebot|summe|diese|von|an|betreff|gesendet|datum|cc|kopie|from|to|subject|sent|date|antwort an)\b/i
   const standalone = [...lines]
     .reverse()
     .find((l) => l.length >= 3 && l.length <= 40 && !stop.test(l) && /^[A-ZÄÖÜ]/.test(l) && !/[.?!:€]$/.test(l) && l.split(/\s+/).length <= 4)
 
-  const name = (afterGreeting?.[1] ?? standalone ?? '').trim()
+  const name = ((looksLikeName ? greeted : '') || standalone || '').trim()
 
   // Was der Käufer über Abholung sagt, steht fast immer in einem eigenen Satz.
   // Genommen wird der Satz, nicht ein daraus geratenes Datum.

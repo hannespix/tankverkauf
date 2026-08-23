@@ -2,10 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Modal, Pill, Textarea, cx } from './ui'
 import { IconCamera, IconCheck, IconClose, IconCopy, IconInbox, IconSpark, IconWarn } from './icons'
 import { AiError, draftReply, readProposals, type AiImage } from '../lib/ai'
-import { buildPlan, checkProposals, type MessageContext, type Plan, type Proposal } from '../lib/inbox'
+import { buildPlan, checkProposals, resolvePick, type MessageContext, type Plan, type Proposal } from '../lib/inbox'
 import { applyProposal, quoteToDeal } from '../lib/actions'
 import { parseMessage } from '../lib/ads'
-import { eur } from '../lib/format'
+import { eur, itemLabel } from '../lib/format'
 import { openQuotesOf } from '../lib/stats'
 import { prepareImage } from '../lib/photos'
 import { useStore } from '../lib/store'
@@ -38,6 +38,18 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
   const [reply, setReply] = useState<string | null>(null)
   /** Was der eine Knopf getan hat, Zeile für Zeile. */
   const [log, setLog] = useState<{ text: string; ok: boolean }[]>([])
+  /**
+   * Abgewählte Schritte, und was am einzelnen Schritt von Hand geändert wurde.
+   *
+   * Vorher lief der Knopf über ALLE Schritte. `proven: false` und die
+   * bernsteinfarbene Warnung standen zwar da, hielten aber nichts auf — gefiltert
+   * wurde nur nach Art (`CHEAP`). Wer einen Schritt nicht wollte, konnte nur den
+   * ganzen Zug lassen. Und was die KI falsch aufgelöst hatte, ließ sich nicht
+   * geradeziehen, sondern nur hinterher im Bestand reparieren.
+   */
+  const [off, setOff] = useState<Set<string>>(new Set())
+  const [edits, setEdits] = useState<Record<string, { tankIds?: string[]; amount?: number | null; name?: string }>>({})
+  const [addTo, setAddTo] = useState<{ id: string; q: string } | null>(null)
   const [ran, setRan] = useState(false)
   const [confirmSale, setConfirmSale] = useState(false)
   const file = useRef<HTMLInputElement>(null)
@@ -147,6 +159,61 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
   )
 
   /**
+   * Unsicheres ist von vornherein ausgehakt.
+   *
+   * Ein Schritt, den die Prüfung nicht am Text belegen konnte, darf nicht
+   * mitlaufen, nur weil er in derselben Liste steht. Er steht da, ist lesbar und
+   * lässt sich mit einem Tipp dazunehmen — das ist der Unterschied zwischen
+   * „markiert" und „folgenlos markiert".
+   */
+  const stepKey = plan.steps.map((p) => p.id).join(',')
+  useEffect(() => {
+    setOff(new Set(plan.steps.filter((p) => !p.proven).map((p) => p.id)))
+    setEdits({})
+    setAddTo(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stepKey])
+
+  /**
+   * Der Schritt, wie er wirklich laufen würde — mit dem, was von Hand geändert
+   * wurde, und mit einem Titel, der das auch sagt.
+   *
+   * Ohne den nachgezogenen Titel stand im Protokoll „2 Positionen anhängen",
+   * während eine angehängt wurde, und „Gebot 3.600 €", während 3.400 eingetragen
+   * war. Eine Vollzugsmeldung, die etwas anderes meldet als den Vollzug.
+   */
+  function effective(p: Proposal): Proposal {
+    const e = edits[p.id]
+    if (!e) return p
+    const out: Proposal = { ...p }
+    if (e.tankIds) {
+      out.tankIds = e.tankIds
+      out.pick = null
+      const one = e.tankIds.length === 1 ? db.tanks.find((t) => t.id === e.tankIds![0]) : null
+      out.title = `${one ? itemLabel(one) : `${e.tankIds.length} ${e.tankIds.length === 1 ? 'Position' : 'Positionen'}`} anhängen`
+    }
+    if (e.amount !== undefined) {
+      out.amount = e.amount
+      out.title = e.amount == null ? 'Gebot eintragen — kein Betrag' : `Gebot ${eur(e.amount)} eintragen`
+    }
+    if (e.name !== undefined) {
+      out.name = e.name
+      out.title = `Interessent anlegen: ${e.name || 'Unbenannt'}`
+    }
+    return out
+  }
+
+  /** Welche Positionen der Schritt anfassen würde — aufgelöst, damit man sie ändern kann. */
+  function idsOf(p: Proposal): string[] {
+    const e = edits[p.id]
+    if (e?.tankIds) return e.tankIds
+    return p.tankIds.length ? p.tankIds : p.pick ? resolvePick(db, p.pick) : []
+  }
+
+  const setIds = (p: Proposal, ids: string[]) => setEdits((m) => ({ ...m, [p.id]: { ...m[p.id], tankIds: ids } }))
+  const chosen = plan.steps.filter((p) => !off.has(p.id))
+
+  /**
    * Was aus dieser Nachricht über die Schritte hinaus hängen bleibt.
    *
    * Befund, Hinweise und die Liste der Schritte lebten nur, solange der Dialog
@@ -157,7 +224,7 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
     return {
       summary: read?.summary?.trim() ?? '',
       notes: plan.notes,
-      steps: plan.steps.map((s) => s.title),
+      steps: chosen.map((s) => effective(s).title),
       fromImage: !!read?.transcript,
     }
   }
@@ -167,7 +234,7 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
    * sprang die Karte trotzdem auf „übernommen“.
    */
   function take(p: Proposal) {
-    const res = applyProposal(p, leadId, message, context())
+    const res = applyProposal(effective(p), leadId, message, context())
     if (res.leadId) setLeadId(res.leadId)
     if (res.done) setApplied((prev) => ({ ...prev, [p.id]: res.done }))
     else setError(`„${p.title}“ hat nichts geändert${res.skipped ? ` — ${res.skipped}` : ''}.`)
@@ -189,7 +256,8 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
     let carry = leadId
     const out: { text: string; ok: boolean }[] = []
     try {
-      for (const step of plan.steps) {
+      // Nur die angehakten, und jeder so, wie er nach der Bearbeitung dasteht.
+      for (const step of chosen.map(effective)) {
         const res = applyProposal(step, carry, message, context())
         if (res.leadId) carry = res.leadId
         out.push(res.done ? { text: res.done, ok: true } : { text: `${step.title} — ${res.skipped ?? 'nichts geändert'}`, ok: false })
@@ -405,26 +473,131 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
         {plan.steps.length > 0 && !ran && (
           <div className="rounded-xl border border-primary/40 bg-primary-soft/25 p-3">
             <p className="text-[11px] font-bold text-muted uppercase">Vorgang</p>
-            <ol className="mt-1.5 space-y-1 text-[13px]">
-              {plan.steps.map((p, i) => (
-                <li key={p.id} className="flex gap-2">
-                  <span className="tnum shrink-0 text-faint">{i + 1}.</span>
-                  <span className="min-w-0">
-                    <span className="font-semibold">{p.title}</span>
+            <ul className="mt-1.5 space-y-2 text-[13px]">
+              {plan.steps.map((p) => {
+                const an = !off.has(p.id)
+                const e = effective(p)
+                const ids = idsOf(p)
+                const frei = db.tanks.filter((t) => t.status === 'verfuegbar' && !ids.includes(t.id))
+                const suche = addTo?.id === p.id ? addTo.q.trim().toLowerCase() : ''
+                const treffer = suche
+                  ? frei.filter((t) => [t.id, t.maker, t.type, String(t.litres)].some((v) => v.toLowerCase().includes(suche)))
+                  : []
+                return (
+                  <li key={p.id} className={cx('rounded-lg', !an && 'opacity-55')}>
+                    <label className="flex cursor-pointer items-start gap-2">
+                      <input
+                        type="checkbox"
+                        checked={an}
+                        className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--primary)]"
+                        onChange={() => setOff((prev) => {
+                          const next = new Set(prev)
+                          if (!next.delete(p.id)) next.add(p.id)
+                          return next
+                        })}
+                      />
+                      <span className="min-w-0 font-semibold">{e.title}</span>
+                    </label>
                     {p.warning && (
-                      <span className="mt-0.5 flex items-start gap-1.5 font-semibold text-amber">
+                      <p className="mt-0.5 ml-6 flex items-start gap-1.5 font-semibold text-amber">
                         <IconWarn className="mt-0.5 h-3.5 w-3.5 shrink-0" />{p.warning}
-                      </span>
+                      </p>
                     )}
-                  </span>
-                </li>
-              ))}
-            </ol>
-            <Button variant="primary" className="mt-3 w-full" onClick={runPlan}>
-              <IconCheck />{plan.steps.length === 1 ? 'Übernehmen' : `Alle ${plan.steps.length} übernehmen`}
+
+                    {/* Positionen: was wirklich angehängt würde, einzeln abwählbar.
+                        Genau hier ging es schief — zwei falsche Nummern und drei
+                        fehlende, ohne dass man sie hätte geradeziehen können. */}
+                    {an && p.kind === 'positionen' && (
+                      <div className="mt-1 ml-6 space-y-1.5">
+                        <ul className="flex flex-wrap gap-1.5">
+                          {ids.map((id) => {
+                            const t = db.tanks.find((x) => x.id === id)
+                            if (!t) return null
+                            return (
+                              <li key={id}>
+                                <Pill tone="sky">
+                                  <span className="tnum opacity-70">{t.id}</span> {itemLabel(t)}
+                                  <button
+                                    type="button"
+                                    aria-label={`${t.id} aus dem Schritt nehmen`}
+                                    onClick={() => setIds(p, ids.filter((x) => x !== id))}
+                                    className="-mr-1.5 ml-1 flex h-6 w-6 items-center justify-center rounded leading-none hover:bg-black/10"
+                                  >
+                                    ×
+                                  </button>
+                                </Pill>
+                              </li>
+                            )
+                          })}
+                          {ids.length === 0 && <li className="text-muted">Keine Position — der Schritt würde nichts tun.</li>}
+                        </ul>
+                        <input
+                          value={addTo?.id === p.id ? addTo.q : ''}
+                          onChange={(ev) => setAddTo({ id: p.id, q: ev.target.value })}
+                          placeholder="Position suchen und hinzufügen …"
+                          className="w-full rounded-lg border border-line bg-surface px-2 py-1.5 text-[13px]"
+                        />
+                        {treffer.length > 0 && (
+                          <ul className="max-h-32 overflow-y-auto rounded-lg border border-line bg-surface-2 p-1">
+                            {treffer.slice(0, 12).map((t) => (
+                              <li key={t.id}>
+                                <button
+                                  type="button"
+                                  onClick={() => { setIds(p, [...ids, t.id]); setAddTo(null) }}
+                                  className="flex w-full items-center gap-2 rounded px-2 py-1 text-left hover:bg-surface-3"
+                                >
+                                  <span className="tnum shrink-0 text-muted">{t.id}</span>
+                                  <span className="min-w-0 truncate">{itemLabel(t)}</span>
+                                  <span className="tnum ml-auto shrink-0 text-muted">{eur(t.vb)}</span>
+                                </button>
+                              </li>
+                            ))}
+                            {treffer.length > 12 && (
+                              <li className="px-2 py-1 text-muted">12 von {treffer.length} — genauer suchen.</li>
+                            )}
+                          </ul>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Betrag: die Zahl, die beim Buchen zum Verkaufspreis wird. */}
+                    {an && p.kind === 'gebot' && (
+                      <div className="mt-1 ml-6 flex items-center gap-2">
+                        <input
+                          type="number"
+                          className="tnum w-32 rounded-lg border border-line bg-surface px-2 py-1.5 text-[13px]"
+                          value={e.amount ?? ''}
+                          onChange={(ev) => setEdits((m) => ({ ...m, [p.id]: { ...m[p.id], amount: ev.target.value === '' ? null : Number(ev.target.value) } }))}
+                        />
+                        <span className="text-muted">€ — steht beim Angebot als Käufergebot.</span>
+                      </div>
+                    )}
+
+                    {/* Name: aus einer Signatur geraten und oft daneben. */}
+                    {an && p.kind === 'lead.neu' && (
+                      <div className="mt-1 ml-6">
+                        <input
+                          className="w-full rounded-lg border border-line bg-surface px-2 py-1.5 text-[13px]"
+                          value={e.name}
+                          onChange={(ev) => setEdits((m) => ({ ...m, [p.id]: { ...m[p.id], name: ev.target.value } }))}
+                        />
+                      </div>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+            <Button variant="primary" className="mt-3 w-full" disabled={chosen.length === 0} onClick={runPlan}>
+              <IconCheck />
+              {chosen.length === 0
+                ? 'Nichts ausgewählt'
+                : chosen.length === plan.steps.length
+                  ? (chosen.length === 1 ? 'Übernehmen' : `Alle ${chosen.length} übernehmen`)
+                  : `${chosen.length} von ${plan.steps.length} übernehmen`}
             </Button>
             <p className="mt-1.5 text-xs text-faint">
               Nichts davon ist für Käufer sichtbar, und alles lässt sich zurücknehmen.
+              {plan.steps.some((p) => !p.proven) && ' Was nicht am Text zu belegen war, ist ausgehakt.'}
             </p>
           </div>
         )}
