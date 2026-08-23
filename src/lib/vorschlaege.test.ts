@@ -139,3 +139,73 @@ test('V9 · reservieren bleibt streng, auch wenn Positionen es nicht mehr sind',
   const r = p.risky.find((x) => x.kind === 'reservieren')
   if (r) assert.equal(r.proven, false)
 })
+
+test('V10 · die Stückzahl deckelt auch den belegten Zweig', () => {
+  // „1 × 1.650 l" mit drei Nummern hängte alle drei an — als belegt, ohne
+  // Warnung. Die Stückzahl wurde nur im pick-Zweig gelesen.
+  const p = plan([
+    { kind: 'positionen', quote: '3 × 1.650 l – je 1.050 € VB', positionIds: ['T-17', 'T-18', 'T-19'], count: 1, confidence: 'erschlossen' },
+  ], WALL)
+  const s = step(p, 'positionen')
+  assert.equal(s?.tankIds.length, 1)
+  assert.equal(s?.proven, false, 'und es ist nicht mehr belegt')
+  assert.match(s?.warning ?? '', /Gefragt 1, genannt 3/)
+})
+
+test('V11 · 29 Fässer kommen auch über den Preis nicht durch', () => {
+  // Der Ausweg aus dem Deckel: alle 29 kosten 175 €, und „175 €" steht im Text.
+  // Damit war `erschlossen` für jedes einzelne wahr.
+  const alle = Array.from({ length: 29 }, (_, i) => `F-${String(i + 1).padStart(2, '0')}`)
+  const text = 'Was soll ein Barriquefass 225 l kosten? In der Anzeige stehen 175 € VB.\nGruß, Martin Weber\nweber@example.org'
+  const p = plan([
+    { kind: 'positionen', quote: 'ein Barriquefass', positionIds: alle, count: 1, confidence: 'erschlossen' },
+  ], text)
+  const s = step(p, 'positionen')
+  assert.ok((s?.tankIds.length ?? 0) <= 1, 'gefragt war eines')
+  assert.notEqual(s?.proven, true)
+})
+
+test('V12 · eine Zahl ohne Währung daneben ist kein Preistreffer', () => {
+  // T-20/T-21 kosten 1.650 €. Auf der Zeile „3 × 1.650 l – je 1.050 € VB" steht
+  // ein €, und damit galt auch die Literzahl als Betrag — zwei Rundtanks, die
+  // in der Nachricht nirgends vorkommen, wurden belegt angehängt.
+  const p = plan([
+    { kind: 'positionen', quote: '3 × 1.650 l – je 1.050 € VB', positionIds: ['T-20', 'T-21'], confidence: 'erschlossen' },
+  ], WALL)
+  assert.notEqual(step(p, 'positionen')?.proven, true)
+})
+
+test('V13 · reservierte Ware wird nicht wortlos angehängt', () => {
+  const text = 'Ich nehme T-23.\nGruß, Martin Weber\nweber@example.org'
+  const mit = { ...db, tanks: db.tanks.map((t) => (t.id === 'T-23' ? { ...t, status: 'reserviert' as const, leadId: 'L-fremd' } : t)) }
+  const checked = checkProposals([{ kind: 'positionen', quote: 'Ich nehme T-23.', positionIds: ['T-23'], confidence: 'genannt' }], text, mit)
+  const s = buildPlan(checked.proposals, parseMessage(text, mit), mit, text).steps.find((x) => x.kind === 'positionen')
+  assert.match(s?.warning ?? '', /reserviert/i)
+  assert.equal(s?.proven, false)
+})
+
+test('V14 · eine Nummer, die es nicht gibt, verschwindet nicht spurlos', () => {
+  const p = plan([
+    { kind: 'positionen', quote: '1 × 800 l – 650 € VB', positionIds: ['T-14', 'T-99'], confidence: 'genannt' },
+  ], WALL)
+  const s = step(p, 'positionen')
+  assert.ok(s?.tankIds.includes('T-14'))
+  assert.match(s?.warning ?? '', /T-99/)
+})
+
+test('V15 · „unklar" wird kein festes Gebot', () => {
+  const text = 'Was halten Sie von 3.600 EUR?\nGruß, Martin Weber\nweber@example.org'
+  const p = plan([{ kind: 'gebot', quote: 'Was halten Sie von 3.600 EUR?', amount: 3600, amountKind: 'unklar' }], text)
+  assert.equal(step(p, 'gebot')?.proven, false)
+})
+
+test('V16 · reservieren greift nicht über die Bauart hinweg', () => {
+  // 1.250 l haben T-07 und T-08 (Speidel, 900 €) und T-16 (Koffertank, 850 €).
+  // `coversWholeGroup` verglich nur die Literzahl — und gab einen
+  // Reservieren-Knopf über alle drei frei.
+  const p = plan([
+    { kind: 'reservieren', quote: '1 × 1.250 l – 850 € VB', positionIds: ['T-07', 'T-08', 'T-16'], confidence: 'genannt' },
+  ], WALL)
+  const r = p.risky.find((x) => x.kind === 'reservieren')
+  assert.ok(!r || !r.tankIds.includes('T-07'), 'kein Speidel-Tank, den niemand genannt hat')
+})

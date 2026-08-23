@@ -12,6 +12,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { parseMessage } from './ads'
+import { amountInText } from './ai'
 import { SEED } from './seed'
 import type { DB } from '../types'
 
@@ -378,4 +379,23 @@ test('N38 · eine Roboteradresse im Kopf bleibt draußen', () => {
   ].join('\n'))
   assert.equal(r.email, '')
   assert.equal(r.name, 'Peter Schmitt')
+})
+
+test('N39 · ein Stückpreis mit Multiplikator ist kein Gebot', () => {
+  // „3 × 1.650 l – je 1.050 € VB": ein Betrag, aber drei Stück gemeint. Als
+  // Gebot gelesen wären das 1.050 statt 3.150 €. Die Preislisten-Regel griff
+  // hier nicht, weil nur ein verschiedener Betrag dasteht.
+  assert.equal(read('Ich nehme die drei Stapeltanks:\n3 × 1.650 l – je 1.050 € VB').offer, null)
+  assert.equal(read('2 x Rundtank 3700 l, je 2.100 EUR').offer, null)
+  // Ein einzelner, klar gebotener Betrag bleibt unberührt.
+  assert.equal(read('Ich biete 3.600 EUR für die Fässer.').offer, 3600)
+})
+
+test('N40 · eine Literzahl auf einer Preiszeile ist kein Geldbetrag', () => {
+  // amountInText prüfte das Währungszeichen zeilenweise, die Zahl aber
+  // zeichenweise: auf „3 × 1.650 l – je 1.050 € VB" galt damit auch 1.650 als
+  // Betrag — zufällig der Preis zweier Rundtanks, die nirgends vorkommen.
+  const zeile = '3 × 1.650 l – je 1.050 € VB'
+  assert.equal(amountInText(1050, zeile), true, 'der echte Preis zählt')
+  assert.equal(amountInText(1650, zeile), false, 'die Literzahl nicht')
 })

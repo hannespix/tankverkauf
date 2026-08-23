@@ -83,13 +83,29 @@ export function amountInText(amount: number, text: string): boolean {
   return text.split(/\r?\n/).some((line) => {
     if (!/(?:€|EUR\b|Euro\b)/i.test(line)) return false
     return forms.some((f) => {
-      const at = line.indexOf(f)
-      if (at < 0) return false
-      // Keine Ziffer und kein Trennzeichen direkt daneben — sonst ist es ein
-      // Ausschnitt aus einer größeren Zahl.
-      const before = line[at - 1] ?? ' '
-      const after = line[at + f.length] ?? ' '
-      return !/[\d.,]/.test(before) && !/\d/.test(after)
+      let at = line.indexOf(f)
+      while (at >= 0) {
+        // Keine Ziffer und kein Trennzeichen direkt daneben — sonst ist es ein
+        // Ausschnitt aus einer größeren Zahl.
+        const before = line[at - 1] ?? ' '
+        const after = line[at + f.length] ?? ' '
+        /*
+         * Das Währungszeichen muss AN DIESER Zahl stehen, nicht irgendwo auf der
+         * Zeile.
+         *
+         * „3 × 1.650 l – je 1.050 € VB" enthält ein €, und damit galt auch die
+         * 1.650 als Geldbetrag — zufällig der Preis zweier Rundtanks, die in der
+         * Nachricht nirgends vorkommen. Der Preis-Schlüssel wäre damit in jeder
+         * Tank-Nachricht wirkungslos gewesen: „irgendeine Zahl auf einer Zeile
+         * mit €".
+         */
+        const rechts = line.slice(at + f.length, at + f.length + 8)
+        const links = line.slice(Math.max(0, at - 8), at)
+        const amGeld = /^\s*(?:€|EUR\b|Euro\b)/i.test(rechts) || /(?:€|EUR|Euro)\s*$/i.test(links)
+        if (!/[\d.,]/.test(before) && !/\d/.test(after) && amGeld) return true
+        at = line.indexOf(f, at + 1)
+      }
+      return false
     })
   })
 }
@@ -738,8 +754,22 @@ export async function draftReply(
     `VERKÄUFER: ${s.seller.name}${s.seller.location ? `, ${s.seller.plz} ${s.seller.location}` : ''}`,
     s.seller.pickupInfo ? `ABHOLUNG: ${s.seller.pickupInfo}` : '',
     '',
-    picked.length ? 'GEFRAGTE POSITIONEN:' : 'KEINE POSITION ZUGEORDNET — hier der ganze offene Bestand:',
-    ...(picked.length ? picked.map(zeile) : [stockForProposals(db)]),
+    picked.length ? 'GEFRAGTE POSITIONEN:' : 'KEINE POSITION ZUGEORDNET — hier der freie Bestand:',
+    /*
+     * NIE `stockForProposals` hier hineinschieben.
+     *
+     * Die Liste ist für das Modell gebaut, das den Vorgang plant: sie nennt
+     * „RESERVIERT", „im Kontakt" und „schon bei Dr. Katrin Berger". In einem
+     * Antwortentwurf an einen fremden Käufer stünde damit der Name eines anderen
+     * Interessenten und unser Verhandlungsstand — zwei Zeilen unter der Regel
+     * „Nenne nur Preise und Angaben, die unten stehen".
+     *
+     * Der Entwurf sieht deshalb nur, was ohnehin im öffentlichen Katalog steht:
+     * freie Positionen, ohne jede Zuordnung.
+     */
+    ...(picked.length
+      ? picked.map(zeile)
+      : db.tanks.filter((t) => t.status === 'verfuegbar').map(zeile)),
     ...(zusammen.length ? ['', 'AUSGERECHNET:', ...zusammen.map((z) => `- ${z}`)] : []),
     '',
     'ANFRAGE:',
