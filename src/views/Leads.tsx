@@ -6,6 +6,8 @@ import { parseMessage } from '../lib/ads'
 import { AiError, readMessage, type AiResult } from '../lib/ai'
 import { itemLabel, dateDE, eur, num, relativeDE, todayISO } from '../lib/format'
 import { openQuotesOf, quoteRelation, totals } from '../lib/stats'
+import { Verlauf } from '../components/Verlauf'
+import { MAX_PER_LEAD } from '../lib/inbox'
 import { askFor } from '../lib/inbox'
 import { useStore } from '../lib/store'
 import { STAGE_LABEL, SOURCE_LABEL, QUOTE_STATUS_LABEL, type Lead, type LeadSource, type LeadStage } from '../types'
@@ -396,24 +398,18 @@ function LeadModal({ lead, onClose, readOnly }: { lead: Lead | null; onClose: ()
           über den Posteingang angelegt wurde, hatte damit einen leeren
           Interessenten — der Wortlaut lag da, unsichtbar.
         */}
-        {(live?.messages ?? []).length > 0 && (
-          <Field label={`Eingelesene Nachrichten (${(live?.messages ?? []).length})`} hint="Höchstens die letzten zehn. Der Wortlaut, so wie er ankam.">
-            <div className="max-h-56 space-y-2 overflow-y-auto rounded-xl border border-line bg-surface-2 p-2">
-              {(live?.messages ?? []).map((m, i) => (
-                <div key={i} className="rounded-lg bg-surface p-2.5 text-[13px]">
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-faint">
-                    <span>{dateDE(m.at)}</span>
-                    {m.fromImage && <Pill tone="neutral">aus einem Bild gelesen</Pill>}
-                  </div>
-                  <p className="mt-1 whitespace-pre-wrap text-muted">{m.text}</p>
-                  {m.applied.length > 0 && (
-                    <p className="mt-1.5 flex flex-wrap gap-1.5">
-                      {m.applied.map((a) => <Pill key={a} tone="green">{a}</Pill>)}
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
+        {/*
+          Aus der Leseliste ist ein Schriftwechsel geworden: eingegangen und
+          geschrieben in derselben Reihenfolge, und von hier aus lässt sich
+          antworten. Dieselbe Komponente steht am Angebot — die Historie hängt
+          am Menschen, nicht am Angebot.
+        */}
+        {live && (
+          <Field as="div" label="Schriftwechsel" hint={`Höchstens die letzten ${MAX_PER_LEAD}. Versendet wird nichts von selbst.`}>
+            {/* Das offene Angebot reicht mit hinein: dann steht auch hier der
+                Knopf für die fertige Angebots-E-Mail, und man muss dafür nicht
+                erst in die Angebotsansicht wechseln. */}
+            <Verlauf lead={live} quote={quote} readOnly={readOnly} />
           </Field>
         )}
 

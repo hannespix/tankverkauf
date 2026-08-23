@@ -1,4 +1,4 @@
-import type { Ad, AdScope, DB, Lead, Quote, Tank, TankStatus } from '../types'
+import type { Ad, AdScope, DB, Lead, LeadMessage, Quote, Tank, TankStatus } from '../types'
 import { MAX_PER_LEAD, askFor, collapseIds, describe, resolvePick, trimMessage, type MessageContext, type Proposal } from './inbox'
 import { STATUS_LABEL } from '../types'
 import { generateAd, portalOf } from './ads'
@@ -398,6 +398,36 @@ export function noteOnLead(leadId: string, text: string, applied: string[], from
       l.updatedAt = now()
     },
     { kind: 'lead', text: 'Nachricht vermerkt' },
+  )
+}
+
+/**
+ * Eine geschriebene Antwort am Interessenten ablegen.
+ *
+ * Entwürfe landeten bisher in der Zwischenablage und waren damit weg. Wer eine
+ * Woche später nachsah, fand die Frage des Käufers, aber nicht, was man ihm
+ * geantwortet hatte — und schrieb im Zweifel dasselbe noch einmal oder etwas
+ * anderes. Ein- und Ausgehendes liegen jetzt in derselben Liste, in der
+ * Reihenfolge, in der es passiert ist.
+ */
+export function saveReply(leadId: string, text: string, subject: string, quoteId?: string) {
+  store.mutate(
+    (db) => {
+      const l = db.leads.find((x) => x.id === leadId)
+      if (!l || !text.trim()) return
+      const entry: LeadMessage = {
+        at: now(),
+        text: trimMessage(text.trim()),
+        dir: 'aus',
+        subject: subject.trim() || undefined,
+        quoteId,
+        applied: [],
+      }
+      l.messages = [entry, ...(l.messages ?? [])].slice(0, MAX_PER_LEAD)
+      l.lastContact = new Date().toISOString().slice(0, 10)
+      l.updatedAt = now()
+    },
+    { kind: 'lead', text: 'Antwort vermerkt' },
   )
 }
 

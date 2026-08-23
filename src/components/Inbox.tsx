@@ -3,7 +3,7 @@ import { Button, Modal, Pill, Textarea, cx } from './ui'
 import { IconCamera, IconCheck, IconClose, IconCopy, IconInbox, IconSpark, IconWarn } from './icons'
 import { AiError, draftReply, readProposals, type AiImage } from '../lib/ai'
 import { buildPlan, checkProposals, collapseIds, resolvePick, type MessageContext, type Plan, type Proposal } from '../lib/inbox'
-import { applyProposal, quoteToDeal } from '../lib/actions'
+import { applyProposal, quoteToDeal, saveReply } from '../lib/actions'
 import { parseMessage } from '../lib/ads'
 import { eur, itemLabel } from '../lib/format'
 import { openQuotesOf } from '../lib/stats'
@@ -60,6 +60,7 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
   const [leadId, setLeadId] = useState<string | null>(null)
   const [ask, setAsk] = useState('')
   const [reply, setReply] = useState<string | null>(null)
+  const [gespeichert, setGespeichert] = useState(false)
   /** Was der eine Knopf getan hat, Zeile für Zeile. */
   const [log, setLog] = useState<{ text: string; ok: boolean }[]>([])
   /**
@@ -126,6 +127,7 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
     setApplied({})
     setLeadId(null)
     setReply(null)
+    setGespeichert(false)
     setAsk('')
     setError(null)
     setLog([])
@@ -814,6 +816,17 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
                 <div className="rounded-xl bg-surface-2 p-3">
                   <Textarea rows={5} value={reply} onChange={(e) => setReply(e.target.value)} />
                   <div className="mt-2 flex flex-wrap gap-2">
+                    {/* Der Entwurf landete bisher nur in der Zwischenablage und
+                        war damit weg. Wer später nachsah, fand die Frage des
+                        Käufers, aber nicht die eigene Antwort. */}
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      disabled={!leadId || !reply.trim() || gespeichert}
+                      onClick={() => { if (leadId) { saveReply(leadId, reply, 'Antwort auf die Anfrage'); setGespeichert(true) } }}
+                    >
+                      <IconCheck />{gespeichert ? 'im Verlauf' : 'Im Verlauf speichern'}
+                    </Button>
                     <Button size="sm" onClick={() => void navigator.clipboard.writeText(reply)}>
                       <IconCopy />Kopieren
                     </Button>

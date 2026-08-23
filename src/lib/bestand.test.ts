@@ -24,7 +24,8 @@ const mem = new Map<string, string>()
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { store } from './store'
-import { applyProposal, detachTanks, noteOnLead, removeLead, setQuoteTanks } from './actions'
+import { applyProposal, detachTanks, noteOnLead, removeLead, saveReply, setQuoteTanks } from './actions'
+import { quoteMail } from './mail'
 import { openQuotesOf, quoteRelation } from './stats'
 import type { DB, Deal, Lead, Quote, Tank } from '../types'
 
@@ -201,4 +202,43 @@ test('B10 · eine Folgenachricht trägt den fehlenden Kontaktweg nach', () => {
   // Gefunden wurde er über die E-Mail, unterschrieben hat er mit Telefonnummer.
   assert.equal(db().leads[0]!.phone, '0176 4433221')
   assert.equal(db().leads[0]!.email, 'o@example.org')
+})
+
+test('B11 · eine Antwort landet im Verlauf, nicht nur in der Zwischenablage', () => {
+  setDb({ tanks: [tank('T-1')], leads: [lead('L-1', { name: 'Weber' })] })
+  noteOnLead('L-1', 'Was kostet der 1000er?', ['Nachricht vermerken'])
+  saveReply('L-1', 'Der kostet 1.000 €.', 'Ihre Anfrage', 'Q-1')
+  const m = db().leads[0]!.messages ?? []
+  assert.equal(m.length, 2)
+  // Neueste zuerst: die Antwort steht oben und ist als ausgehend erkennbar.
+  assert.equal(m[0]!.dir, 'aus')
+  assert.equal(m[0]!.subject, 'Ihre Anfrage')
+  assert.equal(m[0]!.quoteId, 'Q-1')
+  // Die eingegangene bleibt unverändert und ohne Richtung — so lagen sie schon
+  // vor der Antwortfunktion in der Datenbank.
+  assert.equal(m[1]!.dir, undefined)
+  assert.match(m[1]!.text, /Was kostet/)
+})
+
+test('B12 · die Angebots-E-Mail nennt nichts Internes', () => {
+  // Sie geht an einen Käufer. Zielpreis, Untergrenze, das Gebot, die interne
+  // Notiz und jeder andere Interessent haben darin nichts verloren.
+  setDb({
+    tanks: [
+      tank('T-1', { litres: 800, vb: 650, target: 559, floor: 468 }),
+      tank('T-2', { litres: 1000, vb: 750, target: 645, floor: 540, status: 'reserviert', leadId: 'L-2' }),
+    ],
+    leads: [lead('L-1', { name: 'Weber' }), lead('L-2', { name: 'Berger' })],
+    quotes: [quote('Q-1', { leadId: 'L-1', tankIds: ['T-1', 'T-2'], askPrice: 1200, buyerOffer: 1100, note: 'nicht unter 1.150' })],
+  })
+  const m = quoteMail(db(), db().quotes[0]!)
+  const alles = `${m.subject}\n${m.text}`
+  for (const nadel of ['559', '468', '645', '540', 'Berger', 'reserviert', 'nicht unter', '1.100']) {
+    assert.ok(!alles.includes(nadel), `„${nadel}" darf nicht in der Angebots-E-Mail stehen`)
+  }
+  // Was hineingehört, steht drin.
+  assert.match(alles, /Weber/)
+  // Ohne das Leerzeichen im Muster: eur() setzt ein geschütztes (U+00A0).
+  assert.match(alles, /1\.200/)
+  assert.match(alles, /T-1/)
 })
