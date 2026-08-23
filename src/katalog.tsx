@@ -441,7 +441,10 @@ function idRanges(ids: string[]): string {
               // Der Knopf erscheint nur, wo wirklich etwas dahinter steht — eine
               // leere Klappe ist schlimmer als keine. Bei den Maschinen fehlen die
               // Maße noch, dort trägt die Ausstattung allein.
-              const hasDetails = !!fmtDims(lot.dims) || lot.tags.length > 0 || many
+              // Nur wo wirklich etwas NEUES dahintersteht: die Maße druckt die
+              // Unterzeile bereits, und „2 Stück" steht auch dort. Aufgeklappt
+              // stand sonst dasselbe ein zweites Mal.
+              const hasDetails = lot.tags.length > 0
               const shown = open.has(lot.key)
               return (
                 <li
@@ -562,12 +565,6 @@ function idRanges(ids: string[]): string {
                   {shown && (
                     <div id={`d-${lot.key}`} className="col-start-2 -mt-1 border-t border-line pt-2.5 sm:col-span-3">
                       <dl className="grid gap-x-4 gap-y-1.5 text-[13px] sm:grid-cols-[7rem_1fr]">
-                        {fmtDims(lot.dims) && (
-                          <>
-                            <dt className="font-semibold text-muted">Maße</dt>
-                            <dd className="tnum">{fmtDims(lot.dims)}</dd>
-                          </>
-                        )}
                         {lot.tags.length > 0 && (
                           <>
                             <dt className="font-semibold text-muted">Ausstattung</dt>
@@ -578,12 +575,6 @@ function idRanges(ids: string[]): string {
                                 ))}
                               </ul>
                             </dd>
-                          </>
-                        )}
-                        {many && (
-                          <>
-                            <dt className="font-semibold text-muted">Verfügbar</dt>
-                            <dd className="tnum">{lot.ids.length} Stück, einzeln oder zusammen</dd>
                           </>
                         )}
                       </dl>

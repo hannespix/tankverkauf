@@ -451,15 +451,22 @@ function ParseModal({ onClose }: { onClose: () => void }) {
         email: ai.email || rule.email,
         phone: ai.phone || rule.phone,
         /*
-         * Der Regelweg hat Vorrang, wenn er die Beträge als PREISLISTE gelesen
-         * hat.
+         * Der Regelweg hat Vorrang, aber nur für die Beträge, die er als
+         * PREISLISTE gelesen hat.
          *
          * Sonst käme der teuerste Fehler durch die zweite Tür zurück: der
          * Käufer zitiert unsere eigenen Preise zurück, `parseMessage` erkennt
          * das und liefert bewusst `null` — und ein Modellwert überschriebe es
          * hier mit einem der Listenpreise als vermeintlichem Gebot.
+         *
+         * Nennt die KI dagegen eine Zahl, die NICHT in der Liste steht — „Ich
+         * biete 1.800 EUR für alle drei zusammen" —, ist das ein echtes Gebot
+         * und bleibt. Ein pauschales Veto hätte es verworfen und daneben
+         * „Angebot — keines genannt" geschrieben, während es im Text steht.
          */
-        offer: rule.priceList ? null : (ai.offer ?? rule.offer),
+        offer: rule.priceList && (ai.offer == null || rule.amounts.includes(ai.offer))
+          ? null
+          : (ai.offer ?? rule.offer),
         matchedTankIds: ai.positionIds.length ? ai.positionIds : rule.matchedTankIds,
         exact: rule.exact || ai.positionIds.length > 0,
         broadMatch: ai.positionIds.length ? ai.positionIds.length > 3 : rule.broadMatch,

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Modal, Pill, Textarea, cx } from './ui'
 import { IconCamera, IconCheck, IconClose, IconCopy, IconInbox, IconSpark, IconWarn } from './icons'
 import { AiError, draftReply, readProposals, type AiImage } from '../lib/ai'
-import { buildPlan, checkProposals, resolvePick, type MessageContext, type Plan, type Proposal } from '../lib/inbox'
+import { buildPlan, checkProposals, collapseIds, resolvePick, type MessageContext, type Plan, type Proposal } from '../lib/inbox'
 import { applyProposal, quoteToDeal } from '../lib/actions'
 import { parseMessage } from '../lib/ads'
 import { eur, itemLabel } from '../lib/format'
@@ -190,9 +190,21 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
    * lässt sich mit einem Tipp dazunehmen — das ist der Unterschied zwischen
    * „markiert" und „folgenlos markiert".
    */
-  const stepKey = plan.steps.map((p) => p.id).join(',')
+  /**
+   * Ein Schritt wird über seinen INHALT wiedererkannt, nicht über seine Nummer.
+   *
+   * `mk()` vergibt bei jedem Neubau des Plans eine frische Zufallsnummer, und
+   * der Plan wird bei jedem Tastendruck im Nachrichtenfeld neu gebaut. Damit
+   * änderte sich `stepKey` auch dann, wenn die Schritte dieselben blieben — der
+   * Effekt darunter setzte `off` und `edits` zurück, und ein einziges Zeichen
+   * löschte lautlos die ganze Bearbeitung: entfernte Positionen waren zurück,
+   * abgewählte Schritte wieder angehakt, der getippte Name weg.
+   */
+  const keyOf = (p: Proposal) =>
+    [p.kind, p.tankIds.join('+'), p.pick?.from.join('+') ?? '', p.pick?.count ?? '', p.amount ?? '', p.quote].join('|')
+  const stepKey = plan.steps.map(keyOf).join('§')
   useEffect(() => {
-    setOff(new Set(plan.steps.filter((p) => !p.proven).map((p) => p.id)))
+    setOff(new Set(plan.steps.filter((p) => !p.proven).map(keyOf)))
     setEdits({})
     setAddTo(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -207,7 +219,7 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
    * war. Eine Vollzugsmeldung, die etwas anderes meldet als den Vollzug.
    */
   function effective(p: Proposal): Proposal {
-    const e = edits[p.id]
+    const e = edits[keyOf(p)]
     if (!e) return p
     const out: Proposal = { ...p }
     if (e.tankIds) {
@@ -229,13 +241,13 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
 
   /** Welche Positionen der Schritt anfassen würde — aufgelöst, damit man sie ändern kann. */
   function idsOf(p: Proposal): string[] {
-    const e = edits[p.id]
+    const e = edits[keyOf(p)]
     if (e?.tankIds) return e.tankIds
     return p.tankIds.length ? p.tankIds : p.pick ? resolvePick(db, p.pick) : []
   }
 
-  const setIds = (p: Proposal, ids: string[]) => setEdits((m) => ({ ...m, [p.id]: { ...m[p.id], tankIds: ids } }))
-  const chosen = plan.steps.filter((p) => !off.has(p.id))
+  const setIds = (p: Proposal, ids: string[]) => setEdits((m) => ({ ...m, [keyOf(p)]: { ...m[keyOf(p)], tankIds: ids } }))
+  const chosen = plan.steps.filter((p) => !off.has(keyOf(p)))
 
   /**
    * Was aus dieser Nachricht über die Schritte hinaus hängen bleibt.
@@ -247,9 +259,28 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
   function context(): MessageContext {
     return {
       summary: read?.summary?.trim() ?? '',
-      // Die Hinweise des Vorgangs UND was die KI sonst noch gelesen hat. Ohne das
-      // stand die Abholung im Dialog und war nach dem Schließen weg.
-      notes: [...plan.notes, ...(read?.notes ?? []).map((n) => `${ASK_LABEL[n.topic] ?? n.topic}: ${n.quote}`)],
+      /*
+       * Die Hinweise des Vorgangs, was die KI sonst gelesen hat, und worauf der
+       * Käufer eine Antwort erwartet.
+       *
+       * Zwei Dinge waren falsch: „Er wartet auf Antwort" stand nur im Dialog und
+       * war mit „Fertig" weg — dabei ist es der Satz, an dem das Geschäft hängt.
+       * Und Abholung und Ort standen doppelt in der Notiz, weil die wörtliche
+       * Extraktion und die KI dasselbe melden. Doppeltes wird jetzt gefiltert:
+       * ein KI-Zitat, das schon in einem Hinweis steckt, kommt nicht noch einmal.
+       */
+      notes: (() => {
+        const raus = [...plan.notes]
+        const kennt = (q: string) => raus.some((n) => n.includes(q) || q.includes(n.replace(/^[^:]+:\s*/, '')))
+        for (const n of read?.notes ?? []) {
+          if (!kennt(n.quote)) raus.push(`${ASK_LABEL[n.topic] ?? n.topic}: ${n.quote}`)
+        }
+        for (const a of read?.asks ?? []) {
+          const wo = a.positionIds?.length ? ` (${collapseIds(a.positionIds)})` : ''
+          raus.push(`Wartet auf Antwort — ${ASK_LABEL[a.topic] ?? a.topic}${wo}: ${a.quote}`)
+        }
+        return raus
+      })(),
       steps: chosen.map((s) => effective(s).title),
       fromImage: !!read?.transcript,
     }
@@ -470,13 +501,13 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
         */}
         {(read?.asks?.length ?? 0) > 0 && (
           <div className="rounded-xl border border-sky/50 bg-sky-soft/30 p-3">
-            <p className="text-[11px] font-bold text-sky uppercase">Er wartet auf Antwort</p>
+            <p className="text-[11px] font-bold text-sky uppercase">Offene Fragen aus der Nachricht</p>
             <ul className="mt-1.5 space-y-1.5 text-[13px]">
               {read!.asks.map((a, i) => (
                 <li key={i}>
                   <span className="font-semibold">{ASK_LABEL[a.topic] ?? a.topic}</span>
                   {a.positionIds && a.positionIds.length > 0 && (
-                    <span className="tnum text-muted"> · {a.positionIds.join(', ')}</span>
+                    <span className="tnum text-muted"> · {collapseIds(a.positionIds)}</span>
                   )}
                   <span className="block text-muted">„{a.quote}“</span>
                 </li>
@@ -525,16 +556,16 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
             <p className="text-[11px] font-bold text-muted uppercase">Vorgang</p>
             <ul className="mt-1.5 space-y-2 text-[13px]">
               {plan.steps.map((p) => {
-                const an = !off.has(p.id)
+                const an = !off.has(keyOf(p))
                 const e = effective(p)
                 const ids = idsOf(p)
                 const frei = db.tanks.filter((t) => t.status === 'verfuegbar' && !ids.includes(t.id))
-                const suche = addTo?.id === p.id ? addTo.q.trim().toLowerCase() : ''
+                const suche = addTo?.id === keyOf(p) ? addTo.q.trim().toLowerCase() : ''
                 const treffer = suche
                   ? frei.filter((t) => [t.id, t.maker, t.type, String(t.litres)].some((v) => v.toLowerCase().includes(suche)))
                   : []
                 return (
-                  <li key={p.id} className={cx('rounded-lg', !an && 'opacity-55')}>
+                  <li key={p.id} className="rounded-lg">
                     <label className="flex cursor-pointer items-start gap-2">
                       <input
                         type="checkbox"
@@ -542,11 +573,12 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
                         className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--primary)]"
                         onChange={() => setOff((prev) => {
                           const next = new Set(prev)
-                          if (!next.delete(p.id)) next.add(p.id)
+                          const k = keyOf(p)
+                          if (!next.delete(k)) next.add(k)
                           return next
                         })}
                       />
-                      <span className="min-w-0 font-semibold">{e.title}</span>
+                      <span className={cx('min-w-0 font-semibold', !an && 'opacity-60')}>{e.title}</span>
                     </label>
                     {p.warning && (
                       <p className="mt-0.5 ml-6 flex items-start gap-1.5 font-semibold text-amber">
@@ -565,8 +597,15 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
                             if (!t) return null
                             return (
                               <li key={id}>
-                                <Pill tone="sky">
-                                  <span className="tnum opacity-70">{t.id}</span> {itemLabel(t)}
+                                <Pill tone="sky" className="max-w-full">
+                                  {/* `truncate` am Text, nicht an der Pille: sonst
+                                      schob „M-01 Schneider Exzenterschneckenpumpe
+                                      SP3 Evario" das × bei 390 px aus dem Dialog
+                                      heraus, und die Position ließ sich nicht mehr
+                                      aus dem Schritt nehmen. */}
+                                  <span className="min-w-0 truncate">
+                                    <span className="tnum opacity-70">{t.id}</span> {itemLabel(t)}
+                                  </span>
                                   <button
                                     type="button"
                                     aria-label={`${t.id} aus dem Schritt nehmen`}
@@ -582,8 +621,8 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
                           {ids.length === 0 && <li className="text-muted">Keine Position — der Schritt würde nichts tun.</li>}
                         </ul>
                         <input
-                          value={addTo?.id === p.id ? addTo.q : ''}
-                          onChange={(ev) => setAddTo({ id: p.id, q: ev.target.value })}
+                          value={addTo?.id === keyOf(p) ? addTo.q : ''}
+                          onChange={(ev) => setAddTo({ id: keyOf(p), q: ev.target.value })}
                           placeholder="Position suchen und hinzufügen …"
                           className="w-full rounded-lg border border-line bg-surface px-2 py-1.5 text-[13px]"
                         />
@@ -617,7 +656,7 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
                           type="number"
                           className="tnum w-32 rounded-lg border border-line bg-surface px-2 py-1.5 text-[13px]"
                           value={e.amount ?? ''}
-                          onChange={(ev) => setEdits((m) => ({ ...m, [p.id]: { ...m[p.id], amount: ev.target.value === '' ? null : Number(ev.target.value) } }))}
+                          onChange={(ev) => setEdits((m) => ({ ...m, [keyOf(p)]: { ...m[keyOf(p)], amount: ev.target.value === '' ? null : Number(ev.target.value) } }))}
                         />
                         <span className="text-muted">€ — steht beim Angebot als Käufergebot.</span>
                       </div>
@@ -627,9 +666,11 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
                     {an && p.kind === 'lead.neu' && (
                       <div className="mt-1 ml-6">
                         <input
+                          aria-label="Name des Interessenten"
+                          placeholder="Name des Interessenten"
                           className="w-full rounded-lg border border-line bg-surface px-2 py-1.5 text-[13px]"
                           value={e.name}
-                          onChange={(ev) => setEdits((m) => ({ ...m, [p.id]: { ...m[p.id], name: ev.target.value } }))}
+                          onChange={(ev) => setEdits((m) => ({ ...m, [keyOf(p)]: { ...m[keyOf(p)], name: ev.target.value } }))}
                         />
                       </div>
                     )}
