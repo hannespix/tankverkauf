@@ -233,6 +233,22 @@ function QuoteCard({ quote }: { quote: Quote }) {
         sonst reservierte Ware wieder öffentlich frei. Angeboten wird es, damit
         es niemandem entgeht.
       */}
+      {/*
+        Ohne Interessenten reservieren geht — es fehlt nur der Name.
+        Die Sperre, die hier stand, war ein Fehlgriff: wer ein Angebot aus dem
+        Bestand heraus anlegt, hat genau diesen Zustand, und der Knopf lag grau
+        da, ohne dass irgendwo lesbar stand, warum. Eine Position in einem
+        benannten Angebot ist nicht „niemandem zugeordnet" — das Angebot ist der
+        Beleg. Fehlt der Mensch dazu, ist das eine Nachlässigkeit in der
+        Buchführung, kein Grund, die Ware nicht festhalten zu können.
+      */}
+      {!quote.leadId && reserviert.length > 0 && (
+        <p className="mt-2 rounded-lg bg-surface-2 px-3 py-2 text-[13px] text-muted">
+          Reserviert, aber ohne Namen — trag unter „Bearbeiten" nach, für wen. Sonst schützt das Werkzeug
+          die Positionen nicht davor, gleich noch jemand anderem angeboten zu werden.
+        </p>
+      )}
+
       {quote.status === 'abgelehnt' && reserviert.length > 0 && (
         <p className="mt-2 rounded-lg bg-amber-soft px-3 py-2 text-[13px] text-amber">
           Das Angebot ist abgelehnt, {collapseIds(reserviert)} {reserviert.length === 1 ? 'steht' : 'stehen'} aber
@@ -266,11 +282,7 @@ function QuoteCard({ quote }: { quote: Quote }) {
             die Ware öffentlich weg und intern niemandem zugeordnet.
           */}
           {reservierbar.length > 0 && !closed && (
-            <Button
-              disabled={!quote.leadId}
-              title={quote.leadId ? undefined : 'Erst einen Interessenten zuordnen'}
-              onClick={() => reservieren(reservierbar, true)}
-            >
+            <Button onClick={() => reservieren(reservierbar, true)}>
               <IconLock />{reservierbar.length === offene.length ? 'Reservieren' : `${reservierbar.length} noch reservieren`}
             </Button>
           )}
@@ -323,12 +335,11 @@ function QuoteCard({ quote }: { quote: Quote }) {
                           type="checkbox"
                           aria-label={`${t.id}, ${itemLabel(t)} reservieren`}
                           checked={t.status === 'reserviert'}
-                          disabled={t.status === 'verkauft' || !quote.leadId || fremd.includes(t)}
+                          disabled={t.status === 'verkauft' || fremd.includes(t)}
                           title={
                             t.status === 'verkauft' ? 'Verkauft'
                               : fremd.includes(t) ? 'Für jemand anderen reserviert — erst dort lösen'
-                                : quote.leadId ? 'Für diesen Interessenten reservieren'
-                                  : 'Erst einen Interessenten zuordnen'
+                                : lead ? `Für ${lead.name} reservieren` : 'Reservieren'
                           }
                           onChange={(e) => setQuoteReserved(quote.id, [t.id], e.target.checked)}
                           className="h-4 w-4 shrink-0 accent-[var(--amber)] disabled:opacity-30"
