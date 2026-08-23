@@ -468,6 +468,9 @@ export async function readMessage(text: string, db: DB, apiKey: string, model: s
     'Du liest eine eingegangene Nachricht zu einer Betriebsauflösung und trägst die Angaben ein.',
     '',
     'REGELN:',
+    '- Ein Betrag, den der Käufer nennt, ist nur dann sein Gebot, wenn es nicht unser eigener Preis ist.',
+    '  Zitiert er unsere Preisliste zurück (mehrere Beträge, je einer pro Wunschzeile, oft mit „VB"), NIMMT er an —',
+    '  dann `offer` leer lassen.',
     '- Trage NUR ein, was wörtlich in der Nachricht steht. Erfinde nichts.',
     '- Der Kopfblock einer weitergeleiteten Mail (Von/An/Gesendet/Betreff) gehört dem Portal, nicht dem Käufer.',
     '- noreply-Adressen sind nie die Adresse des Käufers.',
@@ -693,19 +696,51 @@ export async function draftReply(
 ): Promise<string> {
   const s = db.settings
   const picked = db.tanks.filter((t) => tankIds.includes(t.id))
+
+  /*
+   * Der Entwurf bekommt die MASSE und die Ausstattung.
+   *
+   * Bisher standen dort nur Name, Liter und Preis. Auf „Ich bräuchte noch Tiefe
+   * und Breite der Tanks sowie die Gesamthöhe des höchsten Stapels" konnte die
+   * Antwort deshalb nur lauten, man sehe nach — obwohl jede Zahl gepflegt ist.
+   * Genau diese Frage war die Bedingung, an der ein Geschäft über 5.400 € hing.
+   */
+  const zeile = (t: (typeof picked)[number]) => {
+    const size = fmtDims(t.dims)
+    const tags = t.tags.length ? ` · ${t.tags.join(', ')}` : ''
+    return `- ${t.id}: ${t.maker === 'Sonstige' ? t.type : `${t.maker} ${t.type}`}`
+      + `${t.litres > 0 ? `, ${t.litres} l` : ''}: ${t.vb} EUR VB${size ? `, ${size}` : ''}${tags}`
+  }
+  // Was sich aus mehreren Positionen ausrechnen lässt und der Käufer sonst selbst
+  // addieren müsste: die Wandlänge nebeneinander und die einheitliche Tiefe.
+  const breiten = picked.map((t) => t.dims?.w).filter((n): n is number => typeof n === 'number')
+  const tiefen = [...new Set(picked.map((t) => t.dims?.d).filter((n): n is number => typeof n === 'number'))]
+  const hoehen = picked.map((t) => t.dims?.h).filter((n): n is number => typeof n === 'number')
+  const zusammen = [
+    breiten.length === picked.length && picked.length > 1
+      ? `Alle ${picked.length} nebeneinander: ${breiten.reduce((a, b) => a + b, 0)} cm Wandlänge.`
+      : '',
+    tiefen.length === 1 && picked.length > 1 ? `Tiefe bei allen gleich: ${tiefen[0]} cm.` : '',
+    hoehen.length ? `Höchster Einzeltank: ${Math.max(...hoehen)} cm.` : '',
+  ].filter(Boolean)
+
   const prompt = [
     'Formuliere eine kurze, höfliche Antwort auf die folgende Anfrage. Auf Deutsch, per Sie.',
     '',
     'REGELN:',
     '- Nenne nur Preise und Angaben, die unten stehen. Erfinde keine Zahlen, keine Termine, keine Zusagen.',
-    '- Keine Floskeln, keine Werbesprache. Zwei bis fünf Sätze.',
-    '- Wenn der Käufer nach etwas fragt, das unten nicht steht, schreibe, dass du es nachsiehst.',
+    '- Keine Floskeln, keine Werbesprache.',
+    '- Beantworte JEDE Frage der Anfrage, soweit die Angaben unten sie hergeben. Fragt er nach Maßen, nenne sie',
+    '  — am besten als kurze Aufstellung je Position, nicht in einem Fließsatz.',
+    '- Steht etwas nicht unten, behaupte es nicht, sondern schreibe, dass du es nachsiehst. Das gilt besonders für',
+    '  Stapelhöhen: rechne keine zusammen, wenn bei den Positionen nicht ausdrücklich „stapelbar" steht.',
     '',
     `VERKÄUFER: ${s.seller.name}${s.seller.location ? `, ${s.seller.plz} ${s.seller.location}` : ''}`,
     s.seller.pickupInfo ? `ABHOLUNG: ${s.seller.pickupInfo}` : '',
     '',
-    picked.length ? 'GEFRAGTE POSITIONEN:' : 'KEINE POSITION ZUGEORDNET.',
-    ...picked.map((t) => `- ${t.maker === 'Sonstige' ? t.type : `${t.maker} ${t.type}`}${t.litres > 0 ? `, ${t.litres} l` : ''}: ${t.vb} EUR VB`),
+    picked.length ? 'GEFRAGTE POSITIONEN:' : 'KEINE POSITION ZUGEORDNET — hier der ganze offene Bestand:',
+    ...(picked.length ? picked.map(zeile) : [stockForProposals(db)]),
+    ...(zusammen.length ? ['', 'AUSGERECHNET:', ...zusammen.map((z) => `- ${z}`)] : []),
     '',
     'ANFRAGE:',
     message,
