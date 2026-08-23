@@ -39,8 +39,6 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
   const [log, setLog] = useState<{ text: string; ok: boolean }[]>([])
   const [ran, setRan] = useState(false)
   const [confirmSale, setConfirmSale] = useState(false)
-  /** Eingefügter Text soll von selbst gelesen werden — ein Griff weniger. */
-  const [autoRead, setAutoRead] = useState(false)
   const file = useRef<HTMLInputElement>(null)
 
   const key = db.settings.ai.apiKey
@@ -52,7 +50,7 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
     const saved = sessionStorage.getItem(DRAFT_KEY)
     if (initialText) {
       setText(initialText)
-      setAutoRead(true)
+      readSoon(initialText)
     } else if (saved) setText(saved)
   }, [open, initialText])
 
@@ -60,14 +58,27 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
     if (open) sessionStorage.setItem(DRAFT_KEY, text)
   }, [open, text])
 
-  // Eingefügt heißt: fertig. Getippt heißt: noch nicht — dort bleibt der Knopf.
-  // Der Zustand fängt den Umstand ab, dass onPaste feuert, bevor der Wert steht.
-  useEffect(() => {
-    if (!autoRead) return
-    setAutoRead(false)
-    if (key && !busy && (text.trim() || images.length > 0)) void analyse()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoRead, text])
+  /**
+   * Eingefügt heißt: fertig — getippt heißt: noch nicht.
+   *
+   * Der erste Entwurf merkte sich das Einfügen in einem Zustand und ließ einen
+   * Effekt darauf reagieren. Das ging schief: React arbeitet den Effekt ab,
+   * bevor es das Rendern mit dem neuen Text verarbeitet — der Effekt sah den
+   * ALTEN Text, löschte die Merkfahne, und der Lauf mit dem neuen Text kam nie.
+   * Beim zweiten Einfügen las er dann den Stand von davor und kostete Geld für
+   * eine Analyse des falschen Texts.
+   *
+   * Deshalb wird der fertige Text direkt übergeben, statt auf den Zustand zu warten.
+   */
+  const pending = useRef<number | null>(null)
+  function readSoon(full: string) {
+    if (!key || busy || !full.trim()) return
+    if (pending.current) window.clearTimeout(pending.current)
+    // Eine kurze Pause: mehrere Bilder oder Text plus Bild sollen einen Lauf
+    // ergeben, nicht drei.
+    pending.current = window.setTimeout(() => void analyse('', full), 250)
+  }
+  useEffect(() => () => { if (pending.current) window.clearTimeout(pending.current) }, [])
 
   function reset() {
     setText('')
@@ -101,15 +112,16 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
     }
   }
 
-  async function analyse(extra = '') {
+  async function analyse(extra = '', override?: string) {
     if (!key) return
+    const source = override ?? text
     setBusy(true)
     setError(null)
     try {
-      const res = await readProposals(text, images.map((i) => i.img), db, key, db.settings.ai.model, extra)
+      const res = await readProposals(source, images.map((i) => i.img), db, key, db.settings.ai.model, extra)
       // Bei einem Bild ist das Transkript der Text, gegen den geprüft wird —
       // ohne ihn hätte die Prüfung nichts, woran sie sich halten könnte.
-      const against = [text, res.transcript].filter(Boolean).join('\n')
+      const against = [source, res.transcript].filter(Boolean).join('\n')
       const checked = checkProposals(res.proposals, against, db)
       setRead({ summary: res.summary, intent: res.intent, transcript: res.transcript, dropped: checked.dropped })
       setProposals(checked.proposals)
@@ -152,21 +164,37 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
    * ins Leere, während die Oberfläche Vollzug meldete.
    */
   function runPlan() {
+    // Jeder Schritt schreibt sofort. Bricht einer ab, dürfen die vorherigen nicht
+    // ein zweites Mal laufen — sonst entsteht beim nächsten Druck ein zweiter
+    // Interessent mit einem zweiten Angebot über dieselbe Ware.
+    if (ran) return
+    setRan(true)
     let carry = leadId
     const out: { text: string; ok: boolean }[] = []
-    for (const step of plan.steps) {
-      const res = applyProposal(step, carry, message)
-      if (res.leadId) carry = res.leadId
-      out.push(res.done ? { text: res.done, ok: true } : { text: `${step.title} — ${res.skipped ?? 'nichts geändert'}`, ok: false })
+    try {
+      for (const step of plan.steps) {
+        const res = applyProposal(step, carry, message)
+        if (res.leadId) carry = res.leadId
+        out.push(res.done ? { text: res.done, ok: true } : { text: `${step.title} — ${res.skipped ?? 'nichts geändert'}`, ok: false })
+      }
+    } catch (err) {
+      out.push({ text: `Abgebrochen: ${err instanceof Error ? err.message : 'unbekannter Fehler'}`, ok: false })
     }
     setLeadId(carry)
     setLog(out)
-    setRan(true)
   }
 
-  /** Der Verkauf hängt am Angebot — damit gilt derselbe Preis wie dort. */
+  /**
+   * Der Verkauf hängt am Angebot — damit gilt derselbe Preis wie dort.
+   *
+   * `angenommen` gehört zu den erledigten: nach dem Buchen steht das Angebot dort,
+   * und ohne diese Bedingung fand die Suche es weiter. Der rote Knopf kam sofort
+   * zurück, und drei Klicks ergaben drei Verkäufe über dieselben zwei Tanks —
+   * 11.700 € Umsatz für ein Geschäft. Die Angebotsansicht hat die Regel längst
+   * (`closed` in views/Quotes.tsx), sie fehlte nur hier.
+   */
   const quote = useMemo(
-    () => (leadId ? db.quotes.find((q) => q.leadId === leadId && q.status !== 'abgelehnt') ?? null : null),
+    () => (leadId ? db.quotes.find((q) => q.leadId === leadId && q.status !== 'abgelehnt' && q.status !== 'angenommen') ?? null : null),
     [db.quotes, leadId],
   )
 
@@ -204,8 +232,19 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
   const sure = useMemo(() => rest.filter((p) => p.proven && !p.publishes), [rest])
   const unsure = useMemo(() => rest.filter((p) => !p.proven || p.publishes), [rest])
 
+  /**
+   * Über den Rand oder Escape geschlossen räumte der Dialog nichts weg: beim
+   * nächsten Öffnen stand das „Erledigt" der alten Nachricht da, samt scharfem
+   * „Verkauf buchen" für den vorigen Käufer. Ein abgearbeiteter Vorgang gehört
+   * nicht in die nächste Nachricht.
+   */
+  function close() {
+    if (ran) reset()
+    onClose()
+  }
+
   return (
-    <Modal open={open} onClose={onClose} title="Nachricht einlesen" wide>
+    <Modal open={open} onClose={close} title="Nachricht einlesen" wide>
       <div className="space-y-4">
         {!key && !ran && (
           <p className="rounded-xl border border-line bg-surface-2 p-3 text-[13px] text-muted">
@@ -222,8 +261,9 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
                 size="sm"
                 onClick={async () => {
                   try {
-                    setText(await navigator.clipboard.readText())
-                    setAutoRead(true)
+                    const clip = await navigator.clipboard.readText()
+                    setText(clip)
+                    readSoon(clip)
                   } catch {
                     setError('Die Zwischenablage ließ sich nicht lesen — bitte von Hand einfügen.')
                   }
@@ -246,7 +286,14 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
               onChange={(e) => setText(e.target.value)}
               onPaste={(e) => {
                 void addImages(e.clipboardData.files)
-                setAutoRead(true)
+                // Was nach dem Einfügen im Feld steht, aus dem Ereignis gerechnet —
+                // der Zustand trägt es an dieser Stelle noch nicht.
+                const el = e.currentTarget
+                const dropped = e.clipboardData.getData('text')
+                if (dropped) {
+                  const next = el.value.slice(0, el.selectionStart ?? 0) + dropped + el.value.slice(el.selectionEnd ?? 0)
+                  readSoon(next)
+                }
               }}
               placeholder={'Nachricht hier einfügen — aus Kleinanzeigen, per Mail, aus WhatsApp.\nOder ein Bildschirmfoto einfügen.'}
             />
@@ -314,6 +361,30 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
           </ul>
         )}
 
+        {/*
+          Auch ohne Zug sichtbar. Vorher hingen sie am `ran`-Block: gab es keinen
+          Zug — etwa weil der Kontaktweg fehlt —, verschwand der einzige Vorschlag,
+          den die KI geliefert hat, wortlos. Bezahlt und weggeworfen.
+        */}
+        {plan.risky.length > 0 && !ran && (
+          <div className="rounded-xl border border-amber/50 bg-amber-soft/30 p-3">
+            <p className="text-[11px] font-bold text-amber uppercase">Wird öffentlich sichtbar</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {plan.risky.map((p) => (
+                <Button key={p.id} size="sm" variant="danger" disabled={!!applied[p.id] || !leadId} onClick={() => take(p)}>
+                  {applied[p.id] ? `✓ ${p.title}` : !leadId ? `${p.title} — erst den Interessenten` : p.title}
+                </Button>
+              ))}
+            </div>
+            {!leadId && (
+              <p className="mt-1.5 text-[13px] text-muted">
+                Erst muss jemand da sein, für den die Reservierung gilt — sonst wäre die Ware öffentlich weg und
+                intern niemandem zugeordnet.
+              </p>
+            )}
+          </div>
+        )}
+
         {plan.steps.length > 0 && !ran && (
           <div className="rounded-xl border border-primary/40 bg-primary-soft/25 p-3">
             <p className="text-[11px] font-bold text-muted uppercase">Vorgang</p>
@@ -379,7 +450,8 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
               </div>
               {!quote && plan.risky.length === 0 && (
                 <p className="mt-1 text-[13px] text-muted">
-                  Nichts, was jetzt öffentlich würde. Ein Verkauf braucht erst ein Angebot.
+                  Nichts, was jetzt öffentlich würde. Ein Verkauf braucht erst ein Angebot, und ein bereits
+                  gebuchtes ist erledigt.
                 </p>
               )}
               {confirmSale && quote && (
@@ -492,7 +564,7 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
         )}
 
         <div className="flex flex-wrap justify-end gap-2 border-t border-line pt-4">
-          {proposals.length > 0 && <Button onClick={reset}>Nächste Nachricht</Button>}
+          {(proposals.length > 0 || ran) && <Button onClick={reset}>Nächste Nachricht</Button>}
           {/* Schreibt nichts. Der Griff unten rechts ist damit folgenlos. */}
           <Button variant="primary" onClick={() => { reset(); onClose() }}>Fertig</Button>
         </div>

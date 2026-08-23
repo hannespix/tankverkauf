@@ -254,13 +254,20 @@ export function checkProposals(raw: RawProposal[], text: string, db: DB): { prop
           // nennt deshalb Anzahl und Art, die Zuordnung passiert beim Bestätigen
           // nach einer festen Regel — sichtbar, nicht als Modellentscheidung.
           const what = String(p.what ?? '').trim() || (hinted[0] ? itemLabel(hinted[0]) : 'Positionen')
-          const from = (hinted.length ? hinted : open).map((t) => t.id)
+          // Derselbe Filter, den `resolvePick` beim Ausführen anlegt. Fehlte er
+          // hier, versprach der Vorschlag „2 × Rundtank“ und hängte am Ende
+          // einen oder keinen an — Vollzugsmeldung ohne Vollzug.
+          const from = (hinted.length ? hinted : open).filter((t) => !t.leadId || t.leadId === base.leadId).map((t) => t.id)
           // Nennt das Modell keine Anzahl, ist es EINE. Vorher stand hier
           // `ambiguous.length` — aus „Fässer" wären damit alle 31 geworden.
           const count = Math.max(1, Math.min(p.count && p.count > 0 ? p.count : 1, from.length))
           if (from.length === 0) {
             dropped.push('Positionen: keine davon ist noch frei')
             continue
+          }
+          // Die Anzahl im Titel ist die, die auch ankommt.
+          if (count > from.length) {
+            base.warning = `Gemeint sind offenbar mehr, frei ${from.length === 1 ? 'ist' : 'sind'} aber nur noch ${from.length}.`
           }
           base.pick = { count, what, from }
           base.tankIds = []
@@ -402,7 +409,7 @@ export function collapseIds(ids: string[]): string {
   const parts = ids
     .map((id) => id.match(/^([A-Z]+)-(\d+)$/))
     .filter((m): m is RegExpMatchArray => !!m)
-    .map((m) => ({ pre: m[1], n: Number(m[2]), width: m[2].length, id: m[0] }))
+    .map((m) => ({ pre: m[1], n: Number(m[2]), id: m[0] }))
     .sort((a, b) => (a.pre === b.pre ? a.n - b.n : a.pre.localeCompare(b.pre)))
   if (parts.length !== ids.length) return ids.join(', ')
 
@@ -465,6 +472,12 @@ export function trimMessage(text: string): string {
  * deshalb außen vor — sie bekommen einen eigenen, bewussten Griff.
  */
 const CHEAP: ProposalKind[] = ['lead.neu', 'lead.notiz', 'lead.phase', 'positionen', 'angebot', 'gebot']
+/**
+ * „Verkauf vorbereiten" schrieb nie etwas — der Kommentar versprach einen Dialog,
+ * den es nirgends gab. Den gibt es jetzt am Angebot; der Vorschlag wird deshalb
+ * zum Hinweis statt zu einem Knopf, der nur eine Warnung ausgeben kann.
+ */
+const TOTER_KNOPF: ProposalKind[] = ['verkauf.vorbereiten']
 const ORDER: ProposalKind[] = ['lead.neu', 'lead.notiz', 'positionen', 'angebot', 'gebot', 'lead.phase']
 
 export interface Plan {
@@ -487,7 +500,8 @@ export interface Plan {
  */
 export function buildPlan(proposals: Proposal[], parsed: ParsedMessage, db: DB, text: string): Plan {
   const steps = proposals.filter((p) => CHEAP.includes(p.kind))
-  const risky = proposals.filter((p) => !CHEAP.includes(p.kind))
+  const risky = proposals.filter((p) => !CHEAP.includes(p.kind) && !TOTER_KNOPF.includes(p.kind))
+  const dead = proposals.filter((p) => TOTER_KNOPF.includes(p.kind))
   const has = (k: ProposalKind) => steps.some((p) => p.kind === k)
 
   const known = findLead(db, parsed.email, parsed.phone)
@@ -503,22 +517,50 @@ export function buildPlan(proposals: Proposal[], parsed: ParsedMessage, db: DB, 
   }
 
   const notes: string[] = []
+  if (dead.length > 0) {
+    notes.push('Die Nachricht liest sich wie ein fester Kauf. Buchen kannst du unten, sobald ein Angebot steht — der Preis kommt dann von dort.')
+  }
+
+  /**
+   * Wirklich zu haben.
+   *
+   * `isOpen` allein genügt nicht: es lässt reservierte Ware durch und fragt
+   * nicht, ob die Position schon bei jemand anderem hängt. `attachTanks` ändert
+   * an beidem nichts, meldet aber Vollzug — zwei Käufer bekamen so nacheinander
+   * dieselben zwei Tanks angehängt, mit zwei offenen Angeboten darüber.
+   */
+  /** Hängt schon bei genau diesem Käufer — dann ist nichts zu tun. */
+  const mine = (t: Tank) => !!known && t.leadId === known.id
+  /** Wirklich zu haben: frei im Bestand und niemandem zugeordnet. */
+  const freeFor = (t: Tank) => t.status === 'verfuegbar' && !t.leadId
+
+  const warum = (t: Tank) =>
+    t.status === 'verkauft' ? 'verkauft' : t.status === 'reserviert' ? 'reserviert' : 'schon bei jemand anderem'
 
   // Positionen. Wörtlich genannte Nummern kommen vollständig in den Zug.
   if (!has('positionen') && parsed.exact && parsed.matchedTankIds.length > 0) {
-    const free = parsed.matchedTankIds.filter((id) => db.tanks.some((t) => t.id === id && isOpen(t)))
+    const all = parsed.matchedTankIds.map((id) => db.tanks.find((t) => t.id === id)).filter((t): t is Tank => !!t)
+    const free = all.filter(freeFor)
+    // Was ihm schon gehört, wird stillschweigend übergangen: dieselbe Nachricht
+    // ein zweites Mal einzulesen darf nichts verdoppeln und nichts melden.
+    const taken = all.filter((t) => !freeFor(t) && !mine(t))
     if (free.length > 0) {
-      steps.push(mk('positionen', `${free.length === 1 ? itemLabel(db.tanks.find((t) => t.id === free[0])!) : `${free.length} Positionen`} anhängen`,
-        'Sie stehen danach auf „im Kontakt“ und sind für andere Käufer weg.', { tankIds: free }))
+      steps.push(mk('positionen', `${free.length === 1 ? itemLabel(free[0]) : `${free.length} Positionen`} anhängen`,
+        'Sie stehen danach auf „im Kontakt“ und sind für andere Käufer weg.', { tankIds: free.map((t) => t.id) }))
     }
-  } else if (!has('positionen') && !parsed.exact && !parsed.broadMatch && parsed.matchedTankIds.length > 0) {
+    if (taken.length > 0) {
+      notes.push(`${collapseIds(taken.map((t) => t.id))} ${taken.length === 1 ? 'ist' : 'sind'} nicht mehr frei — ${[...new Set(taken.map(warum))].join(', ')}.`)
+    }
+  } else if (!has('positionen') && !parsed.exact && parsed.broadMatch) {
+    notes.push(`Die Nachricht passt auf ${parsed.matchedTankIds.length} Positionen — zu viele, um daraus etwas abzuleiten. Bitte im Bestand auswählen.`)
+  } else if (!has('positionen') && !parsed.exact && parsed.matchedTankIds.length > 0) {
     // Ohne Nummer nur dann, wenn die Treffer untereinander austauschbar sind:
     // drei Koffertanks mit 1.650 l zu 1.050 € sind für den Käufer dasselbe Ding,
     // und ihn nach einer Seriennummer zu fragen, die er nicht kennt, hilft
     // niemandem. Angehängt wird EINER — er hat nach einem gefragt.
     const cand = parsed.matchedTankIds
       .map((id) => db.tanks.find((t) => t.id === id))
-      .filter((t): t is Tank => !!t && isOpen(t) && !t.leadId)
+      .filter((t): t is Tank => !!t && freeFor(t))
     const same = cand.length > 0 && cand.every((t) => t.maker === cand[0].maker && t.type === cand[0].type && t.litres === cand[0].litres && t.vb === cand[0].vb)
     if (same) {
       // „die beiden Rundtanks“ meint zwei. Ohne diesen Hinweis stünde einer da
@@ -538,8 +580,16 @@ export function buildPlan(proposals: Proposal[], parsed: ParsedMessage, db: DB, 
 
   // Angebot: sobald Positionen im Spiel sind. Genau das, was der Verkäufer sonst
   // von Hand in der Bestandsliste zusammenklickt.
-  const withPositions = steps.some((p) => p.kind === 'positionen') || (known?.tankIds.length ?? 0) > 0
-  if (!has('angebot') && withPositions) {
+  // Erledigte Angebote zählen nicht mehr: ein angenommenes gehört zu einem
+  // gebuchten Verkauf, und daran hängt kein neues Gebot mehr.
+  const openQuote = known
+    ? db.quotes.find((q) => q.leadId === known.id && q.status !== 'abgelehnt' && q.status !== 'angenommen') ?? null
+    : null
+  const posStep = steps.find((p) => p.kind === 'positionen')
+  const withPositions = !!posStep || (known?.tankIds.length ?? 0) > 0
+  // Nicht zum zweiten Mal. Steht schon ein Angebot offen, entstünde ein Duplikat
+  // — und das Gebot der Verhandlung landete am neuen statt am verhandelten.
+  if (!has('angebot') && withPositions && !openQuote) {
     steps.push(mk('angebot', 'Angebot als Entwurf anlegen', 'Der geforderte Preis wird nach der Katalogregel gerechnet — mit Paketen und Staffel.', {}))
   }
 
@@ -549,10 +599,18 @@ export function buildPlan(proposals: Proposal[], parsed: ParsedMessage, db: DB, 
   // Und nur, wenn es am Ende auch irgendwo hängen kann. Ein Gebot ohne Angebot
   // schreibt nichts — es als Schritt zu versprechen wäre genau die Lüge, die
   // dieser Umbau abstellt.
-  const willHaveQuote = steps.some((p) => p.kind === 'angebot') || db.quotes.some((q) => q.leadId === known?.id && q.status !== 'abgelehnt')
+  const willHaveQuote = steps.some((p) => p.kind === 'angebot') || !!openQuote
   if (!has('gebot') && parsed.offer != null && parsed.offer !== parsed.packagePrice) {
     if (willHaveQuote) {
-      steps.push(mk('gebot', `Gebot ${eur(parsed.offer)} eintragen`, 'Wird beim Angebot vermerkt. Ändert nichts am Bestand.', { amount: parsed.offer }))
+      // `leadId` muss dranstehen, sonst findet floorFor nichts und die Warnung
+      // unter der Untergrenze erschiene im Ein-Knopf-Weg nie.
+      const forFloor = openQuote?.tankIds ?? posStep?.tankIds ?? []
+      const floor = db.tanks.filter((t) => forFloor.includes(t.id)).reduce((a, t) => a + t.floor, 0)
+      steps.push(mk('gebot', `Gebot ${eur(parsed.offer)} eintragen`, 'Wird beim Angebot vermerkt. Ändert nichts am Bestand.', {
+        amount: parsed.offer,
+        leadId: known?.id ?? null,
+        warning: floor > 0 && parsed.offer < floor ? `${eur(parsed.offer)} liegt unter der Untergrenze von ${eur(floor)}.` : null,
+      }))
     } else {
       notes.push(`${eur(parsed.offer)} steht als Gebot in der Nachricht — es braucht erst ein Angebot, an dem es hängen kann.`)
     }
@@ -583,15 +641,27 @@ export function buildPlan(proposals: Proposal[], parsed: ParsedMessage, db: DB, 
  * Literzahl oder ein Preis. „die beiden“ und „alle“ sind dagegen eindeutig.
  */
 export function countCue(text: string): number | null {
-  const t = text.toLowerCase()
-  if (/\b(alle|sämtliche|saemtliche|den ganzen posten|komplett)\b/.test(t)) return Infinity
-  const words: [RegExp, number][] = [
-    [/\bbeide[nr]?\b/, 2], [/\bzwei\b/, 2], [/\bdrei\b/, 3], [/\bvier\b/, 4],
-    [/\bfünf\b|\bfuenf\b/, 5], [/\bsechs\b/, 6], [/\bsieben\b/, 7], [/\bacht\b/, 8],
-    [/\bneun\b/, 9], [/\bzehn\b/, 10],
+  const t = ` ${text.toLowerCase().replace(/ß/g, 'ss').replace(/[^a-zäöü0-9]+/g, ' ')} `
+  // Zeitangaben sind keine Mengen. „Ich melde mich in zwei Wochen“ hängte zwei
+  // Tanks an, „Ist der Tank komplett dicht?“ alle drei — deshalb steht
+  // „komplett“ gar nicht mehr in der Liste und eine Zeiteinheit hebt auf.
+  const TIME = /(wochen?|tagen?|monaten?|jahren?|stunden?|minuten?|uhr|mal)/
+  const words: [string, number][] = [
+    ['alle', Infinity], ['sämtliche', Infinity], ['saemtliche', Infinity],
+    ['beide', 2], ['beiden', 2], ['zwei', 2], ['drei', 3], ['vier', 4], ['fünf', 5], ['fuenf', 5],
+    ['sechs', 6], ['sieben', 7], ['acht', 8], ['neun', 9], ['zehn', 10],
   ]
-  for (const [re, n] of words) if (re.test(t)) return n
-  return null
+  // Das zuerst GENANNTE Wort gewinnt, nicht das zuerst aufgelistete: in
+  // „drei Fässer und zwei Tanks“ ist die Drei gemeint.
+  let best: { at: number; n: number } | null = null
+  for (const [w, n] of words) {
+    const at = t.indexOf(` ${w} `)
+    if (at === -1) continue
+    // Was direkt dahinter steht, entscheidet: „zwei Wochen“ ist keine Stückzahl.
+    if (TIME.test(t.slice(at + w.length + 2, at + w.length + 14))) continue
+    if (!best || at < best.at) best = { at, n }
+  }
+  return best?.n ?? null
 }
 
 function mk(kind: ProposalKind, title: string, effect: string, rest: Partial<Proposal>): Proposal {

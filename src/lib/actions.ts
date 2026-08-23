@@ -444,8 +444,14 @@ export function applyProposal(p: Proposal, leadId: string | null, message: strin
     case 'angebot': {
       if (!target) return { leadId, done: '', skipped: 'kein Interessent vorhanden' }
       const lead = db.leads.find((l) => l.id === target)
-      const ids = p.tankIds.length ? p.tankIds : (lead?.tankIds ?? [])
-      if (ids.length === 0) return { leadId: target, done: '', skipped: 'keine Positionen zugeordnet' }
+      // Verkauftes gehört in kein neues Angebot. `lead.tankIds` behält gekaufte
+      // Positionen — ohne diesen Filter entstand aus „Hätten Sie noch etwas
+      // Passendes?“ ein Angebot über Ware, die derselbe Mensch schon besitzt.
+      const wanted = p.tankIds.length ? p.tankIds : (lead?.tankIds ?? [])
+      const ids = wanted.filter((id) => db.tanks.some((t) => t.id === id && t.status !== 'verkauft'))
+      if (ids.length === 0) {
+        return { leadId: target, done: '', skipped: wanted.length ? 'alle diese Positionen sind verkauft' : 'keine Positionen zugeordnet' }
+      }
       // Der geforderte Preis kommt aus dem Bestand. Ein Preis, den ein
       // Sprachmodell nennt, hat in einem Angebot nichts verloren.
       createQuote({
@@ -674,27 +680,45 @@ export function removeDeal(dealId: string) {
     (db) => {
       const deal = db.deals.find((d) => d.id === dealId)
       if (!deal) return
+      const others = db.deals.filter((d) => d.id !== dealId)
+
       for (const tid of deal.tankIds) {
         const t = db.tanks.find((x) => x.id === tid)
-        if (t && t.dealId === dealId) {
-          t.dealId = null
-          // Hängt die Position noch an einem Interessenten, kommt sie als „im
-          // Kontakt" zurück und nicht als frei — sonst böte der Katalog sie an,
-          // während innen jemand darauf wartet.
-          t.status = t.leadId ? 'kontakt' : 'verfuegbar'
+        if (!t) continue
+        // Führt ein ANDERER Verkauf dieselbe Position, bleibt sie verkauft.
+        // `t.dealId` zeigt nur auf den zuletzt gebuchten; ohne diese Prüfung kam
+        // sie als frei zurück, während der ältere Verkauf sie noch führte — und
+        // ließ sich ein drittes Mal verkaufen.
+        const heldElsewhere = others.find((d) => d.tankIds.includes(tid))
+        if (heldElsewhere) {
+          t.dealId = heldElsewhere.id
           t.updatedAt = now()
+          continue
         }
+        t.dealId = null
+        // Der Käufer hängt nicht mehr dran. Ohne das übersprang `resolvePick`
+        // die Position auf Dauer — sie war „verfügbar" und trotzdem unsichtbar.
+        t.leadId = null
+        t.status = 'verfuegbar'
+        t.updatedAt = now()
       }
-      // Ein Angebot, das über diesen Verkauf angenommen wurde, ist wieder offen.
+
+      // Nur das Angebot, das wirklich zu diesem Verkauf gehört. Ein Verkauf trägt
+      // keine Angebotsnummer, also entscheiden die Positionen — über `leadId`
+      // allein wurde jedes angenommene Angebot desselben Käufers zurückgesetzt,
+      // auch das eines anderen, noch gebuchten Verkaufs.
+      const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x))
       for (const q of db.quotes) {
-        if (q.leadId && q.leadId === deal.leadId && q.status === 'angenommen') {
-          q.status = 'gesendet'
-          q.updatedAt = now()
-        }
+        if (q.status !== 'angenommen') continue
+        if (q.leadId !== deal.leadId || !sameSet(q.tankIds, deal.tankIds)) continue
+        if (others.some((d) => sameSet(d.tankIds, q.tankIds))) continue
+        q.status = 'gesendet'
+        q.updatedAt = now()
       }
+
       // Dieselbe Rückstufung, die assignDealLead beim Umhängen schon macht.
       if (deal.leadId) {
-        const stillBuying = db.deals.some((d) => d.id !== dealId && d.leadId === deal.leadId)
+        const stillBuying = others.some((d) => d.leadId === deal.leadId)
         const lead = db.leads.find((l) => l.id === deal.leadId)
         if (lead && !stillBuying && lead.stage === 'gewonnen') {
           lead.stage = db.quotes.some((q) => q.leadId === lead.id) ? 'angebot' : 'kontakt'

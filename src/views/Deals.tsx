@@ -125,7 +125,7 @@ export default function Deals() {
                       </Field>
                       <div className="flex items-end">
                         <Button variant="danger" className="mb-0.5"
-                          onClick={() => { if (confirm(`„${d.label}“ zurücknehmen? Die Positionen werden wieder als verfügbar geführt.`)) removeDeal(d.id) }}>
+                          onClick={() => { if (confirm(`„${d.label}“ zurücknehmen? Die Positionen werden wieder als verfügbar geführt und der Käufer auf „Angebot“ zurückgestuft.`)) removeDeal(d.id) }}>
                           <IconTrash />
                         </Button>
                       </div>

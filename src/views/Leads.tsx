@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Button, Card, EmptyState, Field, Input, Modal, Pill, SectionTitle, Select, Textarea, cx, type Tone } from '../components/ui'
 import { IconCheck, IconPlus, IconSpark, IconTrash } from '../components/icons'
-import { addLead, createQuote, patchLead, patchQuote, removeLead } from '../lib/actions'
+import { addLead, createQuote, detachTanks, patchLead, patchQuote, removeLead } from '../lib/actions'
 import { parseMessage } from '../lib/ads'
 import { AiError, readMessage, type AiResult } from '../lib/ai'
 import { itemLabel, dateDE, eur, num, relativeDE, todayISO } from '../lib/format'
@@ -130,8 +130,14 @@ function LeadModal({ lead, onClose, readOnly }: { lead: Lead | null; onClose: ()
   const openTanks = db.tanks.filter((t) => t.status !== 'verkauft' || (draft.tankIds ?? []).includes(t.id))
 
   function save() {
-    if (lead) patchLead(lead.id, draft, `Interessent aktualisiert: ${draft.name ?? lead.name}`)
-    else addLead(draft)
+    if (lead) {
+      // Abgehakte Positionen müssen auch wirklich frei werden. `patchLead` schreibt
+      // nur das Interessentenobjekt — die Position blieb auf „im Kontakt" mit
+      // gesetztem Käufer stehen und war für jeden anderen unsichtbar verbraucht.
+      const gone = lead.tankIds.filter((id) => !(draft.tankIds ?? []).includes(id))
+      patchLead(lead.id, draft, `Interessent aktualisiert: ${draft.name ?? lead.name}`)
+      if (gone.length > 0) detachTanks(lead.id, gone)
+    } else addLead(draft)
     onClose()
   }
 

@@ -601,17 +601,45 @@ export interface ParsedMessage {
   broadMatch: boolean
 }
 
-/** Umlaute und Zeichensetzung weg, damit "Phönix" und "Phoenix" dasselbe sind. */
+/**
+ * Kleinbuchstaben, Umlaute weg, Zeichensetzung weg.
+ *
+ * Der Umlaut fällt auf den Grundvokal, nicht auf zwei Buchstaben: aus
+ * „Dekofässer" wird „dekofasser", und darin steckt „dekofass" aus dem Bestand.
+ * Mit ä→ae hieße es „dekofaesser“ und der Stamm wäre zerschnitten — die Suche
+ * fand den Plural dann nicht mehr. Dieselbe Regel wie in `groupMentioned`.
+ */
 function fold(s: string): string {
   return s
     .toLowerCase()
-    .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
+    .replace(/ä/g, 'a').replace(/ö/g, 'o').replace(/ü/g, 'u').replace(/ß/g, 'ss')
     .replace(/[^a-z0-9]+/g, ' ')
 }
 
-/** Die eigenständigen Wörter einer Bezeichnung — kurze taugen nicht zum Suchen. */
-function typeWords(type: string): string[] {
-  return fold(type).split(' ').filter((w) => w.length >= 8)
+/**
+ * Zwei Wörter meinen dasselbe, wenn eines im anderen steckt und höchstens eine
+ * Endung dazwischenliegt.
+ *
+ * Die Grenze ist nicht Zierrat: ohne sie passte „barriquefass" auf „barrique"
+ * und die Frage nach dem Barriquefass-Reiniger zog 29 Fässer mit. Drei Zeichen
+ * decken Plural und Beugung ab, ein ganzes zweites Wort nicht.
+ */
+function sameWord(a: string, b: string): boolean {
+  if (Math.abs(a.length - b.length) > 3) return false
+  return a.startsWith(b) || b.startsWith(a)
+}
+
+/**
+ * Wonach eine Position gefunden werden kann: die Wörter ihres Typs UND ihr
+ * Hersteller. Der Hersteller fehlte — "Was soll die Schneider-Pumpe kosten?"
+ * fand nichts, obwohl der Name im Bestand steht.
+ *
+ * Kurze Wörter taugen nicht: "Tank" träfe alles, "Sonstige" ist kein Name.
+ */
+function nameWords(t: { type: string; maker: string }): string[] {
+  const parts = [...fold(t.type).split(' ')]
+  if (t.maker && t.maker !== 'Sonstige') parts.push(...fold(t.maker).split(' '))
+  return parts.filter((w) => w.length >= 6)
 }
 
 /** Marker the catalogue puts at the end of an enquiry so nothing has to be guessed. */
@@ -713,20 +741,39 @@ export function parseMessage(text: string, db: DB): ParsedMessage {
     .filter((l) => !/^\s*[·•]/.test(l))
     .join('\n')
 
-  // Was ein Gebot ist, entscheidet das Wort davor, nicht das Währungszeichen.
-  // "Ich biete 3.600 für die 31 Fässer" hat keins und war deshalb unsichtbar;
-  // "die beiden Rundtanks 3700" hat auch keins und darf trotzdem kein Gebot sein.
-  // Genommen wird der LETZTE Treffer: "4.200 sind mir zu viel, ich biete 3.600"
-  // nannte sonst unseren eigenen Preis als sein Gebot.
-  // `(?!\d)` ist nicht schmückend: ohne es liest die Alternative aus "3700 l"
-  // die Zahl 370, hinter der dann "0 l" steht — und die Einheitensperre greift
-  // nicht mehr. Aus einer Literangabe wäre ein Gebot über 370 € geworden.
-  const BID = /(?:biete|zahle|bezahle|gebe|geben|nehme|kaufe|angebot|gebot|für)\b[^\d\n]{0,25}(\d{1,3}(?:[.\s]\d{3})+|\d{2,6})(?!\d)(?!\s*(?:l\b|ltr|liter|cm|mm|kg|st(?:ü|ue)ck))/gi
-  const bids = [...buyerWrote.matchAll(BID)].map((m) => Number(m[1].replace(/[.\s]/g, '')))
+  // Was ein Gebot ist.
+  //
+  // Zwei Wege, und beide müssen eng sein. Der erste Entwurf ließ nach dem Verb
+  // 25 beliebige Zeichen zu — damit wurde jede Zahl in der Nähe eines Verbs zum
+  // Gebot: „ich zahle bar: 0176 4433221" ergab 176 €, „Abholung nach 55232
+  // Alzey" ergab 55.232 €, und „ich nehme den 1650er" bot 1.650 € für einen
+  // Tank, der 1.050 € kostet.
+  //
+  // (1) Eine Zahl mit Währung. Die ist für sich eindeutig, egal wo sie steht —
+  //     „3.600 EUR biete ich Ihnen" liest der Verbweg nie, weil die Zahl vorn steht.
+  // (2) Eine Zahl OHNE Währung nur unmittelbar hinter einem Zahlungswort: höchstens
+  //     zwölf Zeichen dazwischen, und darin nur Buchstaben und Leerzeichen. Ein
+  //     Komma, ein Doppelpunkt oder ein Punkt beendet den Bezug — „nehme beide,
+  //     meine PLZ ist 67435" ist damit kein Gebot mehr.
+  const NUM = '(\\d{1,3}(?:[.\\s]\\d{3})+|\\d{2,6})'
+  // Keine Einheit dahinter, kein Buchstabe (sonst wäre „1650er" ein Gebot) und
+  // keine weitere Ziffer (sonst liest die Alternative aus „3700 l" die 370).
+  const TAIL = '(?!\\d)(?![a-zäöüß])(?!\\s*(?:l\\b|ltr|liter|cm|mm|kg|st(?:ü|ue)ck|f(?:ä|ae)sser|tanks?|positionen|uhr))'
+  const withCurrency = new RegExp(`${NUM}\\s*(?:€|EUR\\b|Euro\\b)|(?:€|EUR)\\s*${NUM}`, 'gi')
+  const afterVerb = new RegExp(`(?:biete|bieten|geboten|zahle|zahlen|bezahle|bezahlen|gebe|f(?:ü|ue)r)\\b[a-zäöüßA-ZÄÖÜ ]{0,12}${NUM}${TAIL}`, 'gi')
+
+  const money = [...buyerWrote.matchAll(withCurrency)].map((m) => Number((m[1] ?? m[2]).replace(/[.\s]/g, '')))
+  const bare = [...buyerWrote.matchAll(afterVerb)]
+    .map((m) => Number(m[1].replace(/[.\s]/g, '')))
+    // Eine nackte Jahreszahl ist ein Termin, kein Preis: "brauchen die Tanks für 2027".
+    .filter((n) => !(n >= 1900 && n <= 2099))
+  const bids = money.length ? money : bare
   const plausible = bids.filter((n) => n >= 50 && n <= 500000)
   const offer = offerLine
     ? Number(offerLine[1].replace(/\./g, '')) || null
     : plausible.length
+      // Der letzte Treffer: "4.200 sind mir zu viel, ich biete 3.600" nannte
+      // sonst unseren eigenen Preis als sein Gebot.
       ? plausible[plausible.length - 1]
       : null
 
@@ -734,15 +781,17 @@ export function parseMessage(text: string, db: DB): ParsedMessage {
   // Nicht jede Ware hat ein Volumen. "Die Impellerpumpe nehme ich" fand bisher
   // nichts, weil ausschließlich über Literzahlen gesucht wurde.
   //
-  // Gesucht wird über einzelne Wörter der Bezeichnung, nicht über die ganze:
-  // im Bestand heißt sie "Impellerpumpe Phönix 12000", in der Nachricht steht
-  // nur "Impellerpumpe". Kurze Wörter fallen weg — "Tank" träfe alles.
+  // Verglichen werden ganze Wörter, nicht Teilzeichenketten: "barrique" steckt
+  // auch in "Barriquefass-Reiniger", und ein Teilstringtest hängte an der Frage
+  // nach dem Reiniger 29 Fässer mit an. Und Wortanfang genügt, damit
+  // "Dekofässer" das "Dekofass" im Bestand findet.
   //
-  // Und nur, wenn keine Literzahl dasteht: "die beiden Rundtanks 3700 l" meint
-  // die 3.700er, nicht jeden Rundtank im Keller.
+  // Nur, wenn keine Literzahl dasteht: "die beiden Rundtanks 3700 l" meint die
+  // 3.700er, nicht jeden Rundtank im Keller.
+  const said = fold(body).split(' ').filter((w) => w.length >= 6)
   const named = byLitres.length > 0 ? [] : db.tanks.filter((t) => {
     if (!isOpen(t)) return false
-    return typeWords(t.type).some((w) => fold(body).includes(w))
+    return nameWords(t).some((w) => said.some((x) => sameWord(x, w)))
   })
   const guessed = [...new Set([...byLitres, ...named].map((t) => t.id))]
   const matchedTankIds = exactIds.length ? exactIds : guessed
