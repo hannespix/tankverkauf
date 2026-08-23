@@ -334,3 +334,48 @@ test('N36 · die Grußformel reicht nicht in den Briefkopf', () => {
   const r = read('Ich hätte Interesse.\n\nMit freundlichen Grüßen\n\nPartnerbetrieb Naturschutz\n\nWINZERHOF WALLHÄUSER')
   assert.notEqual(r.name, 'Partnerbetrieb Naturschutz')
 })
+
+test('N37 · echte Geschäftsmail von der Nahe', () => {
+  // Die Mail, an der das Werkzeug vorgeführt wurde. Zwei Fallen darin:
+  // „Viele Grüße von der Nahe" — unter dem i-Flag faltet JavaScript auch
+  // `\p{Lu}`, die Klasse trifft dann jeden Buchstaben, und „von der Nahe" wurde
+  // zum Absendernamen. Und: der Kopfblock einer weitergeleiteten Mail wird
+  // abgeschnitten, hier stand dort aber der Käufer selbst.
+  const r = read([
+    '---------- Weitergeleitete Nachricht ----------',
+    'Von: weingut-wallhaeuser@web.de',
+    'Datum: 22. Aug. 2026, 14:25 +0200',
+    'An: info@weingut-pix.de',
+    'Betreff: Weintanks',
+    '',
+    'Hallo Frau Pix,',
+    '',
+    'ich hätte unter Umständen Interesse an den Stapeltanks von Möschle in der Bildmitte.',
+    '1 × 800 l – 650 € VB',
+    '1 × 1.000 l – 750 € VB',
+    '1 × 1.250 l – 850 € VB',
+    '3 × 1.650 l – je 1.050 € VB',
+    '',
+    'Viele Grüße von der Nahe',
+    'Alexander Wallhäuser',
+  ].join('\n'))
+  assert.equal(r.name, 'Alexander Wallhäuser')
+  assert.equal(r.email, 'weingut-wallhaeuser@web.de')
+  // Vier Preise auf vier Zeilen: eine Preisliste, kein Gebot.
+  assert.equal(r.offer, null)
+  assert.equal(r.priceList, true)
+})
+
+test('N38 · eine Roboteradresse im Kopf bleibt draußen', () => {
+  // Die Ausnahme zu N37: bei einer Portalmail gehört der Kopf dem Roboter.
+  const r = read([
+    '---------- Weitergeleitete Nachricht ----------',
+    'Von: noreply@kleinanzeigen.de',
+    'An: info@weingut-pix.de',
+    '',
+    'Ist der 1650er noch da?',
+    'Gruß, Peter Schmitt',
+  ].join('\n'))
+  assert.equal(r.email, '')
+  assert.equal(r.name, 'Peter Schmitt')
+})
