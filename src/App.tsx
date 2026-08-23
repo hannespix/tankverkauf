@@ -7,6 +7,7 @@ import {
 import { Inbox, InboxButton } from './components/Inbox'
 import { store, useStore } from './lib/store'
 import { dateTimeDE } from './lib/format'
+import { catalogStamp } from './lib/catalog'
 import Overview from './views/Overview'
 import Quotes from './views/Quotes'
 import Tanks from './views/Tanks'
@@ -17,6 +18,29 @@ import Settings from './views/Settings'
 import { Setup, Unlock } from './views/Unlock'
 
 export type View = 'overview' | 'tanks' | 'leads' | 'quotes' | 'deals' | 'ads' | 'settings'
+
+/**
+ * Worauf eine Ansicht beim Öffnen zeigen soll.
+ *
+ * Es gab bisher kein Routing und keine Nutzlast: `setView` konnte nur eine
+ * Ansicht nennen, sechs der sieben Ansichten nahmen überhaupt keine Parameter.
+ * Deshalb KONNTE kein Sprung einen Kontakt vorwählen — wer vom Interessenten zu
+ * seinem Angebot wollte, musste den Dialog schließen, den Reiter wechseln und
+ * den Filter von Hand setzen, und die Angebotsnummer, die er sich gemerkt hatte,
+ * stand drüben nirgends.
+ */
+export interface Focus {
+  leadId?: string
+  quoteId?: string
+}
+
+export type Go = (view: View, focus?: Focus) => void
+
+/** Was jede Ansicht bekommt. Optional, damit keine sie nehmen MUSS. */
+export interface ViewProps {
+  go: Go
+  focus: Focus
+}
 
 const NAV: { id: View; label: string; short: string; icon: React.ReactNode }[] = [
   { id: 'overview', label: 'Übersicht', short: 'Start', icon: <IconGauge /> },
@@ -66,6 +90,8 @@ function grabShared(): string {
 export default function App() {
   const { mode, db } = useStore()
   const [view, setView] = useState<View>('overview')
+  const [focus, setFocus] = useState<Focus>({})
+  const go: Go = (v, f) => { setView(v); setFocus(f ?? {}) }
   const [dark, setDark] = useTheme()
   const [inbox, setInbox] = useState(false)
   const [shared, setShared] = useState('')
@@ -119,7 +145,7 @@ export default function App() {
         </div>
         <nav className="mt-2 flex flex-col gap-0.5">
           {NAV.map((n) => (
-            <button key={n.id} type="button" onClick={() => setView(n.id)}
+            <button key={n.id} type="button" onClick={() => go(n.id)}
               className={cx('flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition',
                 view === n.id ? 'bg-primary-soft text-primary' : 'text-muted hover:bg-surface-3 hover:text-ink')}>
               {n.icon}{n.label}
@@ -128,6 +154,7 @@ export default function App() {
         </nav>
         <div className="mt-auto space-y-2 px-1">
           <SyncBadge />
+          <CatalogBadge />
           <button type="button" onClick={() => setDark(!dark)}
             className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] font-semibold text-muted transition hover:bg-surface-3 hover:text-ink">
             {dark ? <IconSun /> : <IconMoon />}{dark ? 'Hell' : 'Dunkel'}
@@ -144,7 +171,8 @@ export default function App() {
           </div>
           <div className="flex items-center gap-1">
             <SyncBadge compact />
-            <button type="button" onClick={() => setView('settings')} aria-label="Einstellungen"
+            <CatalogBadge compact />
+            <button type="button" onClick={() => go('settings')} aria-label="Einstellungen"
               className={cx('flex h-9 w-9 items-center justify-center rounded-lg transition hover:bg-surface-3',
                 view === 'settings' ? 'text-primary' : 'text-muted hover:text-ink')}>
               <IconCog />
@@ -164,7 +192,7 @@ export default function App() {
         )}
 
         <main className="mx-auto w-full max-w-[1400px] p-3 pb-24 sm:p-4 lg:p-6 lg:pb-6">
-          <Current go={setView} />
+          <Current go={go} focus={focus} />
         </main>
 
         {/* Von jeder Ansicht aus, in Daumenreichweite — die Leiste hat für einen
@@ -177,7 +205,7 @@ export default function App() {
       {/* Mobile tab bar */}
       <nav className="no-print fixed inset-x-0 bottom-0 z-30 grid grid-cols-6 border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
         {TABS.map((n) => (
-          <button key={n.id} type="button" onClick={() => setView(n.id)}
+          <button key={n.id} type="button" onClick={() => go(n.id)}
             className={cx('flex min-w-0 flex-col items-center gap-0.5 px-0.5 py-2 transition', view === n.id ? 'text-primary' : 'text-muted')}>
             {n.icon}
             <span className="w-full truncate text-center text-[9.5px] leading-tight font-bold">{n.short}</span>
@@ -201,6 +229,53 @@ function Booting() {
         <span className="text-sm font-semibold">Wird geladen …</span>
       </div>
     </div>
+  )
+}
+
+/**
+ * Steht die Käuferliste noch auf dem Stand?
+ *
+ * Diese Auskunft gab es bisher an genau einer Stelle: in den Einstellungen, in
+ * einer Ansicht, die man dafür eigens öffnen muss. Wer eine Position
+ * reservierte und danach vergeblich auf der Käuferseite nachsah, hatte keine
+ * Möglichkeit zu erfahren, dass seit Stunden nicht mehr veröffentlicht wurde.
+ *
+ * Sichtbar ist die Marke nur, wenn wirklich etwas aussteht — kein Dauerlicht
+ * für den Normalfall.
+ */
+function CatalogBadge({ compact }: { compact?: boolean }) {
+  const { db, mode, publishError } = useStore()
+  const [busy, setBusy] = useState(false)
+  const s = db.settings
+  const behind = !!s.catalog.owner && catalogStamp(db) !== s.publishedStamp
+  if (mode === 'demo' || !behind) return null
+
+  const tone = publishError ? 'text-rose' : 'text-amber'
+  const text = publishError ? 'Katalog fehlgeschlagen' : 'Katalog nicht aktuell'
+  const title = publishError
+    ? `Das automatische Veröffentlichen ist fehlgeschlagen: ${publishError} — klicken, um es erneut zu versuchen.`
+    : 'Die Käuferliste hinkt hinterher — klicken, um sie jetzt zu veröffentlichen.'
+
+  const publish = () => {
+    if (busy) return
+    setBusy(true)
+    void store.publishCatalog().catch(() => {}).finally(() => setBusy(false))
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={publish}
+      title={title}
+      className={cx(
+        'flex items-center gap-1.5 font-bold',
+        compact ? 'px-1.5 text-[11px]' : 'rounded-xl bg-surface-2 px-3 py-2 text-[13px]',
+        tone,
+      )}
+    >
+      <span className={cx('h-2 w-2 rounded-full bg-current', busy && 'animate-pulse')} />
+      {busy ? 'Veröffentlicht …' : text}
+    </button>
   )
 }
 

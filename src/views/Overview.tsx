@@ -8,9 +8,9 @@ import { centsPerLitre, eur, num, relativeDE } from '../lib/format'
 import { useStore } from '../lib/store'
 import { byMaker, isOpen, judgeOffer, progress, totals } from '../lib/stats'
 import { STATUS_LABEL, type TankStatus } from '../types'
-import type { View } from '../App'
+import type { View, ViewProps } from '../App'
 
-export default function Overview({ go }: { go: (v: View) => void }) {
+export default function Overview({ go }: ViewProps) {
   const { db } = useStore()
   const p = useMemo(() => progress(db), [db])
   const open = db.tanks.filter(isOpen)

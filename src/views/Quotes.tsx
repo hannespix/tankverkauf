@@ -10,16 +10,17 @@ import { Verlauf } from '../components/Verlauf'
 import { useStore } from '../lib/store'
 import { VERDICT_LABEL, linePrice, quoteMetrics } from '../lib/stats'
 import { QUOTE_STATUS_LABEL, type Quote, type QuoteStatus, type Tank } from '../types'
+import type { Go, ViewProps } from '../App'
 
 const STATUSES: QuoteStatus[] = ['entwurf', 'gesendet', 'verhandlung', 'angenommen', 'abgelehnt']
 const STATUS_TONE: Record<QuoteStatus, Tone> = {
   entwurf: 'neutral', gesendet: 'sky', verhandlung: 'amber', angenommen: 'green', abgelehnt: 'neutral',
 }
 
-export default function Quotes() {
+export default function Quotes({ go, focus }: ViewProps) {
   const { db } = useStore()
   const [filter, setFilter] = useState<QuoteStatus | ''>('')
-  const [leadSel, setLeadSel] = useState('')
+  const [leadSel, setLeadSel] = useState(focus.leadId ?? '')
   const [portalSel, setPortalSel] = useState('')
 
   const openQuotes = db.quotes.filter((q) => q.status !== 'angenommen' && q.status !== 'abgelehnt')
@@ -73,18 +74,20 @@ export default function Quotes() {
           />
         </Card>
       ) : (
-        <div className="space-y-3">{shown.map((q) => <QuoteCard key={q.id} quote={q} />)}</div>
+        <div className="space-y-3">{shown.map((q) => <QuoteCard key={q.id} quote={q} go={go} startOpen={q.id === focus.quoteId} />)}</div>
       )}
     </div>
   )
 }
 
-function QuoteCard({ quote }: { quote: Quote }) {
+function QuoteCard({ quote, go, startOpen }: { quote: Quote; go: Go; startOpen: boolean }) {
   const { db } = useStore()
   const m = quoteMetrics(db, quote.tankIds, quote.askPrice, quote.buyerOffer, quote.prices)
   const lead = db.leads.find((l) => l.id === quote.leadId)
   const portal = db.settings.portals.find((p) => p.id === quote.portalId)
-  const [open, setOpen] = useState(false)
+  // Wer von einem Menschen hierher springt, will genau dieses Angebot
+  // bearbeiten — nicht erst suchen und dann aufklappen.
+  const [open, setOpen] = useState(startOpen)
   const [pick, setPick] = useState('')
   // Nur freie Positionen, und nur solche, die nicht schon drin sind.
   const matching = db.tanks
@@ -134,12 +137,34 @@ function QuoteCard({ quote }: { quote: Quote }) {
     <Card className={cx(closed && 'opacity-70')}>
       <SectionTitle
         title={quote.label}
-        hint={[
-          lead ? lead.name : 'kein Interessent',
-          portal?.name,
-          `${m.count} Position${m.count === 1 ? '' : 'en'}${m.litres > 0 ? ` · ${num(m.litres)} l` : ''}`,
-          quote.validUntil ? `gültig bis ${dateDE(quote.validUntil)}` : null,
-        ].filter(Boolean).join(' · ')}
+        /*
+          Der Mensch war hier ein Textfragment im Untertitel — kein Weg zu ihm.
+          Und die Angebotsnummer stand überhaupt nirgends, obwohl der
+          Interessentendialog sie nennt; wer sie sich dort merkte, fand sie hier
+          nicht wieder. Beides gehört in die Kopfzeile.
+        */
+        hint={
+          <span className="flex flex-wrap items-center gap-x-1.5">
+            {lead
+              ? (
+                <button
+                  type="button"
+                  onClick={() => go('leads', { leadId: lead.id })}
+                  className="tx font-semibold text-primary hover:underline"
+                >
+                  {lead.name}
+                </button>
+              )
+              : <span>kein Interessent</span>}
+            <span>
+              {[
+                portal?.name,
+                `${quote.id} · ${m.count} Position${m.count === 1 ? '' : 'en'}${m.litres > 0 ? ` · ${num(m.litres)} l` : ''}`,
+                quote.validUntil ? `gültig bis ${dateDE(quote.validUntil)}` : null,
+              ].filter(Boolean).join(' · ')}
+            </span>
+          </span>
+        }
         action={
           <div className="flex flex-wrap items-center gap-2">
             {/*
