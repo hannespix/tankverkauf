@@ -590,8 +590,12 @@ function QuoteModal({ open, onClose, tanks }: { open: boolean; onClose: () => vo
         <div className="rounded-xl bg-surface-2 p-3 text-[13px]">
           <div className="font-bold">{tanks.length} Positionen{t.litres > 0 && ` · ${num(t.litres)} l`}</div>
           <ul className="mt-1.5 space-y-0.5 text-muted">
+            {/* Die Nummer gehört nach vorn: T-17, T-18 und T-19 sind baugleich,
+                und ohne sie standen hier drei zeichengleiche Zeilen. */}
             {tanks.map((x) => (
-              <li key={x.id}>{itemLabel(x)} · VB {eur(x.vb)} · Limit {eur(x.floor)}</li>
+              <li key={x.id}>
+                <span className="tnum font-semibold">{x.id}</span> {itemLabel(x)} · VB {eur(x.vb)} · Limit {eur(x.floor)}
+              </li>
             ))}
           </ul>
         </div>

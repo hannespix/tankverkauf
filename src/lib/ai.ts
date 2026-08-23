@@ -1,5 +1,5 @@
-import type { DB } from '../types'
-import { isOpen } from './stats'
+import type { DB, Quote, Tank } from '../types'
+import { isOpen, linePrice } from './stats'
 import { dims as fmtDims } from './format'
 
 /**
@@ -709,9 +709,21 @@ export async function draftReply(
   tankIds: string[],
   apiKey: string,
   model: string,
+  quote?: Quote | null,
 ): Promise<string> {
   const s = db.settings
   const picked = db.tanks.filter((t) => tankIds.includes(t.id))
+  /*
+   * Der Entwurf muss dieselben Preise nennen wie das Angebot.
+   *
+   * Bisher bekam er stur die Bestands-VB. Lag dem Käufer schriftlich ein
+   * ausgehandelter Zeilenpreis vor, zitierte ihm die Antwort im selben
+   * Schriftwechsel den alten Preis zurück — ein Widerspruch, den ausgerechnet
+   * die Regel „Nenne nur Preise, die unten stehen" erzwang.
+   *
+   * Ohne Angebot bleibt es bei der VB: dann gibt es nichts Ausgehandeltes.
+   */
+  const preisVon = (t: Tank) => (quote ? linePrice(quote, t) : t.vb)
 
   /*
    * Der Entwurf bekommt die MASSE und die Ausstattung.
@@ -725,7 +737,8 @@ export async function draftReply(
     const size = fmtDims(t.dims)
     const tags = t.tags.length ? ` · ${t.tags.join(', ')}` : ''
     return `- ${t.id}: ${t.maker === 'Sonstige' ? t.type : `${t.maker} ${t.type}`}`
-      + `${t.litres > 0 ? `, ${t.litres} l` : ''}: ${t.vb} EUR VB${size ? `, ${size}` : ''}${tags}`
+      + `${t.litres > 0 ? `, ${t.litres} l` : ''}: ${preisVon(t)} EUR${quote && preisVon(t) !== t.vb ? '' : ' VB'}`
+      + `${size ? `, ${size}` : ''}${tags}`
   }
   // Was sich aus mehreren Positionen ausrechnen lässt und der Käufer sonst selbst
   // addieren müsste: die Wandlänge nebeneinander und die einheitliche Tiefe.
@@ -771,6 +784,11 @@ export async function draftReply(
       ? picked.map(zeile)
       : db.tanks.filter((t) => t.status === 'verfuegbar').map(zeile)),
     ...(zusammen.length ? ['', 'AUSGERECHNET:', ...zusammen.map((z) => `- ${z}`)] : []),
+    // Der Gesamtpreis ist die Zahl, um die verhandelt wird — ohne sie
+    // beantwortet der Entwurf jede Frage nach dem Paketpreis mit Schweigen.
+    ...(quote && picked.length > 1
+      ? ['', `UNSER ANGEBOTSPREIS FÜR ALLE ${picked.length} ZUSAMMEN: ${quote.askPrice} EUR`]
+      : []),
     '',
     'ANFRAGE:',
     message,

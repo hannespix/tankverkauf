@@ -99,6 +99,28 @@ export function progress(db: DB) {
   }
 }
 
+/**
+ * The price of one position inside one quote.
+ *
+ * THE single place that resolves it. A negotiated price lives on the quote; an
+ * untouched position keeps the stock VB. Every reader — the card, the sum, the
+ * offer mail, the AI reply draft — goes through here, because a second copy of
+ * this rule is a second chance to show the buyer a different number than the
+ * one we booked.
+ *
+ * Guards against a stored `null`, a string from a hand-edited db.json and NaN:
+ * all of them would poison a sum silently.
+ */
+export function linePrice(quote: Pick<Quote, 'prices'>, tank: Tank): number {
+  const set = quote.prices?.[tank.id]
+  return typeof set === 'number' && Number.isFinite(set) && set >= 0 ? set : tank.vb
+}
+
+/** Sum of the line prices — what the positions cost when bought one by one. */
+export function lineSum(quote: Pick<Quote, 'prices'>, tanks: Tank[]): number {
+  return tanks.reduce((a, t) => a + linePrice(quote, t), 0)
+}
+
 /** Everything a quote is worth, measured against the tanks it bundles. */
 export interface QuoteMetrics extends Totals {
   askPrice: number
@@ -110,13 +132,29 @@ export interface QuoteMetrics extends Totals {
   verdict: OfferVerdict
   /** The number to judge: the buyer's offer if there is one, otherwise our ask. */
   decisive: number
+  /**
+   * Sum of the negotiated line prices. Equals `vb` while no line was touched,
+   * which is why nothing that only reads `vb` broke when this arrived.
+   */
+  lines: number
+  /** What the bundle price takes off the line sum. Negative means a surcharge. */
+  bundleOff: number
+  /** Positions priced below their own floor — each one by name. */
+  underFloor: string[]
 }
 
-export function quoteMetrics(db: DB, tankIds: string[], askPrice: number, buyerOffer: number | null): QuoteMetrics {
+export function quoteMetrics(
+  db: DB,
+  tankIds: string[],
+  askPrice: number,
+  buyerOffer: number | null,
+  prices?: Quote['prices'],
+): QuoteMetrics {
   const tanks = tankIds.map((id) => db.tanks.find((t) => t.id === id)).filter((t): t is Tank => Boolean(t))
   const base = totals(tanks)
   const decisive = buyerOffer ?? askPrice
   const discount = base.vb - askPrice
+  const lines = lineSum({ prices }, tanks)
   return {
     ...base,
     askPrice,
@@ -125,6 +163,9 @@ export function quoteMetrics(db: DB, tankIds: string[], askPrice: number, buyerO
     discountPct: base.vb ? discount / base.vb : 0,
     decisive,
     verdict: judgeBundle(base, decisive),
+    lines,
+    bundleOff: lines - askPrice,
+    underFloor: tanks.filter((t) => linePrice({ prices }, t) < t.floor).map((t) => t.id),
   }
 }
 

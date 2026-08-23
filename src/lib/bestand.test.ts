@@ -24,9 +24,9 @@ const mem = new Map<string, string>()
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { store } from './store'
-import { applyProposal, detachTanks, noteOnLead, removeLead, saveReply, setQuoteTanks } from './actions'
+import { applyProposal, detachTanks, noteOnLead, removeLead, saveReply, setQuoteLinePrice, setQuoteTanks } from './actions'
 import { quoteMail } from './mail'
-import { openQuotesOf, quoteRelation } from './stats'
+import { openQuotesOf, quoteMetrics, quoteRelation } from './stats'
 import type { DB, Deal, Lead, Quote, Tank } from '../types'
 
 const at = (n: number) => `2026-0${n}-01T00:00:00.000Z`
@@ -241,4 +241,126 @@ test('B12 · die Angebots-E-Mail nennt nichts Internes', () => {
   // Ohne das Leerzeichen im Muster: eur() setzt ein geschütztes (U+00A0).
   assert.match(alles, /1\.200/)
   assert.match(alles, /T-1/)
+})
+
+/*
+ * B13 bis B19 — Einzelpreise je Position im Angebot.
+ *
+ * Ein Angebot forderte bisher eine einzige Zahl für alles. Wer bei einer von
+ * sechs Positionen nachließ, konnte nur die Gesamtsumme drücken; welche Position
+ * den Nachlass trug, wusste danach niemand mehr.
+ *
+ * Die Fälle hier nageln die zwei Regeln fest, an denen still Geld hängt: was
+ * eine unangetastete Zeile kostet, und wann der geforderte Gesamtpreis
+ * mitrechnet und wann nicht.
+ */
+
+test('B13 · eine unangetastete Zeile kostet die VB aus dem Bestand', () => {
+  setDb({
+    tanks: [tank('T-1', { vb: 650 }), tank('T-2', { vb: 750 })],
+    quotes: [quote('Q-1', { tankIds: ['T-1', 'T-2'], askPrice: 1400 })],
+  })
+  const m = quoteMetrics(db(), ['T-1', 'T-2'], 1400, null, db().quotes[0]!.prices)
+  assert.equal(m.lines, 1400, 'ohne gesetzte Preise ist die Zeilensumme die Summe der VB')
+  assert.equal(m.lines, m.vb, 'und deckt sich mit dem, was vorher schon gerechnet wurde')
+})
+
+test('B14 · ein gesetzter Preis schlägt die VB, der Rest bleibt', () => {
+  setDb({
+    tanks: [tank('T-1', { vb: 650 }), tank('T-2', { vb: 750 })],
+    quotes: [quote('Q-1', { tankIds: ['T-1', 'T-2'], askPrice: 1400 })],
+  })
+  setQuoteLinePrice('Q-1', 'T-1', 500)
+  const q = db().quotes[0]!
+  assert.deepEqual(q.prices, { 'T-1': 500 }, 'nur die angefasste Zeile wird gespeichert')
+  const m = quoteMetrics(db(), q.tankIds, q.askPrice, null, q.prices)
+  assert.equal(m.lines, 1250)
+  assert.equal(m.vb, 1400, 'die Bestands-VB bleibt davon unberührt')
+})
+
+test('B15 · zurück auf die VB löscht den Eintrag, statt ihn festzufrieren', () => {
+  // Bliebe 650 als Zahl stehen, liefe die Zeile bei der nächsten Preisrunde
+  // still neben dem Bestand her.
+  setDb({
+    tanks: [tank('T-1', { vb: 650 })],
+    quotes: [quote('Q-1', { tankIds: ['T-1'], askPrice: 650 })],
+  })
+  setQuoteLinePrice('Q-1', 'T-1', 500)
+  setQuoteLinePrice('Q-1', 'T-1', 650)
+  assert.equal(db().quotes[0]!.prices, undefined, 'die leere Karte verschwindet ganz')
+})
+
+test('B16 · der geforderte Preis rechnet mit, solange er die Zeilensumme war', () => {
+  setDb({
+    tanks: [tank('T-1', { vb: 650 }), tank('T-2', { vb: 750 })],
+    quotes: [quote('Q-1', { tankIds: ['T-1', 'T-2'], askPrice: 1400 })],
+  })
+  setQuoteLinePrice('Q-1', 'T-1', 500)
+  assert.equal(db().quotes[0]!.askPrice, 1250, 'die Summe zieht nach')
+})
+
+test('B17 · ein von Hand gesetzter Gesamtpreis bleibt stehen', () => {
+  // Das ist der Paketnachlass. Er darf nicht verschwinden, nur weil jemand
+  // danach noch eine Zeile bewegt.
+  setDb({
+    tanks: [tank('T-1', { vb: 650 }), tank('T-2', { vb: 750 })],
+    quotes: [quote('Q-1', { tankIds: ['T-1', 'T-2'], askPrice: 1200 })],
+  })
+  setQuoteLinePrice('Q-1', 'T-1', 500)
+  const q = db().quotes[0]!
+  assert.equal(q.askPrice, 1200, 'der Paketpreis gehört dem Verkäufer')
+  assert.equal(quoteMetrics(db(), q.tankIds, q.askPrice, null, q.prices).bundleOff, 50)
+})
+
+test('B18 · eine entfernte Position nimmt ihren Preis mit', () => {
+  // Bliebe der Eintrag liegen, tauchte er beim Wiederhinzufügen still wieder
+  // auf — ein Preis, den in dieser Runde niemand gesetzt hat.
+  setDb({
+    tanks: [tank('T-1', { vb: 650 }), tank('T-2', { vb: 750 })],
+    quotes: [quote('Q-1', { tankIds: ['T-1', 'T-2'], askPrice: 1400 })],
+  })
+  setQuoteLinePrice('Q-1', 'T-2', 700)
+  setQuoteTanks('Q-1', ['T-1'])
+  assert.equal(db().quotes[0]!.prices?.['T-2'], undefined)
+  setQuoteTanks('Q-1', ['T-1', 'T-2'])
+  const q = db().quotes[0]!
+  assert.equal(quoteMetrics(db(), q.tankIds, q.askPrice, null, q.prices).lines, 1400, 'T-2 steht wieder auf seiner VB')
+})
+
+test('B19 · unter der eigenen Untergrenze wird je Position gemeldet', () => {
+  // Genau das Loch, das Einzelpreise aufreißen: die geforderten 1.400 liegen
+  // weit über der Summe der Untergrenzen (468 + 540 = 1.008), das Angebot ist
+  // also unauffällig — während T-1 mit 400 unter seinen eigenen 468 verschenkt
+  // wird. Die Gesamtwarnung kann das nicht sehen, sie kennt nur eine Summe.
+  setDb({
+    tanks: [tank('T-1', { vb: 650, target: 559, floor: 468 }), tank('T-2', { vb: 750, target: 645, floor: 540 })],
+    quotes: [quote('Q-1', { tankIds: ['T-1', 'T-2'], askPrice: 1400 })],
+  })
+  setQuoteLinePrice('Q-1', 'T-1', 400)
+  const q = db().quotes[0]!
+  const m = quoteMetrics(db(), q.tankIds, q.askPrice, null, q.prices)
+  assert.deepEqual(m.underFloor, ['T-1'])
+  assert.notEqual(m.verdict, 'unter-limit', 'das Angebot insgesamt ist nicht das Problem')
+})
+
+test('B20 · die Angebots-E-Mail zeigt Einzelpreise nur, wenn welche gesetzt sind', () => {
+  setDb({
+    tanks: [tank('T-1', { litres: 800, vb: 650, floor: 468 }), tank('T-2', { litres: 1000, vb: 750, floor: 540 })],
+    leads: [lead('L-1', { name: 'Weber' })],
+    quotes: [quote('Q-1', { leadId: 'L-1', tankIds: ['T-1', 'T-2'], askPrice: 1200 })],
+  })
+  // Ohne gesetzte Preise bleibt die Mail wie bisher: keine Zahl je Zeile.
+  const ohne = quoteMail(db(), db().quotes[0]!).text
+  assert.ok(!/T-1.*650/.test(ohne), 'kein Preis an der Position, solange nichts verhandelt wurde')
+
+  setQuoteLinePrice('Q-1', 'T-1', 500)
+  const mit = quoteMail(db(), db().quotes[0]!).text
+  assert.match(mit, /T-1.*500/, 'die verhandelte Zeile trägt ihren Preis')
+  assert.match(mit, /T-2.*750/, 'und die übrigen ihren — alles oder nichts')
+  // Der Schlusssatz muss sich auf die Zeilen darüber addieren.
+  assert.match(mit, /1\.250/, 'Summe der Einzelpreise')
+  // Und nichts Internes, auch jetzt nicht.
+  for (const nadel of ['468', '540']) {
+    assert.ok(!mit.includes(nadel), `„${nadel}" darf nicht in der Angebots-E-Mail stehen`)
+  }
 })
