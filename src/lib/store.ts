@@ -60,6 +60,16 @@ export interface StoreSnapshot {
   lastSyncAt: string | null
   conflict: { remote: DB; remoteFile: RemoteFile } | null
   config: RepoConfig
+  /**
+   * Warum der letzte Hintergrund-Lauf der Veröffentlichung scheiterte.
+   *
+   * Er wurde bisher vollständig verschluckt. Die Begründung — der Hinweis
+   * „nicht auf dem Stand" bleibe ohnehin stehen — trägt nicht: der steht nur in
+   * den Einstellungen, in einer Ansicht, die man dafür eigens öffnen muss. Wer
+   * reserviert und danach vergeblich auf der Käuferseite nachsieht, hatte keine
+   * Möglichkeit zu erfahren, dass das Veröffentlichen fehlgeschlagen ist.
+   */
+  publishError: string | null
 }
 
 const CACHE_PREFIX = 'tankverkauf.cache.'
@@ -149,6 +159,7 @@ class TankStore {
       lastSyncAt: null,
       conflict: null,
       config,
+      publishError: null,
     }
     const cached = this.readCache(config)
     if (cached) this.snapshot.db = cached
@@ -492,10 +503,13 @@ class TankStore {
       // Läuft gerade schon einer, später noch einmal versuchen — zwei gleichzeitige
       // Läufe würden sich beim Schreiben derselben Datei in die Quere kommen.
       if (this.publishing) { this.scheduleAutoPublish(); return }
-      // Still scheitern lassen: ein fehlgeschlagener Hintergrundlauf darf keinen
-      // roten Kasten über die Oberfläche legen. Der Hinweis "nicht auf dem Stand"
-      // bleibt ohnehin stehen, und der Knopf von Hand ist einen Klick entfernt.
-      void this.publishCatalog().catch(() => {})
+      // Kein roter Kasten über der Oberfläche — aber auch nicht mehr spurlos.
+      // Der Grund wird gemerkt, damit die Einstellungen ihn nennen können.
+      void this.publishCatalog()
+        .then(() => { this.emit({ publishError: null }) })
+        .catch((e: unknown) => {
+          this.emit({ publishError: e instanceof Error ? e.message : String(e) })
+        })
     }, PUBLISH_DEBOUNCE_MS)
   }
 

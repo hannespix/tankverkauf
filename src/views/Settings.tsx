@@ -12,7 +12,7 @@ import { catalogPageUrl, catalogStamp } from '../lib/catalog'
 import { STYLE_LABEL, type CategoryDef, type DB, type Portal, type PortalStyle } from '../types'
 
 export default function Settings() {
-  const { db, config, mode, login, repoPrivate, lastSyncAt, sync, error } = useStore()
+  const { db, config, mode, login, repoPrivate, lastSyncAt, sync, error, publishError } = useStore()
   const readOnly = mode === 'demo'
   const [cfg, setCfg] = useState(config)
   const [busy, setBusy] = useState<string | null>(null)
@@ -43,7 +43,7 @@ export default function Settings() {
       const url = await store.publishCatalog((done, total) => {
         setNote(total > 0 && done < total ? `Fotos werden übertragen … ${done} von ${total}` : null)
       })
-      setNote(`Liste veröffentlicht. Sie ist unter ${url} erreichbar — je nach GitHub-Zwischenspeicher nach ein bis zwei Minuten.`)
+      setNote(`Liste veröffentlicht. Sie ist unter ${url} erreichbar — nach dem Seitenbau (knapp eine Minute) und je nach GitHub-Zwischenspeicher bis zu zehn Minuten später.`)
     } catch (err) {
       setNote(err instanceof Error ? err.message : 'Veröffentlichen fehlgeschlagen.')
     } finally {
@@ -302,7 +302,7 @@ export default function Settings() {
               {!s.seller.email && <span className="text-[13px] font-semibold text-amber">E-Mail fehlt</span>}
               {s.catalog.owner && (
                 catalogBehind
-                  ? <Pill tone="amber">nicht auf dem Stand</Pill>
+                  ? <Pill tone={publishError ? 'rose' : 'amber'}>nicht auf dem Stand</Pill>
                   : <Pill tone="green">aktuell{s.publishedAt ? ` · ${relativeDE(s.publishedAt)}` : ''}</Pill>
               )}
               <Button variant="primary" disabled={readOnly || publishing || !s.catalog.owner} onClick={() => void publish()}>
@@ -312,6 +312,18 @@ export default function Settings() {
           }
         />
 
+        {/*
+          Ein fehlgeschlagener Hintergrundlauf wurde bisher vollständig
+          verschluckt. Wer reservierte und danach vergeblich auf der Käuferseite
+          nachsah, hatte keine Möglichkeit zu erfahren, warum.
+        */}
+        {publishError && (
+          <p className="mb-3 rounded-xl bg-rose-soft px-3 py-2 text-[13px] text-rose">
+            Das automatische Veröffentlichen ist zuletzt fehlgeschlagen: {publishError} — mit dem Knopf oben von Hand
+            nachholen.
+          </p>
+        )}
+
         <div className="mb-3">
           <Toggle
             checked={s.autoPublish}
@@ -320,7 +332,7 @@ export default function Settings() {
           />
           <p className="mt-1.5 text-[13px] text-muted">
             {s.autoPublish
-              ? 'Ändert sich etwas, das die Käufer sehen, geht die Liste rund zwanzig Sekunden später von selbst raus. Zielpreise, Untergrenzen und Notizen stehen nicht im Katalog und lösen deshalb nichts aus. Sichtbar wird es, sobald die Seite neu gebaut ist — das dauert noch etwa eine Minute.'
+              ? 'Ändert sich etwas, das die Käufer sehen, geht die Liste rund zwanzig Sekunden später von selbst raus. Zielpreise, Untergrenzen und Notizen stehen nicht im Katalog und lösen deshalb nichts aus. Bis der Käufer es sieht, dauert es dann noch: der Seitenbau braucht knapp eine Minute, und GitHub hält die Datei bis zu zehn Minuten zwischengespeichert. Rechne im ungünstigen Fall mit einer Viertelstunde.'
               : 'Aus. Die Liste bleibt auf dem Stand des letzten Veröffentlichens, bis du den Knopf drückst.'}
           </p>
         </div>
