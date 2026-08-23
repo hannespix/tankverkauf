@@ -1,6 +1,9 @@
 import { amountInText, mentionsMaker, type ProposalKind, type RawProposal } from './ai'
+import { type ParsedMessage } from './ads'
 import { eur, itemLabel, num } from './format'
-import { isOpen, totals } from './stats'
+import { buildCatalog } from './catalog'
+import { priceSelection } from './bundles'
+import { isOpen } from './stats'
 import type { DB, Lead, Tank } from '../types'
 
 /**
@@ -252,7 +255,9 @@ export function checkProposals(raw: RawProposal[], text: string, db: DB): { prop
           // nach einer festen Regel — sichtbar, nicht als Modellentscheidung.
           const what = String(p.what ?? '').trim() || (hinted[0] ? itemLabel(hinted[0]) : 'Positionen')
           const from = (hinted.length ? hinted : open).map((t) => t.id)
-          const count = Math.max(1, Math.min(p.count ?? ambiguous.length, from.length))
+          // Nennt das Modell keine Anzahl, ist es EINE. Vorher stand hier
+          // `ambiguous.length` — aus „Fässer" wären damit alle 31 geworden.
+          const count = Math.max(1, Math.min(p.count && p.count > 0 ? p.count : 1, from.length))
           if (from.length === 0) {
             dropped.push('Positionen: keine davon ist noch frei')
             continue
@@ -260,7 +265,9 @@ export function checkProposals(raw: RawProposal[], text: string, db: DB): { prop
           base.pick = { count, what, from }
           base.tankIds = []
           base.title = `${count} × ${what} anhängen`
-          base.effect = `Aus ${from.length} gleichen Positionen werden die ${count} niedrigsten freien genommen. Sie stehen danach auf „im Kontakt“ und sind für andere Käufer weg.`
+          base.effect = from.length === 1
+            ? 'Die Position steht danach auf „im Kontakt“ und ist für andere Käufer weg.'
+            : `Aus ${from.length} gleichen Positionen ${count === 1 ? 'wird die niedrigste freie' : `werden die ${count} niedrigsten freien`} genommen. Sie ${count === 1 ? 'steht' : 'stehen'} danach auf „im Kontakt“ und ${count === 1 ? 'ist' : 'sind'} für andere Käufer weg.`
           base.proven = false
           base.warning = 'Die Nachricht nennt keine bestimmte Nummer — bitte nachsehen, ob die Anzahl stimmt.'
         } else if (good.length === 0) {
@@ -287,6 +294,12 @@ export function checkProposals(raw: RawProposal[], text: string, db: DB): { prop
         base.amount = amount
         base.title = `Gebot ${eur(amount)} eintragen`
         base.effect = 'Wird beim Angebot vermerkt. Ändert nichts am Bestand.'
+        // Ein Gebot unter der eigenen Untergrenze muss dastehen, BEVOR jemand
+        // zusagt. Vorher wurde es kommentarlos eingetragen.
+        const floor = floorFor(db, base.leadId)
+        if (floor > 0 && amount < floor) {
+          base.warning = `${eur(amount)} liegt unter der Untergrenze von ${eur(floor)} für die betroffenen Positionen.`
+        }
         break
       }
 
@@ -358,9 +371,61 @@ function publicEffect(db: DB, tanks: Tank[]): string {
   return parts.join(' ')
 }
 
-/** Der Preis, den wir für eine Auswahl fordern — aus dem Bestand, nicht aus der Nachricht. */
+/**
+ * Der Preis, den wir für eine Auswahl fordern — aus dem Bestand, nicht aus der
+ * Nachricht.
+ *
+ * Gerechnet wird nach derselben Regel wie auf der Käuferseite: geschnürte Pakete
+ * und Mengenstaffel, das für den Käufer Günstigere gewinnt. Vorher war es stur
+ * die Summe der Einzelpreise — für die 31 Dekofässer 5.575 € statt der
+ * ausgeschriebenen 4.200 €. Ein Angebot, das mehr fordert als die eigene
+ * Käuferliste ausschreibt, verliert das Geschäft in dem Moment, in dem der Käufer
+ * beides nebeneinander legt.
+ */
 export function askFor(db: DB, tankIds: string[]): number {
-  return totals(db.tanks.filter((t) => tankIds.includes(t.id))).vb
+  const chosen = db.tanks.filter((t) => tankIds.includes(t.id))
+  if (chosen.length === 0) return 0
+  const cat = buildCatalog(db)
+  const priced = chosen.map((t) => ({ id: t.id, category: t.category, vb: t.vb }))
+  const stock = new Map(cat.items.map((i) => [i.id, { id: i.id, category: i.category, vb: i.vb }]))
+  const label = (id: string) => db.settings.categories.find((c) => c.id === id)?.label ?? id
+  return priceSelection(priced, cat.bundles, cat.tiers, label, stock).price
+}
+
+/**
+ * „F-01, F-02, … F-31“ zu „F-01–F-31“.
+ *
+ * Eine Erfolgsmeldung über 31 Positionen war eine Textwand, in der man den
+ * eigentlichen Satz nicht mehr fand.
+ */
+export function collapseIds(ids: string[]): string {
+  const parts = ids
+    .map((id) => id.match(/^([A-Z]+)-(\d+)$/))
+    .filter((m): m is RegExpMatchArray => !!m)
+    .map((m) => ({ pre: m[1], n: Number(m[2]), width: m[2].length, id: m[0] }))
+    .sort((a, b) => (a.pre === b.pre ? a.n - b.n : a.pre.localeCompare(b.pre)))
+  if (parts.length !== ids.length) return ids.join(', ')
+
+  const out: string[] = []
+  let i = 0
+  while (i < parts.length) {
+    let j = i
+    while (j + 1 < parts.length && parts[j + 1].pre === parts[i].pre && parts[j + 1].n === parts[j].n + 1) j += 1
+    out.push(j - i >= 2 ? `${parts[i].id}–${parts[j].id}` : parts.slice(i, j + 1).map((p) => p.id).join(', '))
+    i = j + 1
+  }
+  return out.join(', ')
+}
+
+/**
+ * Die Summe der Untergrenzen dessen, worüber gerade verhandelt wird — das
+ * offene Angebot des Interessenten, sonst die ihm zugeordneten Positionen.
+ */
+function floorFor(db: DB, leadId: string | null): number {
+  if (!leadId) return 0
+  const quote = db.quotes.find((q) => q.leadId === leadId && q.status !== 'abgelehnt')
+  const ids = quote?.tankIds ?? db.leads.find((l) => l.id === leadId)?.tankIds ?? []
+  return db.tanks.filter((t) => ids.includes(t.id)).reduce((a, t) => a + t.floor, 0)
 }
 
 /** Aus „4 × Barriquefass“ werden die vier niedrigsten freien Nummern. */
@@ -386,4 +451,153 @@ export const MAX_PER_LEAD = 10
 
 export function trimMessage(text: string): string {
   return text.length <= MAX_MESSAGE ? text : `${text.slice(0, MAX_MESSAGE)}\n… (gekürzt, ${num(text.length)} Zeichen)`
+}
+
+// ------------------------------------------------------------------- Vorgang
+
+/**
+ * Was aus einer Nachricht in einem Zug folgen darf — und was nicht.
+ *
+ * Die Schritte sind unterschiedlich teuer. Interessent anlegen, Positionen
+ * anhängen, Angebot entwerfen und ein Gebot vermerken sind billig, unsichtbar
+ * für Käufer und rücknehmbar; für die einzeln zu klicken gibt es keinen Grund.
+ * Reservieren und Verkauf buchen sind binnen einer Minute öffentlich und bleiben
+ * deshalb außen vor — sie bekommen einen eigenen, bewussten Griff.
+ */
+const CHEAP: ProposalKind[] = ['lead.neu', 'lead.notiz', 'lead.phase', 'positionen', 'angebot', 'gebot']
+const ORDER: ProposalKind[] = ['lead.neu', 'lead.notiz', 'positionen', 'angebot', 'gebot', 'lead.phase']
+
+export interface Plan {
+  /** In der Reihenfolge, in der sie laufen müssen. */
+  steps: Proposal[]
+  /** Öffentlich wirksam — nie im Zug, immer einzeln. */
+  risky: Proposal[]
+  /** Was in der Nachricht steht, aber (noch) nirgends hin kann. */
+  notes: string[]
+  /** Eine Zeile für den Knopf. */
+  summary: string
+}
+
+/**
+ * Aus geprüften Vorschlägen und der schlüssellosen Extraktion einen Zug bauen.
+ *
+ * Die Extraktion füllt nur Lücken: was die KI schon belegt hat, wird nicht
+ * verdoppelt. Ohne API-Schlüssel trägt sie den Zug allein — dann steht der
+ * Vorgang eben auf dem, was wörtlich in der Nachricht steht.
+ */
+export function buildPlan(proposals: Proposal[], parsed: ParsedMessage, db: DB, text: string): Plan {
+  const steps = proposals.filter((p) => CHEAP.includes(p.kind))
+  const risky = proposals.filter((p) => !CHEAP.includes(p.kind))
+  const has = (k: ProposalKind) => steps.some((p) => p.kind === k)
+
+  const known = findLead(db, parsed.email, parsed.phone)
+  // Interessent: nur ergänzen, wenn die KI keinen genannt hat und wirklich ein
+  // Kontaktweg dasteht. Ein Name allein legt niemanden an — "Sehr geehrte Damen"
+  // wäre sonst eine Person.
+  if (!has('lead.neu') && !has('lead.notiz') && (parsed.email || parsed.phone)) {
+    steps.push(known
+      ? mk('lead.notiz', `Nachricht bei ${known.name} vermerken`, 'Der Wortlaut wird angehängt, letzter Kontakt auf heute.', { leadId: known.id })
+      : mk('lead.neu', `Interessent anlegen: ${parsed.name || parsed.email || parsed.phone}`,
+          'Legt nur die Person an. Positionen kommen im nächsten Schritt.',
+          { name: parsed.name, email: parsed.email, phone: parsed.phone }))
+  }
+
+  const notes: string[] = []
+
+  // Positionen. Wörtlich genannte Nummern kommen vollständig in den Zug.
+  if (!has('positionen') && parsed.exact && parsed.matchedTankIds.length > 0) {
+    const free = parsed.matchedTankIds.filter((id) => db.tanks.some((t) => t.id === id && isOpen(t)))
+    if (free.length > 0) {
+      steps.push(mk('positionen', `${free.length === 1 ? itemLabel(db.tanks.find((t) => t.id === free[0])!) : `${free.length} Positionen`} anhängen`,
+        'Sie stehen danach auf „im Kontakt“ und sind für andere Käufer weg.', { tankIds: free }))
+    }
+  } else if (!has('positionen') && !parsed.exact && !parsed.broadMatch && parsed.matchedTankIds.length > 0) {
+    // Ohne Nummer nur dann, wenn die Treffer untereinander austauschbar sind:
+    // drei Koffertanks mit 1.650 l zu 1.050 € sind für den Käufer dasselbe Ding,
+    // und ihn nach einer Seriennummer zu fragen, die er nicht kennt, hilft
+    // niemandem. Angehängt wird EINER — er hat nach einem gefragt.
+    const cand = parsed.matchedTankIds
+      .map((id) => db.tanks.find((t) => t.id === id))
+      .filter((t): t is Tank => !!t && isOpen(t) && !t.leadId)
+    const same = cand.length > 0 && cand.every((t) => t.maker === cand[0].maker && t.type === cand[0].type && t.litres === cand[0].litres && t.vb === cand[0].vb)
+    if (same) {
+      // „die beiden Rundtanks“ meint zwei. Ohne diesen Hinweis stünde einer da
+      // und der Verkäufer müsste den zweiten von Hand nachtragen — für eine
+      // Angabe, die wörtlich in der Nachricht steht.
+      const want = Math.min(countCue(text) ?? 1, cand.length)
+      const take = [...cand].sort((a, b) => a.id.localeCompare(b.id)).slice(0, want)
+      steps.push(mk('positionen', take.length === 1 ? `${itemLabel(take[0])} anhängen` : `${take.length} × ${itemLabel(take[0])} anhängen`,
+        cand.length > take.length
+          ? `${cand.length} davon sind frei und untereinander gleich — angehängt ${take.length === 1 ? 'wird' : 'werden'} ${collapseIds(take.map((t) => t.id))}.`
+          : `${take.length === 1 ? 'Sie steht' : 'Sie stehen'} danach auf „im Kontakt“ und ${take.length === 1 ? 'ist' : 'sind'} für andere Käufer weg.`,
+        { tankIds: take.map((t) => t.id) }))
+    } else if (cand.length > 0) {
+      notes.push(`Die Nachricht passt auf ${cand.length} verschiedene Positionen (${collapseIds(cand.map((t) => t.id))}) — welche gemeint ist, steht nicht drin.`)
+    }
+  }
+
+  // Angebot: sobald Positionen im Spiel sind. Genau das, was der Verkäufer sonst
+  // von Hand in der Bestandsliste zusammenklickt.
+  const withPositions = steps.some((p) => p.kind === 'positionen') || (known?.tankIds.length ?? 0) > 0
+  if (!has('angebot') && withPositions) {
+    steps.push(mk('angebot', 'Angebot als Entwurf anlegen', 'Der geforderte Preis wird nach der Katalogregel gerechnet — mit Paketen und Staffel.', {}))
+  }
+
+  // Gebot: nur ein Betrag, der wirklich vom Käufer kommt. Unser eigener
+  // Paketpreis reist in derselben Nachricht mit und wäre das teuerste Missverständnis.
+  //
+  // Und nur, wenn es am Ende auch irgendwo hängen kann. Ein Gebot ohne Angebot
+  // schreibt nichts — es als Schritt zu versprechen wäre genau die Lüge, die
+  // dieser Umbau abstellt.
+  const willHaveQuote = steps.some((p) => p.kind === 'angebot') || db.quotes.some((q) => q.leadId === known?.id && q.status !== 'abgelehnt')
+  if (!has('gebot') && parsed.offer != null && parsed.offer !== parsed.packagePrice) {
+    if (willHaveQuote) {
+      steps.push(mk('gebot', `Gebot ${eur(parsed.offer)} eintragen`, 'Wird beim Angebot vermerkt. Ändert nichts am Bestand.', { amount: parsed.offer }))
+    } else {
+      notes.push(`${eur(parsed.offer)} steht als Gebot in der Nachricht — es braucht erst ein Angebot, an dem es hängen kann.`)
+    }
+  }
+
+  steps.sort((a, b) => ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind))
+
+  // Ohne Interessenten hängt nichts irgendwo. Positionen, Angebot und Gebot
+  // schrieben dann nichts — als Schritt versprochen wären sie wieder die
+  // Vollzugsmeldung ohne Vollzug. Eine Portalmail ohne Kontaktweg ist genau
+  // dieser Fall: der Name steht da, aber die Adresse gehört dem Roboter.
+  const willHaveLead = steps.some((p) => p.kind === 'lead.neu' || p.kind === 'lead.notiz') || !!known
+  if (!willHaveLead) {
+    const need = steps.filter((p) => p.kind !== 'lead.phase')
+    if (need.length > 0) {
+      notes.push(`${need.map((p) => p.title).join(', ')} — dafür fehlt der Interessent. In der Nachricht steht weder E-Mail noch Telefonnummer${parsed.name ? `, nur der Name „${parsed.name}“` : ''}.`)
+    }
+    return { steps: [], risky, notes, summary: '' }
+  }
+
+  return { steps, risky, notes, summary: steps.map((p) => p.title).join(' · ') }
+}
+
+/**
+ * Wie viele Stück die Nachricht meint, wenn keine Nummer dasteht.
+ *
+ * Nur ausgeschriebene Mengenwörter — eine Ziffer im Text ist zu oft eine
+ * Literzahl oder ein Preis. „die beiden“ und „alle“ sind dagegen eindeutig.
+ */
+export function countCue(text: string): number | null {
+  const t = text.toLowerCase()
+  if (/\b(alle|sämtliche|saemtliche|den ganzen posten|komplett)\b/.test(t)) return Infinity
+  const words: [RegExp, number][] = [
+    [/\bbeide[nr]?\b/, 2], [/\bzwei\b/, 2], [/\bdrei\b/, 3], [/\bvier\b/, 4],
+    [/\bfünf\b|\bfuenf\b/, 5], [/\bsechs\b/, 6], [/\bsieben\b/, 7], [/\bacht\b/, 8],
+    [/\bneun\b/, 9], [/\bzehn\b/, 10],
+  ]
+  for (const [re, n] of words) if (re.test(t)) return n
+  return null
+}
+
+function mk(kind: ProposalKind, title: string, effect: string, rest: Partial<Proposal>): Proposal {
+  return {
+    id: newId(), kind, title, effect, quote: '', proven: true, publishes: false,
+    leadId: null, name: '', email: '', phone: '', stage: null, amount: null,
+    tankIds: [], pick: null, warning: null, ...rest,
+  }
 }

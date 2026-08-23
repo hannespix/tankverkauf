@@ -601,6 +601,19 @@ export interface ParsedMessage {
   broadMatch: boolean
 }
 
+/** Umlaute und Zeichensetzung weg, damit "Phönix" und "Phoenix" dasselbe sind. */
+function fold(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
+    .replace(/[^a-z0-9]+/g, ' ')
+}
+
+/** Die eigenständigen Wörter einer Bezeichnung — kurze taugen nicht zum Suchen. */
+function typeWords(type: string): string[] {
+  return fold(type).split(' ').filter((w) => w.length >= 8)
+}
+
 /** Marker the catalogue puts at the end of an enquiry so nothing has to be guessed. */
 export const REQUEST_MARK = 'Positionen:'
 export const OFFER_MARK = 'Angebot:'
@@ -674,7 +687,14 @@ export function parseMessage(text: string, db: DB): ParsedMessage {
   const listed = text.match(mark(REQUEST_MARK, `([A-Z]-\\d+(?:\\s*[-–—]\\s*[A-Z]-\\d+)?(?:\\s*,\\s*[A-Z]-\\d+(?:\\s*[-–—]\\s*[A-Z]-\\d+)?)*)`))
   // Even an exactly stated number must not attach something already sold — the
   // catalogue never offers those, so a range simply reaches past them.
-  const exactIds = (listed ? expandRanges(listed[1], known) : [])
+  const marked = (listed ? expandRanges(listed[1], known) : [])
+  // Positionsnummern stehen nicht nur hinter der Marke. "Ich nehme T-23 und T-24"
+  // wurde bisher gar nicht gelesen — dabei ist eine ausgeschriebene Nummer der
+  // eindeutigste Beleg, den es gibt.
+  const inProse = [...body.matchAll(/\b([A-Z])-(\d{1,3})\b/g)]
+    .map((m) => `${m[1]}-${m[2].padStart(2, '0')}`)
+    .filter((id) => known.has(id))
+  const exactIds = [...new Set([...marked, ...inProse])]
     .filter((id) => db.tanks.some((t) => t.id === id && isOpen(t)))
 
   const offerLine = text.match(mark(OFFER_MARK, `([\\d.]+)`))
@@ -693,18 +713,38 @@ export function parseMessage(text: string, db: DB): ParsedMessage {
     .filter((l) => !/^\s*[·•]/.test(l))
     .join('\n')
 
-  // With the structured block present the price is stated or it is not stated.
-  // Guessing one from the prose can only go wrong there.
-  const prosePrice = exactIds.length
-    ? null
-    : buyerWrote.match(/(\d{1,3}(?:[.\s]\d{3})+|\d{2,6})\s*(?:€|EUR\b|Euro\b)/i)
+  // Was ein Gebot ist, entscheidet das Wort davor, nicht das Währungszeichen.
+  // "Ich biete 3.600 für die 31 Fässer" hat keins und war deshalb unsichtbar;
+  // "die beiden Rundtanks 3700" hat auch keins und darf trotzdem kein Gebot sein.
+  // Genommen wird der LETZTE Treffer: "4.200 sind mir zu viel, ich biete 3.600"
+  // nannte sonst unseren eigenen Preis als sein Gebot.
+  // `(?!\d)` ist nicht schmückend: ohne es liest die Alternative aus "3700 l"
+  // die Zahl 370, hinter der dann "0 l" steht — und die Einheitensperre greift
+  // nicht mehr. Aus einer Literangabe wäre ein Gebot über 370 € geworden.
+  const BID = /(?:biete|zahle|bezahle|gebe|geben|nehme|kaufe|angebot|gebot|für)\b[^\d\n]{0,25}(\d{1,3}(?:[.\s]\d{3})+|\d{2,6})(?!\d)(?!\s*(?:l\b|ltr|liter|cm|mm|kg|st(?:ü|ue)ck))/gi
+  const bids = [...buyerWrote.matchAll(BID)].map((m) => Number(m[1].replace(/[.\s]/g, '')))
+  const plausible = bids.filter((n) => n >= 50 && n <= 500000)
   const offer = offerLine
     ? Number(offerLine[1].replace(/\./g, '')) || null
-    : prosePrice
-      ? Number(prosePrice[1].replace(/[.\s]/g, '')) || null
+    : plausible.length
+      ? plausible[plausible.length - 1]
       : null
 
-  const guessed = db.tanks.filter((t) => all.includes(t.litres) && isOpen(t)).map((t) => t.id)
+  const byLitres = db.tanks.filter((t) => all.includes(t.litres) && isOpen(t))
+  // Nicht jede Ware hat ein Volumen. "Die Impellerpumpe nehme ich" fand bisher
+  // nichts, weil ausschließlich über Literzahlen gesucht wurde.
+  //
+  // Gesucht wird über einzelne Wörter der Bezeichnung, nicht über die ganze:
+  // im Bestand heißt sie "Impellerpumpe Phönix 12000", in der Nachricht steht
+  // nur "Impellerpumpe". Kurze Wörter fallen weg — "Tank" träfe alles.
+  //
+  // Und nur, wenn keine Literzahl dasteht: "die beiden Rundtanks 3700 l" meint
+  // die 3.700er, nicht jeden Rundtank im Keller.
+  const named = byLitres.length > 0 ? [] : db.tanks.filter((t) => {
+    if (!isOpen(t)) return false
+    return typeWords(t.type).some((w) => fold(body).includes(w))
+  })
+  const guessed = [...new Set([...byLitres, ...named].map((t) => t.id))]
   const matchedTankIds = exactIds.length ? exactIds : guessed
   // "225 l Fässer" matches every one of the 29 barrels. Attaching them all locks
   // the whole lot to one enquirer, so the form has to ask before that happens.
