@@ -66,22 +66,44 @@ interface Group {
   tags: string[]
   /** Same shape and volume means the same measurements — carry them along. */
   dims: Tank['dims']
+  /** Schon jemandem zugesagt — steht als eigene Zeile, nicht als lieferbar. */
+  reserved: boolean
 }
 
 function group(tanks: Tank[]): Group[] {
   const map = new Map<string, Group>()
   for (const t of tanks) {
-    const key = `${t.maker}|${t.type}|${t.litres}|${t.vb}`
+    /*
+     * Der Zustand gehört in den Schlüssel.
+     *
+     * Ohne ihn lagen reservierte und freie Stücke in DERSELBEN Gruppe: bei drei
+     * baugleichen Tanks, von denen zwei zugesagt waren, stand dauerhaft
+     * „3× Raumspar-Koffertank – je 1.050 €". Der Käufer fuhr für drei an und
+     * bekam einen. Die Käuferliste trennt sie längst so (`lotKey` in
+     * katalog.tsx); nur der Anzeigentext kannte den Unterschied nicht.
+     *
+     * Nebenwirkung, die wir wollen: eine Reservierung verändert damit den Text
+     * und über ihn den Fingerabdruck — die Anzeige meldet sich endlich.
+     */
+    const reserved = t.status === 'reserviert'
+    const key = `${t.maker}|${t.type}|${t.litres}|${t.vb}|${reserved ? 'r' : 'f'}`
     const hit = map.get(key)
     if (hit) {
       hit.count += 1
       // Only keep features that every item in the group actually has.
       hit.tags = hit.tags.filter((tag) => t.tags.includes(tag))
+      // Die Maße kamen vom ERSTEN Stück und wurden nie nachgeprüft. Verkauften
+      // sich die ersten beiden einer Dreiergruppe, trug die Zeile plötzlich die
+      // Maße des dritten — für die vorher beworbenen galten sie nie. Weichen
+      // sie ab, nennen wir lieber keine.
+      if (fmtDims(hit.dims) !== fmtDims(t.dims)) hit.dims = null
     } else {
-      map.set(key, { maker: t.maker, type: t.type, litres: t.litres, count: 1, vb: t.vb, tags: [...t.tags], dims: t.dims })
+      map.set(key, { maker: t.maker, type: t.type, litres: t.litres, count: 1, vb: t.vb, tags: [...t.tags], dims: t.dims, reserved })
     }
   }
-  return [...map.values()].sort((a, b) => b.litres - a.litres)
+  // Lieferbares zuerst, dann das Vorgemerkte — sonst steht das, was der Käufer
+  // nicht bekommen kann, ganz oben.
+  return [...map.values()].sort((a, b) => Number(a.reserved) - Number(b.reserved) || b.litres - a.litres)
 }
 
 const label = (g: Group) => (g.maker === 'Sonstige' ? g.type : `${g.maker} ${g.type}`)
@@ -94,7 +116,14 @@ const bullet = (g: Group, shared: string[] = []) => {
   // Eine Pumpe hat kein Volumen. "Impellerpumpe 0 l" stand in jeder Hersteller-
   // und Restposten-Anzeige und ließ die ganze Liste unseriös aussehen.
   const vol = g.litres > 0 ? ` ${num(g.litres)} l` : ''
-  return `• ${g.count}× ${label(g)}${vol}${size ? ` · ${size}` : ''} – je ${eur(g.vb)}${extra.length ? ` (${extra.join(', ')})` : ''}`
+  // „je" nur bei mehreren. „1× Immervolltank – je 1.300 €" stand in jeder
+  // Hersteller- und Restposten-Anzeige; rows() im Gesamtzuschnitt macht es
+  // längst richtig, bullet() nicht.
+  const preis = `${g.count > 1 ? 'je ' : ''}${eur(g.vb)}`
+  // Reserviert wird benannt, nicht weggelassen: ein Nachrücker ist Gold wert,
+  // wenn die Zusage platzt — aber er muss wissen, worauf er sich meldet.
+  const merkmal = g.reserved ? ' — RESERVIERT, Nachfrage lohnt sich' : ''
+  return `• ${g.count}× ${label(g)}${vol}${size ? ` · ${size}` : ''} – ${preis}${extra.length ? ` (${extra.join(', ')})` : ''}${merkmal}`
 }
 
 /**
@@ -106,11 +135,23 @@ const bullet = (g: Group, shared: string[] = []) => {
  * stempelt `generateAd` am Ende über den fertigen Text.
  */
 export function stampOf(tanks: Tank[], price: number): string {
-  const ids = tanks.map((t) => `${t.id}:${t.vb}`).sort().join(',')
+  // Der Zustand muss mit hinein. Ohne ihn blieb der Fingerabdruck bei einer
+  // Reservierung gleich, `adDrift` meldete nichts, und weil beide
+  // Aktualisieren-Knöpfe hinter dieser Meldung liegen, war der Text danach
+  // überhaupt nicht mehr zu erneuern.
+  const ids = tanks.map((t) => `${t.id}:${t.vb}:${t.status}`).sort().join(',')
   return `${price}|${ids}`
 }
 
 function priceBlock(db: DB, sum: number, packagePrice: number, litresTotal: number, fach: boolean): string {
+  /*
+   * Ein Nachlass, der keiner ist, wird nicht als Vorteil ausgeschrieben.
+   *
+   * Der Paketpreis steht fest in den Einstellungen und rechnet sich nie nach.
+   * Nach ein paar Verkäufen erzeugte das Werkzeug Sätze wie „gegenüber
+   * Einzelabgabe (14.450 €) -3.450 € günstiger" — das Paket war also teurer als
+   * die Einzelpreise, angepriesen als Ersparnis.
+   */
   const saving = sum - packagePrice
   const vatPct = Math.round(db.settings.vatRate * 100)
   const lines = [
@@ -122,7 +163,9 @@ function priceBlock(db: DB, sum: number, packagePrice: number, litresTotal: numb
     lines.push(`Netto ${eurExact(netOf(packagePrice, db.settings.vatRate))} zzgl. ${vatPct} % MwSt.`)
   }
   lines.push(
-    `Das entspricht ${centsPerLitre(packagePrice, litresTotal)} — gegenüber Einzelabgabe (${eur(sum)}) ${eur(saving)} günstiger.`,
+    saving > 0
+      ? `Das entspricht ${centsPerLitre(packagePrice, litresTotal)} — gegenüber Einzelabgabe (${eur(sum)}) ${eur(saving)} günstiger.`
+      : `Das entspricht ${centsPerLitre(packagePrice, litresTotal)}. Einzeln abgegeben ${eur(sum)}.`,
     'Einzelabgabe ist möglich, Preise siehe Liste oben.',
   )
   if (fach) lines.push('Die Umsatzsteuer wird auf der Rechnung separat ausgewiesen.')
@@ -191,7 +234,16 @@ export function generateAd(db: DB, scope: AdScope, portal: Portal | null): Gener
 
 function buildAd(db: DB, scope: AdScope, portal: Portal | null): GeneratedAd {
   const tanks = tanksInScope(db, scope)
-  const t = totals(tanks)
+  /*
+   * Gezählt und bepreist wird, was lieferbar ist.
+   *
+   * Reservierte Stücke stehen weiter in der Aufzählung — als eigene Zeile mit
+   * Vermerk, damit sich ein Nachrücker melden kann. In Stückzahl, Litern und
+   * Summe haben sie nichts verloren: „Alles zusammen 35.515 € VB" über einem
+   * Bestand, aus dem zwei Tanks schon jemandem zugesagt sind, ist eine Zahl, die
+   * niemand bekommen kann. Der Käuferkatalog rechnet seit Kurzem genauso.
+   */
+  const t = totals(tanks.filter((x) => x.status !== 'reserviert'))
   const s = db.settings
   const groups = group(tanks)
   const sellerName = s.seller.name || 'Betriebsauflösung'
@@ -201,6 +253,26 @@ function buildAd(db: DB, scope: AdScope, portal: Portal | null): GeneratedAd {
   // Zuschnitt steckt, ist es deren Name; bei gemischten Posten bleibt es neutral.
   // Fest verdrahtet stand hier früher "Edelstahltanks" — über zwei Pumpen und einen
   // Filter war das schlicht falsch.
+  /*
+   * Nichts mehr da — dann steht das da, und sonst nichts.
+   *
+   * Diese Klausel gab es nur im Gesamtzuschnitt. Alle anderen bauten weiter ihren
+   * vollen Text: „0× Maschinen aus Betriebsauflösung Weingut", ein leerer
+   * BESTAND-Block, ein Zustandsabschnitt über Ware, die es nicht gibt, und bei
+   * den Paketzuschnitten „Komplett: 17.900 € VB brutto (–)". Eine Anzeige über
+   * nichts, mit Preis.
+   */
+  if (tanks.length === 0) {
+    return {
+      title: trim(`${sellerName} — alles verkauft`, lim.title),
+      body: 'Alle Positionen sind verkauft. Vielen Dank für das Interesse.',
+      price: 0,
+      priceType: 'VB',
+      tankIds: [],
+      stamp: stampOf([], 0),
+    }
+  }
+
   const kinds = [...new Set(tanks.map((x) => x.category))]
   const noun = kinds.length === 1
     ? (db.settings.categories.find((c) => c.id === kinds[0])?.label ?? 'Positionen')
@@ -239,7 +311,7 @@ function buildAd(db: DB, scope: AdScope, portal: Portal | null): GeneratedAd {
     ]
       .filter((l) => l !== undefined)
       .join('\n')
-    return { title, body: trim(body, lim.body), price: tank.vb, priceType: 'VB', tankIds: [tank.id], stamp: stampOf(tanks, tank.vb) }
+    return { title, body: fit(body, lim), price: tank.vb, priceType: 'VB', tankIds: [tank.id], stamp: stampOf(tanks, tank.vb) }
   }
 
   if (scope.kind === 'gesamt') {
@@ -265,7 +337,7 @@ function buildAd(db: DB, scope: AdScope, portal: Portal | null): GeneratedAd {
     // unten verwiesen wird. Bei 58 Positionen ist jedes Wort eine Entscheidung.
     // `perCat` deckelt die Aufzählung je Kategorie, damit die Kürzung in Stufen
     // geht statt alle Bauarten auf einmal zu verlieren.
-    const rows = (withPrice: boolean, perCat = Infinity) => {
+    const rows = (withPrice: boolean, perCat = Infinity, withDetails = false) => {
       const out: string[] = []
       for (const [cat, list] of byCat) {
         const tt = totals(list)
@@ -294,7 +366,24 @@ function buildAd(db: DB, scope: AdScope, portal: Portal | null): GeneratedAd {
           // "1× Schichtenfilter – je 390 €" liest sich falsch. "je" gehört nur dorthin,
           // wo es von mehreren Stück tatsächlich eines meint.
           const price = withPrice ? ` – ${g.count > 1 ? 'je ' : ''}${eur(g.vb)}` : ''
-          out.push(`• ${g.count}× ${name}${vol}${price}`)
+          /*
+           * Maße und Ausstattung — die eigentliche Auskunft, und der erste Posten,
+           * der bei Platznot fällt.
+           *
+           * Diese Zeile trug bisher als einzige im ganzen Werkzeug KEINE Details:
+           * die teuerste Einzelposition des Bestands stand hier als nacktes
+           * „1× Schneider Exzenterschneckenpumpe SP3 Evario – 3.500 €", während
+           * sechs gepflegte Merkmale danebenlagen. Bei den Maschinen sind es die
+           * Merkmale, die zählen — Maße hat keine einzige von ihnen.
+           *
+           * Gedeckelt, weil eine Zeile mit sechs Merkmalen die Aufzählung
+           * unlesbar macht und bei knappem Wortkontingent ganze Bauarten
+           * verdrängen würde.
+           */
+          const size = withDetails ? fmtDims(g.dims) : ''
+          const feat = withDetails && g.tags.length ? ` (${g.tags.slice(0, 4).join(', ')})` : ''
+          const mark = g.reserved ? ' — RESERVIERT' : ''
+          out.push(`• ${g.count}× ${name}${vol}${size ? ` · ${size}` : ''}${price}${feat}${mark}`)
         }
         if (kinds.length > shown.length) out.push(`• und ${kinds.length - shown.length} weitere`)
         out.push('')
@@ -373,6 +462,12 @@ function buildAd(db: DB, scope: AdScope, portal: Portal | null): GeneratedAd {
     const fits = (text: string) =>
       (lim.words === 0 || countWords(text) <= lim.words) && text.length <= lim.body
     const versions = [
+      // Erst die vollständige Fassung MIT Maßen und Ausstattung. Wo Platz ist —
+      // Kleinanzeigen hat 4.000 Zeichen und gar keine Wortgrenze — bekommt der
+      // Käufer alles. Wird es eng, fällt das Detail, nicht die Position.
+      assemble(rows(true, Infinity, true), full),
+      assemble(rows(true, Infinity, true), short),
+      assemble(rows(true, Infinity, true), []),
       assemble(rows(true), full),
       assemble(rows(true), short),
       assemble(rows(true), []),
@@ -388,7 +483,7 @@ function buildAd(db: DB, scope: AdScope, portal: Portal | null): GeneratedAd {
 
     return {
       title,
-      body: trim(body, lim.body),
+      body: fit(body, lim),
       price: t.vb,
       priceType: 'VB',
       tankIds: tanks.map((x) => x.id),
@@ -421,25 +516,22 @@ function buildAd(db: DB, scope: AdScope, portal: Portal | null): GeneratedAd {
       '',
       s.ad.signature,
     ].join('\n')
-    return { title, body: trim(body, lim.body), price: t.vb, priceType: 'VB', tankIds: tanks.map((x) => x.id), stamp: stampOf(tanks, t.vb) }
+    return { title, body: fit(body, lim), price: t.vb, priceType: 'VB', tankIds: tanks.map((x) => x.id), stamp: stampOf(tanks, t.vb) }
   }
 
   if (scope.kind === 'kategorie') {
     const cat = db.settings.categories.find((c) => c.id === scope.category)
-    const volume = cat?.hasVolume ?? false
     const isBarrel = scope.category === 'fass'
     const shared = sharedFeatures(tanks)
-    const perPiece = groups.map((g) => {
-      const extra = g.tags.filter((x) => !shared.includes(x))
-      // The maker used to drop out whenever a volume was shown. Now that most tanks
-      // carry no plate, the few that do are the only brand value left in the text.
-      const named = g.maker === 'Sonstige' ? g.type : `${g.maker} ${g.type}`
-      const name = volume ? `${named} ${num(g.litres)} l` : named
-      // This scope builds its own line and so missed the measurements the package
-      // ad already carried — the same list read differently depending on the scope.
-      const size = fmtDims(g.dims)
-      return `• ${g.count}× ${name}${size ? ` · ${size}` : ''} – je ${eur(g.vb)}${extra.length ? ` (${extra.join(', ')})` : ''}`
-    })
+    /*
+     * Dieselbe Zeile wie in jedem anderen Zuschnitt.
+     *
+     * Dieser Zweig baute sie selbst nach und ging dabei an zwei Regeln vorbei,
+     * die `bullet()` längst kennt: „1× Schichtenfilter – je 390 €" stand auch
+     * über einem einzelnen Stück, und ein reservierter Posten war von einem
+     * lieferbaren nicht zu unterscheiden.
+     */
+    const perPiece = groups.map((g) => bullet(g, shared))
 
     const title = trim(
       isBarrel
@@ -484,7 +576,7 @@ function buildAd(db: DB, scope: AdScope, portal: Portal | null): GeneratedAd {
       '',
       s.ad.signature,
     ].join('\n')
-    return { title, body: trim(body, lim.body), price: groups[0]?.vb ?? 0, priceType: 'VB', tankIds: tanks.map((x) => x.id), stamp: stampOf(tanks, groups[0]?.vb ?? 0) }
+    return { title, body: fit(body, lim), price: groups[0]?.vb ?? 0, priceType: 'VB', tankIds: tanks.map((x) => x.id), stamp: stampOf(tanks, groups[0]?.vb ?? 0) }
   }
 
   if (scope.kind === 'restposten') {
@@ -498,7 +590,7 @@ function buildAd(db: DB, scope: AdScope, portal: Portal | null): GeneratedAd {
       `Komplett: ${eur(s.packagePrice)} VB brutto (${centsPerLitre(s.packagePrice, t.litres)}). Einzelabgabe möglich.`,
       s.seller.pickupInfo,
     ].join('\n')
-    return { title, body: trim(body, lim.body), price: s.packagePrice, priceType: 'VB', tankIds: tanks.map((x) => x.id), stamp: stampOf(tanks, s.packagePrice) }
+    return { title, body: fit(body, lim), price: s.packagePrice, priceType: 'VB', tankIds: tanks.map((x) => x.id), stamp: stampOf(tanks, s.packagePrice) }
   }
 
   // Komplettpaket
@@ -534,7 +626,7 @@ function buildAd(db: DB, scope: AdScope, portal: Portal | null): GeneratedAd {
 
   return {
     title,
-    body: trim(body, lim.body),
+    body: fit(body, lim),
     price: s.packagePrice,
     priceType: 'VB',
     tankIds: tanks.map((x) => x.id),
@@ -544,6 +636,54 @@ function buildAd(db: DB, scope: AdScope, portal: Portal | null): GeneratedAd {
 
 function trim(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`
+}
+
+/**
+ * Auf beide Grenzen kürzen — Zeichen UND Wörter.
+ *
+ * Die Wortgrenze wurde bisher nur im Gesamtzuschnitt beachtet, und der hat dafür
+ * eine eigene Rangfolge. Alle anderen fünf Zuschnitte kürzten ausschließlich nach
+ * Zeichen und rissen die Wortgrenze eines Portals ungebremst: gemessen 347, 329,
+ * 276 und 258 Wörter gegen erlaubte 200. Das Portal weist so einen Text ab, und
+ * das Werkzeug sagte es erst hinterher als Pille auf der Karte.
+ *
+ * Gekürzt wird dort, wo das Gewicht liegt: in der Aufzählung. Absätze
+ * wegzuwerfen war der erste Versuch und der falsche Hebel — die Paketanzeige
+ * fiel damit von 1.806 auf 156 Zeichen, weil Zustand, Preis und Abholung
+ * zusammen weniger wiegen als zwanzig Positionszeilen. Erst wenn die Aufzählung
+ * auf eine Zeile geschrumpft ist und es immer noch nicht reicht, fallen die
+ * hinteren Absätze; ganz zuletzt wird hart geschnitten.
+ */
+function fit(text: string, lim: { body: number; words: number }): string {
+  const passt = (t: string) => (lim.words === 0 || countWords(t) <= lim.words) && t.length <= lim.body
+  if (passt(text)) return text
+
+  // Die Aufzählung deckeln und den Rest zusammenfassen — sonst verschwinden
+  // Positionen spurlos und der Käufer hält die Liste für vollständig.
+  const zeilen = text.split('\n')
+  const punkte = zeilen.reduce<number[]>((a, l, i) => (l.startsWith('• ') ? [...a, i] : a), [])
+  for (const n of [12, 10, 8, 6, 5, 4, 3, 2, 1]) {
+    if (punkte.length <= n) continue
+    const weg = new Set(punkte.slice(n))
+    const gekappt = zeilen
+      .map((l, i) => (i === punkte[n] ? `• und ${punkte.length - n} weitere Positionen` : weg.has(i) ? null : l))
+      .filter((l): l is string => l !== null)
+      .join('\n')
+    if (passt(gekappt)) return gekappt
+  }
+
+  // Immer noch zu lang: von hinten Absätze fallen lassen. Vorn stehen Titelzeile,
+  // Bestand und Preis, hinten Abholung und Signatur — das Entbehrlichere.
+  const kurz = zeilen
+    .map((l, i) => (punkte.length > 1 && i === punkte[1] ? `• und ${punkte.length - 1} weitere Positionen` : punkte.slice(1).includes(i) ? null : l))
+    .filter((l): l is string => l !== null)
+    .join('\n')
+  const bloecke = kurz.split('\n\n')
+  for (let n = bloecke.length - 1; n > 0; n--) {
+    const rest = bloecke.slice(0, n).join('\n\n')
+    if (passt(rest)) return rest
+  }
+  return trim(kurz, lim.body)
 }
 
 /** Wie ein Portal zählt: alles, was durch Leerraum getrennt ist. */
@@ -558,23 +698,43 @@ export function limitsOfPortal(portal: Portal | null) {
 export interface AdDrift {
   stale: boolean
   soldSince: Tank[]
+  /** Beworbene Positionen, die inzwischen für jemanden vorgemerkt sind. */
+  reservedSince: Tank[]
   priceChanged: { from: number; to: number } | null
   countNow: number
   countThen: number
+  /**
+   * Der Text ist veraltet, aber keine der benannten Ursachen trifft zu — etwa,
+   * weil ein Hersteller umbenannt oder der Standort geändert wurde. Ohne dieses
+   * Kennzeichen stand unter „Seit dem letzten Erzeugen geändert:" eine leere
+   * Aufzählung, und der Nutzer sah keinen Grund für den Hinweis.
+   */
+  otherOnly: boolean
 }
 
 /** What has changed in reality since this ad was last published. */
 export function adDrift(db: DB, ad: Ad): AdDrift {
   const fresh = generateAd(db, ad.scope, portalOf(db, ad.portalId))
-  const soldSince = ad.tankIds
-    .map((id) => db.tanks.find((t) => t.id === id))
-    .filter((t): t is Tank => Boolean(t) && t!.status === 'verkauft')
+  const beworben = ad.tankIds.map((id) => db.tanks.find((t) => t.id === id)).filter((t): t is Tank => Boolean(t))
+  const soldSince = beworben.filter((t) => t.status === 'verkauft')
+  // Eine Reservierung ändert den Text — die Position wandert in eine eigene,
+  // gekennzeichnete Zeile und fällt aus Stückzahl und Summe. Genannt wurde sie
+  // bisher nicht: der Hinweis sprach nur von Verkäufen.
+  const reservedSince = beworben.filter((t) => t.status === 'reserviert')
+  const priceChanged = ad.price !== fresh.price ? { from: ad.price, to: fresh.price } : null
   return {
     stale: ad.stamp !== fresh.stamp,
     soldSince,
-    priceChanged: ad.price !== fresh.price ? { from: ad.price, to: fresh.price } : null,
+    reservedSince,
+    priceChanged,
     countNow: fresh.tankIds.length,
     countThen: ad.tankIds.length,
+    otherOnly:
+      ad.stamp !== fresh.stamp &&
+      soldSince.length === 0 &&
+      reservedSince.length === 0 &&
+      !priceChanged &&
+      fresh.tankIds.length === ad.tankIds.length,
   }
 }
 
