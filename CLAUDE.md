@@ -17,8 +17,25 @@ parallel.
 
 ## Ausliefern
 
-Nach jeder Änderung selbstständig: committen, pushen, Pull Request eröffnen, mergen, Deploy
-auslösen. Ohne Rückfrage — das ist so vereinbart.
+Nach jeder Änderung selbstständig, ohne Rückfrage — das ist so vereinbart. Der Ablauf hat
+fünf Schritte und ist erst mit dem letzten erledigt:
+
+1. `git commit`, Nachricht auf Deutsch
+2. `git push -u origin claude/tank-sales-dashboard-e8i6y3`
+3. Pull Request eröffnen — `create_pull_request`, als Entwurf
+4. Entwurfsstatus aufheben — `update_pull_request` mit `draft: false`
+5. Mergen — `merge_pull_request`
+
+**Schritt 4 und 5 sind nicht optional.** Ein Entwurf lässt sich nicht mergen; genau dort blieb
+es mehrfach liegen, und der Nutzer musste von Hand nachfassen. Ein gepushter Branch ohne
+gemergten Pull Request ist nicht ausgeliefert.
+
+Der Deploy hängt an `push: main` und läuft nach dem Merge von selbst — nichts zusätzlich
+anzustoßen, aber nachsehen, ob der Lauf grün war.
+
+Mehrere Commits in einem Vorgang: erst am Ende mergen, dann aber wirklich. Und nach dem Merge
+den eigenen Branch neu vom Stand von `main` aufsetzen, sonst hängt die nächste Änderung an
+bereits gemergter Geschichte.
 
 ## Vor dem Ausliefern
 
