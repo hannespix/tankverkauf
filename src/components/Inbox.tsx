@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Modal, Pill, Textarea, cx } from './ui'
 import { IconCamera, IconCheck, IconClose, IconCopy, IconInbox, IconSpark, IconWarn } from './icons'
 import { AiError, draftReply, readProposals, type AiImage } from '../lib/ai'
-import { buildPlan, checkProposals, type Plan, type Proposal } from '../lib/inbox'
+import { buildPlan, checkProposals, type MessageContext, type Plan, type Proposal } from '../lib/inbox'
 import { applyProposal, quoteToDeal } from '../lib/actions'
 import { parseMessage } from '../lib/ads'
 import { eur } from '../lib/format'
@@ -147,11 +147,27 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
   )
 
   /**
+   * Was aus dieser Nachricht über die Schritte hinaus hängen bleibt.
+   *
+   * Befund, Hinweise und die Liste der Schritte lebten nur, solange der Dialog
+   * offen war. Sie gehen jetzt mit an den Interessenten: der Wortlaut in die
+   * Nachrichtenliste, das Gelesene in die Notiz.
+   */
+  function context(): MessageContext {
+    return {
+      summary: read?.summary?.trim() ?? '',
+      notes: plan.notes,
+      steps: plan.steps.map((s) => s.title),
+      fromImage: !!read?.transcript,
+    }
+  }
+
+  /**
    * Ein Vorschlag einzeln. `done` leer heißt: es ist nichts passiert — vorher
    * sprang die Karte trotzdem auf „übernommen“.
    */
   function take(p: Proposal) {
-    const res = applyProposal(p, leadId, message)
+    const res = applyProposal(p, leadId, message, context())
     if (res.leadId) setLeadId(res.leadId)
     if (res.done) setApplied((prev) => ({ ...prev, [p.id]: res.done }))
     else setError(`„${p.title}“ hat nichts geändert${res.skipped ? ` — ${res.skipped}` : ''}.`)
@@ -174,7 +190,7 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
     const out: { text: string; ok: boolean }[] = []
     try {
       for (const step of plan.steps) {
-        const res = applyProposal(step, carry, message)
+        const res = applyProposal(step, carry, message, context())
         if (res.leadId) carry = res.leadId
         out.push(res.done ? { text: res.done, ok: true } : { text: `${step.title} — ${res.skipped ?? 'nichts geändert'}`, ok: false })
       }

@@ -24,7 +24,7 @@ const mem = new Map<string, string>()
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { store } from './store'
-import { detachTanks, removeLead, setQuoteTanks } from './actions'
+import { applyProposal, detachTanks, noteOnLead, removeLead, setQuoteTanks } from './actions'
 import { openQuotesOf, quoteRelation } from './stats'
 import type { DB, Deal, Lead, Quote, Tank } from '../types'
 
@@ -156,4 +156,49 @@ test('B7 · Auswahl und Angebot: die Beziehung stimmt in beide Richtungen', () =
   // hier, solange die Rechnung das Gegenteil unterstellte.
   assert.equal(quoteRelation(['T-1', 'T-2'], ['T-1']), '1 nur im Angebot')
   assert.equal(quoteRelation(['T-2'], ['T-1']), '1 nur im Angebot, 1 nur in der Auswahl')
+})
+
+test('B8 · was aus einer Nachricht gelesen wird, landet in der Notiz', () => {
+  setDb({ tanks: [tank('T-1')], leads: [lead('L-1', { name: 'Ortlieb' })] })
+  noteOnLead('L-1', 'Ich nehme den 1000er. Abholung Freitag.', ['Positionen anhängen'], false, {
+    summary: 'Fester Kauf, eine Position.',
+    notes: ['Abholung: Freitag', 'Gebot 900 € — dafür fehlt noch ein Angebot.'],
+    steps: ['Nachricht vermerken', 'Positionen anhängen'],
+    fromImage: false,
+  })
+  const l = db().leads[0]!
+  // Der Wortlaut liegt in der Nachrichtenliste …
+  assert.equal(l.messages?.length, 1)
+  assert.match(l.messages![0]!.text, /Abholung Freitag/)
+  // … das Gelesene in der Notiz, die ungedeckelt ist und auf der Karte steht.
+  assert.match(l.note, /Fester Kauf, eine Position\./)
+  assert.match(l.note, /· Abholung: Freitag/)
+  assert.match(l.note, /· Gebot 900 €/)
+  // Und das Protokoll nennt den ganzen Zug, nicht nur den ersten Schritt.
+  assert.deepEqual(l.messages![0]!.applied, ['Positionen anhängen'])
+})
+
+test('B9 · dieselbe Nachricht zweimal legt keinen zweiten Eintrag an', () => {
+  setDb({ tanks: [tank('T-1')], leads: [lead('L-1')] })
+  const ctx = { summary: 'Anfrage.', notes: [], steps: ['Nachricht vermerken'], fromImage: false }
+  noteOnLead('L-1', 'Ist der noch da?', ['Nachricht vermerken'], false, ctx)
+  noteOnLead('L-1', 'Ist der noch da?', ['Positionen anhängen'], false, ctx)
+  const l = db().leads[0]!
+  assert.equal(l.messages?.length, 1)
+  assert.deepEqual(l.messages![0]!.applied, ['Nachricht vermerken', 'Positionen anhängen'])
+  // Und der Notizblock steht auch nur einmal da.
+  assert.equal(l.note.match(/Anfrage\./g)?.length, 1)
+})
+
+test('B10 · eine Folgenachricht trägt den fehlenden Kontaktweg nach', () => {
+  setDb({ tanks: [tank('T-1')], leads: [lead('L-1', { name: 'Ortlieb', email: 'o@example.org' })] })
+  const p = {
+    id: 'P-1', kind: 'lead.notiz' as const, title: 'Nachricht bei Ortlieb vermerken', effect: '', quote: '',
+    proven: true, publishes: false, leadId: 'L-1', name: 'Ortlieb', email: 'o@example.org',
+    phone: '0176 4433221', stage: null, amount: null, tankIds: [], pick: null, warning: '',
+  }
+  applyProposal(p, null, 'Ok, ich nehme die beiden. 0176 4433221')
+  // Gefunden wurde er über die E-Mail, unterschrieben hat er mit Telefonnummer.
+  assert.equal(db().leads[0]!.phone, '0176 4433221')
+  assert.equal(db().leads[0]!.email, 'o@example.org')
 })

@@ -109,13 +109,21 @@ export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
   )
 }
 
-export function Field({ label, hint, children, className = '' }: { label: string; hint?: string; children: ReactNode; className?: string }) {
+/**
+ * Beschriftung über einem Eingabefeld.
+ *
+ * `as="div"` für alles, was selbst schon Bedienelemente enthält: ein `<label>`
+ * um eine Liste aus 58 weiteren `<label>` ist ungültiges HTML, und praktisch
+ * sprang ein Klick auf die Zusammenfassung darunter ins Filterfeld.
+ */
+export function Field({ label, hint, children, className = '', as = 'label' }: { label: string; hint?: string; children: ReactNode; className?: string; as?: 'label' | 'div' }) {
+  const Tag = as
   return (
-    <label className={cx('block', className)}>
+    <Tag className={cx('block', className)}>
       <span className="mb-1 block text-[13px] font-semibold text-muted">{label}</span>
       {children}
       {hint && <span className="mt-1 block text-xs text-faint">{hint}</span>}
-    </label>
+    </Tag>
   )
 }
 

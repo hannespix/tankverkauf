@@ -37,7 +37,7 @@ export default function Quotes() {
     <div className="space-y-4">
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Offene Angebote" value={openQuotes.length} sub={`${db.quotes.length} insgesamt`} />
-        <Stat label="Im Angebot" value={`${num(openLitres)} l`} sub={`${openQuotes.reduce((a, q) => a + q.tankIds.length, 0)} Positionen gebunden`} />
+        <Stat label="Im Angebot" value={`${num(openLitres)} l`} sub={`${openQuotes.reduce((a, q) => a + q.tankIds.length, 0)} ${openQuotes.reduce((a, q) => a + q.tankIds.length, 0) === 1 ? 'Position' : 'Positionen'} gebunden`} />
         <Stat label="Angebotswert" value={eur(openValue)} sub="offene Angebote, brutto" tone="green" />
         <Stat label="Unter Untergrenze" value={belowFloor.length} sub="genauer ansehen" tone={belowFloor.length ? 'rose' : undefined} />
       </section>
@@ -85,13 +85,15 @@ function QuoteCard({ quote }: { quote: Quote }) {
   const [open, setOpen] = useState(false)
   const [pick, setPick] = useState('')
   // Nur freie Positionen, und nur solche, die nicht schon drin sind.
-  const addable = db.tanks
+  const matching = db.tanks
     .filter((t) => t.status === 'verfuegbar' && !quote.tankIds.includes(t.id))
     .filter((t) => {
       const q = pick.trim().toLowerCase()
       return !q || [t.id, t.maker, t.type, String(t.litres)].some((v) => v.toLowerCase().includes(q))
     })
-    .slice(0, 20)
+  // Gekappt wird weiter, aber nicht mehr stumm: bei 29 gleich aussehenden
+  // Dekofässern konnte niemand wissen, dass es F-21 bis F-29 überhaupt gibt.
+  const addable = matching.slice(0, 20)
   const closed = quote.status === 'angenommen' || quote.status === 'abgelehnt'
 
   return (
@@ -155,7 +157,7 @@ function QuoteCard({ quote }: { quote: Quote }) {
                     type="button"
                     aria-label={`${t.id} ${itemLabel(t)} aus dem Angebot nehmen`}
                     onClick={() => setQuoteTanks(quote.id, quote.tankIds.filter((x) => x !== id))}
-                    className="-mr-1 ml-0.5 rounded px-1 leading-none hover:bg-black/10"
+                    className="-mr-1.5 ml-1 flex h-6 w-6 items-center justify-center rounded leading-none hover:bg-black/10"
                   >
                     ×
                   </button>
@@ -184,12 +186,22 @@ function QuoteCard({ quote }: { quote: Quote }) {
             Position herausnehmen wollte, musste sie aus dem Bestand löschen.
           */}
           {!closed && (
-            <Field label="Positionen ändern" hint="Der geforderte Preis rechnet mit, solange er nicht von Hand gesetzt wurde.">
+            <Field as="div" label="Positionen ändern" hint="Der geforderte Preis rechnet mit, solange er nicht von Hand gesetzt wurde.">
               <div className="space-y-2">
+                {quote.tankIds.length === 1 && (
+                  <p className="text-[13px] text-muted">
+                    Die letzte Position bleibt — ein Angebot über nichts stünde mit 0 € da. Erst eine weitere hinzufügen, dann diese entfernen.
+                  </p>
+                )}
                 <Input value={pick} onChange={(e) => setPick(e.target.value)} placeholder="Position suchen und hinzufügen …" />
                 {pick.trim() && (
-                  <div className="max-h-40 overflow-y-auto rounded-xl border border-line bg-surface-2 p-2">
+                  <div className="relative z-40 max-h-40 overflow-y-auto rounded-xl border border-line bg-surface-2 p-2">
                     {addable.length === 0 && <p className="px-2 py-1 text-[13px] text-muted">Nichts Freies gefunden.</p>}
+                    {matching.length > addable.length && (
+                      <p className="px-2 py-1 text-[13px] text-muted">
+                        {addable.length} von {matching.length} — genauer suchen zeigt die übrigen.
+                      </p>
+                    )}
                     {addable.map((t) => (
                       <button key={t.id} type="button"
                         onClick={() => { setQuoteTanks(quote.id, [...quote.tankIds, t.id]); setPick('') }}

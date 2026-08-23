@@ -1,7 +1,8 @@
 import type { Ad, AdScope, DB, Lead, Quote, Tank, TankStatus } from '../types'
-import { MAX_PER_LEAD, askFor, collapseIds, describe, resolvePick, trimMessage, type Proposal } from './inbox'
+import { MAX_PER_LEAD, askFor, collapseIds, describe, resolvePick, trimMessage, type MessageContext, type Proposal } from './inbox'
 import { STATUS_LABEL } from '../types'
 import { generateAd, portalOf } from './ads'
+import { dateDE } from './format'
 import { SEED } from './seed'
 import { newId, store } from './store'
 import { openQuotesOf } from './stats'
@@ -368,14 +369,31 @@ export function addMissingSeedBundles(): number {
  * Wurzelschlüssel — migrate() baut sein Rückgabeobjekt aus einer festen Liste
  * und würde alles Neue beim Laden verwerfen.
  */
-export function noteOnLead(leadId: string, text: string, applied: string[], fromImage = false) {
+export function noteOnLead(leadId: string, text: string, applied: string[], fromImage = false, extra?: MessageContext) {
   store.mutate(
     (db) => {
       const l = db.leads.find((x) => x.id === leadId)
       if (!l) return
-      const entry = { at: now(), text: trimMessage(text), fromImage: fromImage || undefined, applied }
-      // Gedeckelt, weil db.json bei jedem Speichern vollständig geschrieben wird.
-      l.messages = [entry, ...(l.messages ?? [])].slice(0, MAX_PER_LEAD)
+      const body = trimMessage(text)
+      const seen = (l.messages ?? [])[0]
+      if (seen && seen.text === body) {
+        // Dieselbe Nachricht ein zweites Mal legt keinen zweiten Eintrag an —
+        // sie ergänzt nur, was inzwischen daraus geworden ist.
+        seen.applied = [...new Set([...seen.applied, ...applied])]
+      } else {
+        const entry = { at: now(), text: body, fromImage: fromImage || undefined, applied }
+        // Gedeckelt, weil db.json bei jedem Speichern vollständig geschrieben wird.
+        l.messages = [entry, ...(l.messages ?? [])].slice(0, MAX_PER_LEAD)
+      }
+      // Der Wortlaut liegt in `messages` und fällt nach zehn Nachrichten hinten
+      // heraus. Was daraus gelesen wurde, gehört in die Notiz: sie ist
+      // ungedeckelt und steht auf der Karte.
+      const lines = [extra?.summary?.trim(), ...(extra?.notes ?? [])].filter(Boolean) as string[]
+      if (lines.length > 0) {
+        const stamp = dateDE(new Date().toISOString().slice(0, 10))
+        const block = [`${stamp} — ${lines[0]}`, ...lines.slice(1).map((x) => `· ${x}`)].join('\n')
+        if (!l.note.includes(block)) l.note = l.note.trim() ? `${block}\n\n${l.note}` : block
+      }
       l.lastContact = new Date().toISOString().slice(0, 10)
       l.updatedAt = now()
     },
@@ -416,20 +434,41 @@ export function attachTanks(leadId: string, tankIds: string[]) {
  * ein Gebot ohne Angebot und ein Angebot ohne Positionen meldeten Vollzug und
  * schrieben nichts.
  */
-export function applyProposal(p: Proposal, leadId: string | null, message: string): { leadId: string | null; done: string; skipped?: string } {
+export function applyProposal(p: Proposal, leadId: string | null, message: string, ctx?: MessageContext): { leadId: string | null; done: string; skipped?: string } {
   const db = store.getSnapshot().db
   const target = p.leadId ?? leadId
+  // Auf der Nachricht stand bisher nur der erste Schritt — „Nachricht bei
+  // Ortlieb vermerken", eine Tautologie —, während im selben Zug 31 Fässer
+  // angehängt und ein Angebot entworfen wurde. Der Zug ist vorher bekannt.
+  const protokoll = ctx?.steps?.length ? ctx.steps : [describe(p)]
 
   switch (p.kind) {
     case 'lead.neu': {
       // Ohne tankIds: das Anlegen einer Person darf nicht still den Bestand ändern.
       const id = addLead({ name: p.name || p.email || 'Unbenannt', email: p.email, phone: p.phone, source: 'kleinanzeigen', stage: 'neu', tankIds: [] })
-      noteOnLead(id, message, [describe(p)])
+      noteOnLead(id, message, protokoll, ctx?.fromImage, ctx)
       return { leadId: id, done: p.title }
     }
     case 'lead.notiz': {
       if (!target) return { leadId, done: '', skipped: 'kein Interessent vorhanden' }
-      noteOnLead(target, message, [describe(p)])
+      // Eine Folgenachricht bringt oft den zweiten Kontaktweg mit: gefunden
+      // wurde der Interessent über die E-Mail, unterschrieben hat er mit
+      // Telefonnummer. Leere Felder werden gefüllt, abweichende nicht
+      // überschrieben — die kommen als Hinweis in die Notiz.
+      const l = db.leads.find((x) => x.id === target)
+      const fill: Partial<Lead> = {}
+      const clash: string[] = []
+      for (const [k, v] of [['email', p.email], ['phone', p.phone], ['name', p.name]] as const) {
+        if (!v?.trim() || !l) continue
+        const have = (l[k] ?? '').trim()
+        if (!have) fill[k] = v.trim()
+        else if (have.toLowerCase() !== v.trim().toLowerCase() && k !== 'name') {
+          clash.push(`Abweichend in der Nachricht: ${k === 'email' ? 'E-Mail' : 'Telefon'} ${v.trim()} (gespeichert: ${have})`)
+        }
+      }
+      if (Object.keys(fill).length) patchLead(target, fill, 'Kontaktdaten aus der Nachricht ergänzt')
+      noteOnLead(target, message, protokoll, ctx?.fromImage,
+        clash.length && ctx ? { ...ctx, notes: [...ctx.notes, ...clash] } : ctx ?? (clash.length ? { summary: '', notes: clash, steps: protokoll, fromImage: false } : undefined))
       return { leadId: target, done: p.title }
     }
     case 'lead.phase': {

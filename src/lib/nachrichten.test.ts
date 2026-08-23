@@ -285,3 +285,17 @@ test('Vorgang: ein angenommenes Angebot ist erledigt', () => {
   // Kein Gebot an ein abgeschlossenes Geschäft, und das Angebot zählt nicht mehr als offen.
   assert.equal(p.steps.some((x) => x.kind === 'gebot'), false)
 })
+
+test('N31 · Abholung und Ort fallen nicht durch', () => {
+  const r = read('Ich nehme T-23. Abholung könnte ich Freitag machen.\nGruß, Martin Weber\n55232 Alzey')
+  // Kein Datum geraten — der Satz selbst ist die Information.
+  assert.equal(r.pickupHints.length, 1)
+  assert.match(r.pickupHints[0], /Abholung könnte ich Freitag machen/)
+  assert.equal(r.place, '55232 Alzey')
+})
+
+test('N32 · kein Abholsatz, keine erfundene Notiz', () => {
+  const r = read('Ist der 1650er noch zu haben?\nGruß, Peter Schmitt\n0176 4433221')
+  assert.deepEqual(r.pickupHints, [])
+  assert.equal(r.place, '')
+})

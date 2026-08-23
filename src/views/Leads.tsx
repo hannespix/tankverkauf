@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Button, Card, EmptyState, Field, Input, Modal, Pill, SectionTitle, Select, Textarea, cx, type Tone } from '../components/ui'
 import { IconCheck, IconPlus, IconSpark, IconTrash } from '../components/icons'
-import { addLead, attachTanks, createQuote, detachTanks, patchLead, patchQuote, removeLead, setQuoteTanks } from '../lib/actions'
+import { addLead, attachTanks, createQuote, detachTanks, noteOnLead, patchLead, patchQuote, removeLead, setQuoteTanks } from '../lib/actions'
 import { parseMessage } from '../lib/ads'
 import { AiError, readMessage, type AiResult } from '../lib/ai'
 import { itemLabel, dateDE, eur, num, relativeDE, todayISO } from '../lib/format'
@@ -121,7 +121,7 @@ function LeadCard({ lead, onEdit, highlight }: { lead: Lead; onEdit: () => void;
           <strong>{eur(quote.askPrice)}</strong>
           {quote.buyerOffer != null && <span className="text-muted"> · geboten {eur(quote.buyerOffer)}</span>}
           <span className="text-muted"> · {quoteRelation(quote.tankIds, lead.tankIds)}</span>
-          {open.length > 1 && <span className="text-muted"> · +{open.length - 1} weiteres</span>}
+          {open.length > 1 && <span className="text-muted"> · +{open.length - 1} {open.length === 2 ? 'weiteres' : 'weitere'}</span>}
         </div>
       )}
       {deal && (
@@ -272,6 +272,7 @@ function LeadModal({ lead, onClose, readOnly }: { lead: Lead | null; onClose: ()
         </div>
 
         <Field
+          as="div"
           label="Interesse an"
           hint={lead
             ? 'Änderungen wirken sofort — die Karte, der Bestand und ein bestehendes Angebot lesen dieselben Daten.'
@@ -286,6 +287,9 @@ function LeadModal({ lead, onClose, readOnly }: { lead: Lead | null; onClose: ()
               />
             )}
             <div className="max-h-56 overflow-y-auto rounded-xl border border-line bg-surface-2 p-2">
+              {/* `min-w-0`: ohne das richten sich die Spalten nach ihrem Inhalt,
+                  `truncate` greift nie, und die Preisspalte steht auf dem Handy
+                  außerhalb des Kastens — gemessen 48 px daneben, ohne Balken. */}
               <div className="grid gap-1 sm:grid-cols-2">
                 {shown.map((t) => {
                   const on = picked.includes(t.id)
@@ -305,15 +309,18 @@ function LeadModal({ lead, onClose, readOnly }: { lead: Lead | null; onClose: ()
                   return (
                     <label key={t.id}
                       title={foreign ? (taken ? `Für ${foreign} reserviert — erst dort lösen.` : `Im Kontakt mit ${foreign}.`) : undefined}
-                      className={cx('flex items-center gap-2 rounded-lg px-2 py-1.5 text-[13px]',
+                      className={cx('flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-[13px]',
                         taken ? 'cursor-not-allowed opacity-55' : 'cursor-pointer hover:bg-surface-3')}>
                       <input type="checkbox" checked={on} disabled={readOnly || taken} className="h-4 w-4 accent-[var(--primary)]"
                         onChange={() => toggleTank(t.id, !on)} />
                       {/* Ohne die Nummer stehen zwei gleiche Tanks als zwei
                           identische Zeilen da — und die Nummer ist ohnehin das,
                           was in Anzeigen und Anfragen genannt wird. */}
-                      <span className="tnum shrink-0 text-faint">{t.id}</span>
-                      <span className="truncate">{itemLabel(t)}</span>
+                      {/* Die Nummer trägt hier die Identität — in text-faint hatte
+                          sie 2,9 : 1 auf hellem Grund, das schwächste Zeichen der
+                          Zeile. */}
+                      <span className="tnum shrink-0 text-muted">{t.id}</span>
+                      <span className="min-w-0 truncate">{itemLabel(t)}</span>
                       {/* Wo eine Position schon im Angebot steckt, muss man es sehen —
                           sonst wirkt „Interesse“ und „angeboten“ wie dasselbe. */}
                       {inQuote && <Pill tone="sky">im Angebot</Pill>}
@@ -345,22 +352,26 @@ function LeadModal({ lead, onClose, readOnly }: { lead: Lead | null; onClose: ()
               <>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="text-[13px]">
-                    <strong>Angebot {quote.id}</strong> · {relation} · {eur(quote.askPrice)} gefordert
+                    <strong>Angebot {quote.id}</strong> · {relation === 'deckungsgleich' ? 'wie die Auswahl' : relation} · {eur(quote.askPrice)} gefordert
                     {quote.buyerOffer != null && ` · ${eur(quote.buyerOffer)} geboten`}
                   </span>
                   <Pill tone={quote.status === 'verhandlung' ? 'amber' : 'sky'}>{QUOTE_STATUS_LABEL[quote.status]}</Pill>
                 </div>
                 {differs && (
                   <div className="mt-2 flex flex-wrap gap-2">
-                    <Button size="sm" onClick={() => setQuoteTanks(quote.id, picked)}>
-                      Angebot auf diese Auswahl bringen
+                    {/* Beide Knöpfe überschreiben Daten, in entgegengesetzte
+                        Richtungen — die Namen dürfen sich nicht bloß in der
+                        Wortstellung unterscheiden, und der zweite darf nicht wie
+                        eine Bildunterschrift aussehen. */}
+                    <Button size="sm" disabled={picked.length === 0} onClick={() => setQuoteTanks(quote.id, picked)}>
+                      Angebot anpassen ({picked.length})
                     </Button>
-                    <Button size="sm" variant="ghost" onClick={() => syncFromQuote(quote.tankIds)}>
-                      Auswahl auf das Angebot bringen
+                    <Button size="sm" onClick={() => syncFromQuote(quote.tankIds)}>
+                      Auswahl anpassen ({quote.tankIds.length})
                     </Button>
                   </div>
                 )}
-                {!differs && <p className="mt-1 text-[13px] text-muted">Auswahl und Angebot stimmen überein.</p>}
+
               </>
             ) : (
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -562,7 +573,20 @@ function ParseModal({ onClose }: { onClose: () => void }) {
                 name: parsed.name || 'Anfrage aus Käuferliste',
                 phone: parsed.phone, email: parsed.email,
                 source: 'kleinanzeigen', stage: tankIds.length ? 'angebot' : 'neu',
-                tankIds, note: text.trim(),
+                tankIds, note: '',
+              })
+              // Derselbe Ort wie beim Posteingang: der Wortlaut in die
+              // Nachrichtenliste, das Gelesene in die Notiz. Vorher legte
+              // dieser Weg den ganzen Text in `note` und der andere in
+              // `messages` — zwei Ablagen für dieselbe Nachricht.
+              noteOnLead(leadId, text.trim(), ['Aus Nachricht angelegt'], false, {
+                summary: 'Aus Nachricht angelegt.',
+                notes: [
+                  parsed.packagePrice != null ? `Genannter Paketpreis: ${eur(parsed.packagePrice)}` : '',
+                  parsed.offer != null ? `Gebot in der Nachricht: ${eur(parsed.offer)}` : '',
+                ].filter(Boolean),
+                steps: ['Aus Nachricht angelegt'],
+                fromImage: false,
               })
               // A named price is already a negotiation — record it as an offer straight away.
               if (tankIds.length > 0) {

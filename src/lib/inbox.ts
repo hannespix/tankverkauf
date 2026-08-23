@@ -456,6 +456,25 @@ export function describe(p: Proposal): string {
 export const MAX_MESSAGE = 4000
 export const MAX_PER_LEAD = 10
 
+/**
+ * Was aus einer Nachricht neben den Schritten hängen bleibt.
+ *
+ * Der Befund der KI, die Hinweise „steht drin, kann aber nirgends hin" und die
+ * Liste dessen, was der Zug getan hat, lebten nur solange der Dialog offen war.
+ * Sie gehören an den Interessenten — sonst steht später ein Angebot da, und
+ * niemand weiß mehr, warum.
+ */
+export interface MessageContext {
+  /** Der Ein-Satz-Befund der KI. */
+  summary: string
+  /** Was in der Nachricht steht, aber (noch) nirgends hin kann. */
+  notes: string[]
+  /** Alle Schritte des Zuges — nicht nur der, der die Nachricht ablegt. */
+  steps: string[]
+  /** Der Wortlaut ist ein Transkript aus einem Bild, nicht der Originaltext. */
+  fromImage: boolean
+}
+
 export function trimMessage(text: string): string {
   return text.length <= MAX_MESSAGE ? text : `${text.slice(0, MAX_MESSAGE)}\n… (gekürzt, ${num(text.length)} Zeichen)`
 }
@@ -525,6 +544,11 @@ export function buildPlan(proposals: Proposal[], parsed: ParsedMessage, db: DB, 
   }
 
   const notes: string[] = []
+  // Was kein Schritt aufnehmen kann, aber in der Nachricht steht. Es landet
+  // über den Vorgang in der Notiz des Interessenten — vorher war es nach dem
+  // Schließen des Dialogs weg.
+  for (const hint of parsed.pickupHints) notes.push(hint)
+  if (parsed.place) notes.push(`Ort in der Nachricht: ${parsed.place}`)
   if (dead.length > 0) {
     notes.push('Die Nachricht liest sich wie ein fester Kauf. Buchen kannst du unten, sobald ein Angebot steht — der Preis kommt dann von dort.')
   }
