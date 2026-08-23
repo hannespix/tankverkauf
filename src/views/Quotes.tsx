@@ -5,6 +5,7 @@ import { Button, Card, EmptyState, Field, Input, Pill, SectionTitle, Select, Sta
 import { IconHandshake, IconPlus, IconTrash } from '../components/icons'
 import { patchQuote, quoteToDeal, removeQuote, setQuoteTanks } from '../lib/actions'
 import { itemLabel, centsPerLitre, dateDE, eur, num, todayISO } from '../lib/format'
+import { Verlauf } from '../components/Verlauf'
 import { useStore } from '../lib/store'
 import { VERDICT_LABEL, quoteMetrics } from '../lib/stats'
 import { QUOTE_STATUS_LABEL, type Quote, type QuoteStatus } from '../types'
@@ -168,6 +169,23 @@ function QuoteCard({ quote }: { quote: Quote }) {
         })}
         {quote.tankIds.length === 0 && <li className="text-[13px] text-amber">Keine Position im Angebot.</li>}
       </ul>
+
+      {/*
+        Der Schriftwechsel gehört auch hierher.
+        Aus dem Angebot heraus wird geantwortet — mit einem Knopf, der die
+        fertige Angebots-E-Mail einsetzt. Gespeichert wird sie beim
+        Interessenten, nicht am Angebot: sonst hätte, wer zwei Angebote hat,
+        zwei halbe Verläufe. Ohne zugeordneten Interessenten gibt es nichts zu
+        zeigen — dann steht das da, statt dass der Bereich leer bleibt.
+      */}
+      {!open && (
+        <div className="mt-3 border-t border-line pt-3">
+          <p className="mb-1.5 text-[11px] font-bold text-muted uppercase">Schriftwechsel</p>
+          {lead
+            ? <Verlauf lead={lead} quote={quote} readOnly={false} />
+            : <p className="text-[13px] text-muted">Erst einen Interessenten zuordnen — an ihm hängt der Verlauf.</p>}
+        </div>
+      )}
 
       {!open ? (
         <div className="mt-3 flex flex-wrap justify-end gap-2 border-t border-line pt-3">

@@ -399,3 +399,19 @@ test('N40 · eine Literzahl auf einer Preiszeile ist kein Geldbetrag', () => {
   assert.equal(amountInText(1050, zeile), true, 'der echte Preis zählt')
   assert.equal(amountInText(1650, zeile), false, 'die Literzahl nicht')
 })
+
+test('N41 · „Gruß" allein ist kein Absendername', () => {
+  // `\b` verlangt einen Übergang zwischen Wortzeichen und Nicht-Wortzeichen, und
+  // `ß` ist für JavaScript keines. Nach „gruß" gab es nie eine Wortgrenze, das
+  // Stoppwort traf nie — „Gruß" auf einer eigenen Zeile wurde zum Namen.
+  assert.equal(read('Ich nehme T-14.\nGruß\nweber@example.org').name, '')
+  // Und mit Namen dahinter greift die Grußzeile weiterhin.
+  assert.equal(read('Ich nehme T-14.\nGruß, Martin Weber').name, 'Martin Weber')
+})
+
+test('N42 · eine Adresse am Satzende schluckt den Punkt nicht', () => {
+  // „… weber@example.org." ergab die Adresse mit Punkt. findLead vergleicht
+  // exakt — derselbe Mensch wäre beim nächsten Mal ein zweiter Interessent.
+  assert.equal(read('Melden Sie sich unter weber@example.org.').email, 'weber@example.org')
+  assert.equal(read('Meine Adresse: weber@example.co.uk, danke.').email, 'weber@example.co.uk')
+})

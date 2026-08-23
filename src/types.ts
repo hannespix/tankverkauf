@@ -98,6 +98,17 @@ export interface LeadMessage {
   at: string
   /** Der Wortlaut, gekappt. Bei einem Bild das, was die KI abgelesen hat. */
   text: string
+  /**
+   * Eingegangen oder von uns geschrieben.
+   *
+   * Fehlt bei allen Nachrichten, die vor der Antwortfunktion abgelegt wurden —
+   * die waren ausnahmslos eingehend, deshalb ist „ein" der stille Standard.
+   */
+  dir?: 'ein' | 'aus'
+  /** Bei einer Antwort: die Betreffzeile, damit man sie wiederfindet. */
+  subject?: string
+  /** Bei einer Antwort: das Angebot, aus dem sie entstanden ist. */
+  quoteId?: string
   /** War es ein Bild? Dann ist text ein Transkript und kein Original. */
   fromImage?: boolean
   /** Was daraus übernommen wurde, im Klartext. */

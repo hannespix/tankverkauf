@@ -717,8 +717,8 @@ export function parseMessage(text: string, db: DB): ParsedMessage {
    * Genommen wird sie nur, wenn im Text selbst keine steht und sie keine
    * Roboteradresse ist.
    */
-  const fromHeader = text.match(/^\s*(?:Von|From)\s*:.*?([\w.+-]+@[\w-]+\.[\w.]{2,})/im)?.[1] ?? ''
-  const inBody = (body.match(/[\w.+-]+@[\w-]+\.[\w.]{2,}/g) ?? []).find((a) => !RELAY_ADDRESS.test(a)) ?? ''
+  const fromHeader = text.match(/^\s*(?:Von|From)\s*:.*?([\w.+-]+@[\w-]+(?:\.[\w-]+)+)/im)?.[1] ?? ''
+  const inBody = (body.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g) ?? []).find((a) => !RELAY_ADDRESS.test(a)) ?? ''
   const email = inBody || (RELAY_ADDRESS.test(fromHeader) ? '' : fromHeader)
   const phoneRaw = body.match(/(?:\+49|0)[\d\s/().-]{7,}\d/)?.[0] ?? ''
   const phone = phoneRaw.replace(/[^\d+]/g, '').replace(/^(\+49)/, '+49 ')
@@ -904,7 +904,15 @@ export function parseMessage(text: string, db: DB): ParsedMessage {
   const greeted = afterGreeting?.[1]?.trim()
   const looksLikeName = !!greeted && greeted.split(/\s+/).every((w) => /^\p{Lu}/u.test(w))
 
-  const stop = /^(hallo|hi|guten|sehr|mit freundlichen|viele grüße|liebe|mfg|lg|danke|gruß|grüße|ich |positionen|angebot|summe|diese|von|an|betreff|gesendet|datum|cc|kopie|from|to|subject|sent|date|antwort an)\b/i
+  /*
+   * `(?![\p{L}])` statt `\b`.
+   *
+   * `\b` verlangt einen Übergang zwischen Wortzeichen und Nicht-Wortzeichen —
+   * und `ß` ist für JavaScript kein Wortzeichen. Nach „gruß" gab es damit nie
+   * eine Wortgrenze, das Stoppwort traf nie, und „Gruß" allein auf einer Zeile
+   * wurde zum Absendernamen. „Grüße" funktionierte, weil es auf ein e endet.
+   */
+  const stop = /^(hallo|hi|guten|sehr|mit freundlichen|viele grüße|liebe|mfg|lg|danke|gruß|grüße|ich |positionen|angebot|summe|diese|von|an|betreff|gesendet|datum|cc|kopie|from|to|subject|sent|date|antwort an)(?![\p{L}])/iu
   const standalone = [...lines]
     .reverse()
     .find((l) => l.length >= 3 && l.length <= 40 && !stop.test(l) && /^[A-ZÄÖÜ]/.test(l) && !/[.?!:€]$/.test(l) && l.split(/\s+/).length <= 4)

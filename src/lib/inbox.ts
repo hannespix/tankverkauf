@@ -579,7 +579,13 @@ export function describe(p: Proposal): string {
 
 /** Der Wortlaut wird gekappt — db.json wird bei jedem Speichern ganz geschrieben. */
 export const MAX_MESSAGE = 4000
-export const MAX_PER_LEAD = 10
+/*
+ * Eingegangenes UND Geschriebenes teilen sich diesen Deckel. Bei einem
+ * Schriftwechsel füllt er sich doppelt so schnell wie vorher, deshalb zwanzig
+ * statt zehn — db.json wird bei jedem Speichern vollständig geschrieben, ganz
+ * ohne Deckel geht es also nicht.
+ */
+export const MAX_PER_LEAD = 20
 
 /**
  * Was aus einer Nachricht neben den Schritten hängen bleibt.
