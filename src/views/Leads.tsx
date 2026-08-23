@@ -450,7 +450,16 @@ function ParseModal({ onClose }: { onClose: () => void }) {
         name: ai.name || rule.name,
         email: ai.email || rule.email,
         phone: ai.phone || rule.phone,
-        offer: ai.offer ?? rule.offer,
+        /*
+         * Der Regelweg hat Vorrang, wenn er die Beträge als PREISLISTE gelesen
+         * hat.
+         *
+         * Sonst käme der teuerste Fehler durch die zweite Tür zurück: der
+         * Käufer zitiert unsere eigenen Preise zurück, `parseMessage` erkennt
+         * das und liefert bewusst `null` — und ein Modellwert überschriebe es
+         * hier mit einem der Listenpreise als vermeintlichem Gebot.
+         */
+        offer: rule.priceList ? null : (ai.offer ?? rule.offer),
         matchedTankIds: ai.positionIds.length ? ai.positionIds : rule.matchedTankIds,
         exact: rule.exact || ai.positionIds.length > 0,
         broadMatch: ai.positionIds.length ? ai.positionIds.length > 3 : rule.broadMatch,

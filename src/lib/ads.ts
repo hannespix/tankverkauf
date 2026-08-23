@@ -818,7 +818,18 @@ export function parseMessage(text: string, db: DB): ParsedMessage {
       return n >= 50 && n <= 500000
     }))
   const distinct = new Set(plausible)
-  const priceList = distinct.size > 1 && priced.length > 1
+  /*
+   * Ein Stückpreis ist kein Gebot.
+   *
+   * „3 × 1.650 l – je 1.050 € VB" nennt einen Betrag, aber gemeint sind drei
+   * Stück. Als Gebot gelesen wären das 1.050 statt 3.150 €. Die Preislisten-
+   * Regel griff hier nicht, weil nur EIN verschiedener Betrag dasteht — die
+   * echte Mail entkam nur zufällig, weil sie vier verschiedene Preise nennt.
+   *
+   * „je", „pro Stück" oder ein Multiplikator davor sagen es unmissverständlich.
+   */
+  const stueckpreis = priced.some((l) => /\b(je|pro\s+st(ü|ue)ck|à|a\s+st(ü|ue)ck)\b/i.test(l) || /\b\d+\s*[×x]\s/i.test(l))
+  const priceList = (distinct.size > 1 && priced.length > 1) || stueckpreis
 
   const offer = offerLine
     ? Number(offerLine[1].replace(/\./g, '')) || null

@@ -1,5 +1,6 @@
 import type { DB } from '../types'
 import { isOpen } from './stats'
+import { dims as fmtDims } from './format'
 
 /**
  * Optional second reader for an incoming enquiry.
@@ -82,13 +83,29 @@ export function amountInText(amount: number, text: string): boolean {
   return text.split(/\r?\n/).some((line) => {
     if (!/(?:€|EUR\b|Euro\b)/i.test(line)) return false
     return forms.some((f) => {
-      const at = line.indexOf(f)
-      if (at < 0) return false
-      // Keine Ziffer und kein Trennzeichen direkt daneben — sonst ist es ein
-      // Ausschnitt aus einer größeren Zahl.
-      const before = line[at - 1] ?? ' '
-      const after = line[at + f.length] ?? ' '
-      return !/[\d.,]/.test(before) && !/\d/.test(after)
+      let at = line.indexOf(f)
+      while (at >= 0) {
+        // Keine Ziffer und kein Trennzeichen direkt daneben — sonst ist es ein
+        // Ausschnitt aus einer größeren Zahl.
+        const before = line[at - 1] ?? ' '
+        const after = line[at + f.length] ?? ' '
+        /*
+         * Das Währungszeichen muss AN DIESER Zahl stehen, nicht irgendwo auf der
+         * Zeile.
+         *
+         * „3 × 1.650 l – je 1.050 € VB" enthält ein €, und damit galt auch die
+         * 1.650 als Geldbetrag — zufällig der Preis zweier Rundtanks, die in der
+         * Nachricht nirgends vorkommen. Der Preis-Schlüssel wäre damit in jeder
+         * Tank-Nachricht wirkungslos gewesen: „irgendeine Zahl auf einer Zeile
+         * mit €".
+         */
+        const rechts = line.slice(at + f.length, at + f.length + 8)
+        const links = line.slice(Math.max(0, at - 8), at)
+        const amGeld = /^\s*(?:€|EUR\b|Euro\b)/i.test(rechts) || /(?:€|EUR|Euro)\s*$/i.test(links)
+        if (!/[\d.,]/.test(before) && !/\d/.test(after) && amGeld) return true
+        at = line.indexOf(f, at + 1)
+      }
+      return false
     })
   })
 }
@@ -216,6 +233,28 @@ export interface RawProposal {
   count?: number
   /** Beschreibung der gemeinten Ware, wenn keine Nummer genannt wurde. */
   what?: string
+  /**
+   * Wie die Nummern zustande kamen — die KI sagt es selbst, statt dass der Code
+   * es hinterher neu errät und dabei ihre Auflösung verwirft.
+   */
+  confidence?: 'genannt' | 'eindeutig' | 'erschlossen' | 'baugleich' | 'geraten'
+  /** Ein Satz, welche Angabe entschieden hat. Wird zur Warnung, wo es unsicher ist. */
+  reason?: string
+  /** Beim Gebot: bietet der Käufer, oder zitiert er unsere eigenen Preise zurück? */
+  amountKind?: 'gebot' | 'unser_preis' | 'unklar'
+}
+
+/** Was der Käufer von UNS will — geht heute komplett verloren. */
+export interface RawAsk {
+  topic: 'masse' | 'verfuegbarkeit' | 'zustand' | 'preis' | 'abholung' | 'zahlung' | 'sonstiges'
+  quote: string
+  positionIds?: string[]
+}
+
+/** Was in der Nachricht steht und abgelegt werden soll, ohne dass ein Schritt daraus wird. */
+export interface RawNote {
+  topic: 'abholung' | 'termin' | 'ort' | 'betrieb' | 'preis' | 'zahlung' | 'bedingung' | 'sonstiges'
+  quote: string
 }
 
 export interface AiRead {
@@ -224,6 +263,10 @@ export interface AiRead {
   intent: AiIntent
   summary: string
   proposals: RawProposal[]
+  /** Worauf der Käufer eine Antwort erwartet. */
+  asks: RawAsk[]
+  /** Was sonst in der Nachricht steht und abgelegt gehört. */
+  notes: RawNote[]
 }
 
 const PROPOSAL_TOOL = {
@@ -241,7 +284,10 @@ const PROPOSAL_TOOL = {
       summary: { type: 'string', description: 'Ein Satz auf Deutsch, worum es geht.' },
       proposals: {
         type: 'array',
-        description: 'Was übernommen werden soll. Lieber weniger und sicher als viel und geraten.',
+        description:
+          'Was in den Bestand oder an den Interessenten übernommen werden soll. Bei Positionen: lieber vollständig'
+          + ' mit ehrlichem Sicherheitskennzeichen als still unvollständig — eine fehlende Position sieht niemand,'
+          + ' eine markierte schon. Bei reservieren und verkauf.vorbereiten umgekehrt: im Zweifel gar nicht.',
         items: {
           type: 'object',
           properties: {
@@ -261,16 +307,83 @@ const PROPOSAL_TOOL = {
             positionIds: {
               type: 'array',
               items: { type: 'string' },
-              description: 'Positionsnummern NUR wenn sie dastehen oder die Angabe genau eine Position trifft.',
+              description:
+                'Die gemeinten Positionsnummern, jede einzeln — niemals ein Bereich wie "T-17–T-19". Löse jede'
+                + ' Wunschzeile über jeden Anhaltspunkt auf: genannte Nummer, genannter Preis, Typwort, Hersteller,'
+                + ' Literzahl, Maß, Bauform, Stapelbarkeit und die Stimmigkeit der ganzen Anfrage. Wie sicher das ist,'
+                + ' steht in confidence — Unsicherheit ist KEIN Grund, die Zeile wegzulassen.',
             },
-            count: { type: 'number', description: 'Bei baugleicher Ware die Stückzahl statt einer erfundenen Nummer.' },
+            confidence: {
+              type: 'string',
+              enum: ['genannt', 'eindeutig', 'erschlossen', 'baugleich', 'geraten'],
+              description:
+                'Wie die Nummern zustande kamen. genannt = die Nummer steht in der Nachricht. eindeutig = eine'
+                + ' einzelne Angabe trifft genau eine offene Position. erschlossen = erst mehrere Angaben zusammen'
+                + ' (etwa Liter UND Preis) treffen genau eine. baugleich = mehrere gleiche, die Stückzahl stimmt,'
+                + ' welche Nummer es wird, ist beliebig. geraten = es bleibt offen, welche gemeint ist.',
+            },
+            reason: {
+              type: 'string',
+              description:
+                'Ein Satz auf Deutsch, warum genau diese Nummern. Nenne die Angabe, die entschieden hat, und bei'
+                + ' "geraten" auch, was sonst in Frage käme. Belegte Ware (RESERVIERT, im Kontakt) hier vermerken.',
+            },
+            count: { type: 'number', description: 'Wie viele Stück diese Wunschzeile verlangt. Bei "3 × 1.650 l" also 3.' },
             what: { type: 'string', description: 'Womit die Ware benannt wurde, z. B. "Barriquefässer 225 l".' },
+            amountKind: {
+              type: 'string',
+              enum: ['gebot', 'unser_preis', 'unklar'],
+              description:
+                'Bei kind "gebot" PFLICHT. gebot = der Käufer nennt, was er zahlen will, und es ist nicht unser Preis.'
+                + ' unser_preis = die Beträge sind unsere eigenen Preise für genau diese Ware — er nimmt an, er bietet'
+                + ' nicht. unklar = ein Betrag steht da, aber es ist nicht zu erkennen, wessen er ist.',
+            },
           },
           required: ['kind', 'quote'],
         },
       },
+      asks: {
+        type: 'array',
+        description:
+          'Worauf der Käufer eine Antwort erwartet. Hier hängt nichts an ihm — es sagt dem Verkäufer nur, was in'
+          + ' der Antwort stehen muss. Lieber eine zu viel als eine unbeantwortete.',
+        items: {
+          type: 'object',
+          properties: {
+            topic: {
+              type: 'string',
+              enum: ['masse', 'verfuegbarkeit', 'zustand', 'preis', 'abholung', 'zahlung', 'sonstiges'],
+              description:
+                'masse = Maße, Höhe, Breite, Tiefe, Durchmesser, Stapelhöhe. verfuegbarkeit = ist es noch da.'
+                + ' zustand = Material, Dichtigkeit, Baujahr, Ausstattung. abholung = Termin, Verladung, Transport.',
+            },
+            quote: { type: 'string', description: 'Wörtliches Zitat der Frage. PFLICHT.' },
+            positionIds: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Worauf sich die Frage bezieht, soweit erkennbar. Nur zum Antworten — es sperrt nichts.',
+            },
+          },
+          required: ['topic', 'quote'],
+        },
+      },
+      notes: {
+        type: 'array',
+        description: 'Was in der Nachricht steht und abgelegt werden soll, ohne dass daraus ein Schritt wird.',
+        items: {
+          type: 'object',
+          properties: {
+            topic: {
+              type: 'string',
+              enum: ['abholung', 'termin', 'ort', 'betrieb', 'preis', 'zahlung', 'bedingung', 'sonstiges'],
+            },
+            quote: { type: 'string', description: 'Der Satz, wie er dasteht. Rate kein Datum daraus. PFLICHT.' },
+          },
+          required: ['topic', 'quote'],
+        },
+      },
     },
-    required: ['transcript', 'intent', 'summary', 'proposals'],
+    required: ['transcript', 'intent', 'summary', 'proposals', 'asks', 'notes'],
   },
 }
 
@@ -346,7 +459,21 @@ async function call(
     throw new AiError(msg, 'shape')
   }
 
-  const data = (await res.json()) as { content?: { type: string; name?: string; input?: unknown }[] }
+  const data = (await res.json()) as {
+    content?: { type: string; name?: string; input?: unknown }[]
+    stop_reason?: string
+  }
+  /*
+   * Abgeschnitten heißt abgeschnitten, nicht „weniger gefunden".
+   *
+   * Bei `max_tokens` liefert die API ein unvollständiges Tool-Eingabeobjekt.
+   * Das ist truthy, es wirft nichts, und der Verkäufer bekommt einfach weniger
+   * Vorschläge — ohne einen Hinweis darauf, dass etwas fehlt. Genau die
+   * unsichtbare Lücke, gegen die dieser Umbau antritt.
+   */
+  if (data.stop_reason === 'max_tokens') {
+    throw new AiError('Die Antwort der KI wurde abgeschnitten. Bitte die Nachricht kürzen oder in zwei Teile lesen.', 'shape')
+  }
   const hit = data.content?.find((c) => c.type === 'tool_use' && c.name === tool.name)
   if (!hit?.input) throw new AiError('Die KI hat nicht im erwarteten Format geantwortet.', 'shape')
   return hit.input as Record<string, unknown>
@@ -357,6 +484,9 @@ export async function readMessage(text: string, db: DB, apiKey: string, model: s
     'Du liest eine eingegangene Nachricht zu einer Betriebsauflösung und trägst die Angaben ein.',
     '',
     'REGELN:',
+    '- Ein Betrag, den der Käufer nennt, ist nur dann sein Gebot, wenn es nicht unser eigener Preis ist.',
+    '  Zitiert er unsere Preisliste zurück (mehrere Beträge, je einer pro Wunschzeile, oft mit „VB"), NIMMT er an —',
+    '  dann `offer` leer lassen.',
     '- Trage NUR ein, was wörtlich in der Nachricht steht. Erfinde nichts.',
     '- Der Kopfblock einer weitergeleiteten Mail (Von/An/Gesendet/Betreff) gehört dem Portal, nicht dem Käufer.',
     '- noreply-Adressen sind nie die Adresse des Käufers.',
@@ -388,17 +518,51 @@ export async function readMessage(text: string, db: DB, apiKey: string, model: s
 
 /** Der Bestand, wie ihn das Modell sieht — mit Belegung, damit es eine schon
  *  zugesagte Position nicht ein zweites Mal verspricht. */
+/** T-17, T-18, T-19 → „T-17–T-19"; bei Lücken die Nummern einzeln. */
+function idRange(ids: string[]): string {
+  if (ids.length === 1) return ids[0]
+  const nums = ids.map((id) => Number(id.split('-')[1]))
+  const lueckenlos = nums.every((n, i) => i === 0 || n === nums[i - 1] + 1)
+  return lueckenlos ? `${ids[0]}–${ids[ids.length - 1]}` : ids.join(', ')
+}
+
+/**
+ * Der Bestand, wie die KI ihn sieht.
+ *
+ * Bisher standen dort nur Nummer, Typ, Liter und Preis. Damit konnte sie eine
+ * Frage nach Maßen nicht beantworten, „Gesamthöhe des höchsten Stapels" nicht
+ * einordnen und eckige nicht von runden Tanks unterscheiden — obwohl all das
+ * gepflegt ist. Und 29 gleiche Fässer standen als 29 gleich aussehende Zeilen
+ * da, statt als die eine Tatsache „29 baugleich".
+ *
+ * Baugleiches wird deshalb zusammengefasst, Maße und Merkmale kommen dazu. Die
+ * Zeile wird länger, die Liste kürzer: aus 58 Zeilen werden rund 20.
+ *
+ * Der Gruppenschlüssel enthält den Belegungszustand — sonst verschwindet ein
+ * reserviertes Stück in der Gruppe und die KI bietet es weiter an.
+ */
 function stockForProposals(db: DB): string {
   const byLead = new Map(db.leads.map((l) => [l.id, l.name]))
-  return db.tanks
-    .filter(isOpen)
-    .map((t) => {
-      const name = t.maker === 'Sonstige' ? t.type : `${t.maker} ${t.type}`
-      const held = t.leadId ? ` — schon bei ${byLead.get(t.leadId) ?? 'jemandem'}` : ''
-      const state = t.status === 'reserviert' ? ' — RESERVIERT' : t.status === 'kontakt' ? ' — im Kontakt' : ''
-      return `${t.id}: ${name}${t.litres > 0 ? `, ${t.litres} l` : ''}, ${t.vb} EUR${state}${held}`
+  const groups = new Map<string, { ids: string[]; line: (ids: string) => string }>()
+  for (const t of db.tanks.filter(isOpen)) {
+    const name = t.maker === 'Sonstige' ? t.type : `${t.maker} ${t.type}`
+    const held = t.leadId ? ` — schon bei ${byLead.get(t.leadId) ?? 'jemandem'}` : ''
+    const state = t.status === 'reserviert' ? ' — RESERVIERT' : t.status === 'kontakt' ? ' — im Kontakt' : ''
+    const size = fmtDims(t.dims)
+    const tags = t.tags.length ? ` · ${t.tags.join(', ')}` : ''
+    const key = [t.maker, t.type, t.litres, t.vb, size ?? '', t.tags.join('|'), state, held].join('\u0000')
+    const g = groups.get(key)
+    if (g) { g.ids.push(t.id); continue }
+    groups.set(key, {
+      ids: [t.id],
+      line: (ids: string) => {
+        const n = groups.get(key)!.ids.length
+        return `${ids}: ${name}${t.litres > 0 ? `, ${t.litres} l` : ''}, ${t.vb} EUR${n > 1 ? '/Stück' : ''}`
+          + `${size ? `, ${size}` : ''}${tags}${n > 1 ? ` · ${n} baugleich` : ''}${state}${held}`
+      },
     })
-    .join('\n')
+  }
+  return [...groups.values()].map((g) => g.line(idRange(g.ids))).join('\n')
 }
 
 /** Die offenen Interessenten, damit eine zweite Nachricht keinen zweiten Datensatz erzeugt. */
@@ -422,20 +586,83 @@ export async function readProposals(
   const prompt = [
     'Du liest eine eingegangene Nachricht zu einer Betriebsauflösung und schlägst vor, was daraus übernommen werden soll.',
     '',
-    'REGELN:',
+    'WIE SICHER MUSST DU SEIN? Zwei Maßstäbe, verwechsle sie nicht.',
+    '- "reservieren" und "verkauf.vorbereiten" wirken öffentlich oder bewegen Geld: im Zweifel gar nichts vorschlagen.',
+    '- Positionen, Fragen und Notizen sieht nur der Verkäufer, und er hakt sie mit einem Blick ab. Dort gilt das',
+    '  Gegenteil: lieber vollständig mit ehrlichem Sicherheitskennzeichen als still unvollständig. Etwas wegzulassen,',
+    '  weil du unsicher bist, ist hier der schlimmere Fehler — dann steht es nirgends und niemand merkt es.',
+    '',
+    'BELEG:',
     '- Jeder Vorschlag braucht ein wörtliches Zitat aus der Nachricht. Kein Zitat, kein Vorschlag.',
-    '- Erfinde nichts. Im Zweifel weniger vorschlagen.',
-    '- Der Kopfblock einer weitergeleiteten Mail (Von/An/Gesendet/Betreff) gehört dem Portal, nicht dem Käufer.',
-    '- noreply-Adressen sind nie die Adresse des Käufers.',
-    '- Ein Name unter einer Grußformel ist ein Name, auch wenn er wie ein Hersteller klingt.',
-    '- Nenne eine Positionsnummer NUR, wenn sie dasteht oder die genannte Angabe genau eine Position trifft.',
-    '  Gibt es mehrere gleiche (29 Barriquefässer, drei 1.650-l-Tanks), nutze count und what statt einer Nummer.',
-    '- Ein Betrag ist nur dann ein Gebot, wenn der KÄUFER ihn nennt. Zeilen, die mit "Positionen:", "Paketpreis:"',
-    '  oder "Summe" beginnen, stammen aus unserer eigenen Liste und sind niemals sein Gebot.',
+    '  Zitiere die eine Zeile oder den einen Satz, der ihn trägt — nicht die ganze Mail.',
+    '- Erfinde keine Zahl, keine Nummer, keinen Namen, keinen Termin.',
+    '',
+    'WELCHE ZEILEN GEHÖREN WEM:',
+    '- Der Kopfblock einer weitergeleiteten Mail (Von/An/Gesendet/Betreff) gehört dem Portal — es sei denn, dort steht',
+    '  eine gewöhnliche Adresse des Absenders. noreply-Adressen sind nie die Adresse des Käufers.',
+    '- Zeilen, die mit "Positionen:", "Paketpreis:", "Angebot" oder "Summe" beginnen, sind unsere eigene Liste, die der',
+    '  Käufer mitgeschickt hat. Sie liefern Positionsnummern, aber niemals einen Betrag des Käufers.',
+    '',
+    'WER SCHREIBT:',
+    '- Der Interessent ist die PERSON, nicht der Betrieb. In einer Signatur ist der Name die Zeile aus Vor- und',
+    '  Nachname. Titel und Abschlüsse ("Dipl. Ing.", "Dr.", "M. Sc."), Siegel und Mitgliedschaften',
+    '  ("Partnerbetrieb …"), die Firmenzeile, Straße, Ort und Web-Adresse sind NIE der Name.',
+    '- Ein Name auf einer Grußzeile ist ein Name, auch wenn er wie ein Hersteller aus dem Bestand klingt.',
+    '',
+    'POSITIONEN — zerlege den Wunsch in Zeilen, eine Zeile ist eine Menge einer Sache.',
+    'Für JEDE Zeile einen eigenen Vorschlag "positionen" mit genau dieser Zeile als Zitat, und der Reihe nach:',
+    '  1. Steht eine Positionsnummer da? Nimm sie. confidence "genannt".',
+    '  2. Sonst nimm ALLE Angaben der Zeile zusammen — Literzahl, genannter Preis, Typwort, Hersteller, Maß,',
+    '     Bauform, Stückzahl — und filtere den Bestand damit.',
+    '  3. Bleibt genau eine Position übrig: nimm sie. confidence "eindeutig", wenn schon eine einzelne Angabe',
+    '     gereicht hätte, sonst "erschlossen". Schreibe in reason, welche Angabe entschieden hat.',
+    '  4. Bleiben mehrere baugleiche übrig: nimm so viele, wie die Zeile verlangt, ab der niedrigsten Nummer,',
+    '     und nenne jede Nummer einzeln. confidence "baugleich", count setzen.',
+    '  5. Bleiben mehrere verschiedene übrig: nimm die am besten passende, confidence "geraten", und schreibe in',
+    '     reason, was sonst in Frage käme.',
+    '  6. Bleibt nichts übrig: keine Nummer, sondern eine Notiz.',
+    '- Der genannte PREIS ist ein Schlüssel: trifft ein Betrag des Käufers genau den Preis einer offenen Position,',
+    '  ist diese gemeint — auch wenn mehrere dieselbe Literzahl haben.',
+    '- Der Preis grenzt ein, er sucht nicht. Eine Position, die die Zeile sonst gar nicht anspricht, kommt nicht',
+    '  dadurch hinzu, dass ihr Preis zufällig passt.',
+    '- MASSE sind ein Schlüssel: wer nach Breite und Tiefe oder nach einer Stapelhöhe fragt, meint eckige oder',
+    '  ausdrücklich als stapelbar gekennzeichnete Ware. Runde Tanks haben keine Breite, sondern einen Durchmesser.',
+    '- Prüfe die Zuordnung am Ende als Ganzes: fallen mehrere Zeilen in eine zusammenhängende Reihe des Bestands',
+    '  — gleicher Typ, aufsteigende Größen, unsere eigenen Preise —, ist diese Reihe gemeint und nicht ein',
+    '  Sammelsurium aus verschiedenen Bauarten.',
+    '- Jede Nummer einzeln in positionIds, niemals ein Bereich wie "T-17–T-19" als einen Eintrag.',
+    '- Ein Typwort zählt nur als ganzes Wort: "Barriquefass" in "Barriquefass-Reiniger" meint den Reiniger.',
+    '- Eine Warengruppe ohne Menge und ohne Größe ("die Fässer", "die Tanks") ist KEIN Wunsch nach allen davon.',
+    '  Mit einem Mengenwort ("alle", "die beiden", "12") ist sie einer.',
+    '- Eine Frage nach einer Eigenschaft ist kein Wunsch. Sie gehört unter "asks", mit den Nummern, um die es geht —',
+    '  dort hängt sie niemandem etwas an.',
+    '- Steht bei einer Position RESERVIERT, "im Kontakt" oder "schon bei", nenne sie trotzdem und schreibe es in reason.',
+    '',
+    'GELD:',
+    '- Höchstens ein Vorschlag "gebot" je Nachricht, und amountKind IMMER setzen:',
+    '  "gebot" = der Käufer nennt, was er zahlen will, und es ist nicht unser Preis.',
+    '  "unser_preis" = die Beträge sind unsere eigenen Preise für genau diese Ware. Dann NIMMT er an, er bietet nicht.',
+    '  "unklar" = ein Betrag steht da, aber es ist nicht zu erkennen, wessen er ist.',
+    '- Eine Zahl ist Geld, wenn ein Währungszeichen oder das Wort Euro dabeisteht oder der Satz vom Zahlen handelt.',
+    '  Eine Telefonnummer, eine Postleitzahl, eine Jahreszahl, eine Uhrzeit, eine Literzahl und eine Stückzahl sind',
+    '  kein Betrag — auch nicht neben einem Zahlungswort ("ich zahle bar: 0176 …").',
+    '- Kein "gebot" ohne Zahl. "zu Ihrem Preis" und "einverstanden" nennen keinen Betrag: das gehört unter "notes".',
+    '',
+    'WAS DER KÄUFER VON UNS WILL:',
+    '- Alles, worauf er eine Antwort erwartet, kommt unter "asks" — mit Zitat und, wenn erkennbar, den Nummern.',
+    '  Das ging bisher komplett verloren, und der Verkäufer antwortete an der Frage vorbei.',
+    '',
+    'WAS SONST HÄNGEN BLEIBT:',
+    '- Abholung, Termin, Ort, Betrieb, Zahlungsart, Aussagen über unseren Preis und Vorbehalte ("falls …") kommen',
+    '  unter "notes", jeweils mit Zitat. Nimm den Satz, wie er dasteht, statt daraus ein Datum zu raten.',
+    '  Grußformeln und Höflichkeitssätze sind keine Notiz.',
+    '',
+    'SONST:',
     '- Passt die Nachricht zu einem bestehenden Interessenten (gleiche E-Mail oder Telefonnummer), gib dessen leadId an',
     '  und schlage lead.notiz statt lead.neu vor.',
     '- "verkauf.vorbereiten" nur, wenn der Käufer schreibt, dass bezahlt oder abgeholt wurde. Es bucht nichts.',
-    '- Ist es nur eine Frage, schlage höchstens vor, den Interessenten anzulegen.',
+    '- "reservieren" nur bei einer ausdrücklichen, unbedingten Zusage zu einer eindeutig benannten Position.',
+    '- Ist es nur eine Frage, schlage höchstens vor, den Interessenten anzulegen — plus die "asks".',
     ...(images.length ? ['- Ein Bild liegt bei: schreibe zuerst seinen Text unter transcript wörtlich ab.'] : []),
     ...(extra.trim() ? ['', 'ZUSÄTZLICH VOM VERKÄUFER:', extra.trim()] : []),
     '',
@@ -449,7 +676,10 @@ export async function readProposals(
     text || '(kein Text — nur das Bild)',
   ].join('\n')
 
-  const input = (await call(apiKey, model, prompt, PROPOSAL_TOOL, images, 2048)) as Partial<AiRead>
+  // 4096 statt 2048: eine Sammelanfrage über viele Gruppen sprengt 2048, und ein
+  // Abriss kostet nichts weniger als die halbe Bestellung. Ausgabe-Token werden
+  // nur nach tatsächlicher Erzeugung berechnet — die höhere Grenze ist gratis.
+  const input = (await call(apiKey, model, prompt, PROPOSAL_TOOL, images, 4096)) as Partial<AiRead>
   return {
     transcript: String(input.transcript ?? ''),
     intent: (['kaufinteresse', 'frage', 'absage', 'sonstiges'] as const).includes(input.intent as AiIntent)
@@ -457,6 +687,8 @@ export async function readProposals(
       : 'sonstiges',
     summary: String(input.summary ?? ''),
     proposals: Array.isArray(input.proposals) ? (input.proposals as RawProposal[]) : [],
+    asks: Array.isArray(input.asks) ? (input.asks as RawAsk[]) : [],
+    notes: Array.isArray(input.notes) ? (input.notes as RawNote[]) : [],
   }
 }
 
@@ -480,19 +712,65 @@ export async function draftReply(
 ): Promise<string> {
   const s = db.settings
   const picked = db.tanks.filter((t) => tankIds.includes(t.id))
+
+  /*
+   * Der Entwurf bekommt die MASSE und die Ausstattung.
+   *
+   * Bisher standen dort nur Name, Liter und Preis. Auf „Ich bräuchte noch Tiefe
+   * und Breite der Tanks sowie die Gesamthöhe des höchsten Stapels" konnte die
+   * Antwort deshalb nur lauten, man sehe nach — obwohl jede Zahl gepflegt ist.
+   * Genau diese Frage war die Bedingung, an der ein Geschäft über 5.400 € hing.
+   */
+  const zeile = (t: (typeof picked)[number]) => {
+    const size = fmtDims(t.dims)
+    const tags = t.tags.length ? ` · ${t.tags.join(', ')}` : ''
+    return `- ${t.id}: ${t.maker === 'Sonstige' ? t.type : `${t.maker} ${t.type}`}`
+      + `${t.litres > 0 ? `, ${t.litres} l` : ''}: ${t.vb} EUR VB${size ? `, ${size}` : ''}${tags}`
+  }
+  // Was sich aus mehreren Positionen ausrechnen lässt und der Käufer sonst selbst
+  // addieren müsste: die Wandlänge nebeneinander und die einheitliche Tiefe.
+  const breiten = picked.map((t) => t.dims?.w).filter((n): n is number => typeof n === 'number')
+  const tiefen = [...new Set(picked.map((t) => t.dims?.d).filter((n): n is number => typeof n === 'number'))]
+  const hoehen = picked.map((t) => t.dims?.h).filter((n): n is number => typeof n === 'number')
+  const zusammen = [
+    breiten.length === picked.length && picked.length > 1
+      ? `Alle ${picked.length} nebeneinander: ${breiten.reduce((a, b) => a + b, 0)} cm Wandlänge.`
+      : '',
+    tiefen.length === 1 && picked.length > 1 ? `Tiefe bei allen gleich: ${tiefen[0]} cm.` : '',
+    hoehen.length ? `Höchster Einzeltank: ${Math.max(...hoehen)} cm.` : '',
+  ].filter(Boolean)
+
   const prompt = [
     'Formuliere eine kurze, höfliche Antwort auf die folgende Anfrage. Auf Deutsch, per Sie.',
     '',
     'REGELN:',
     '- Nenne nur Preise und Angaben, die unten stehen. Erfinde keine Zahlen, keine Termine, keine Zusagen.',
-    '- Keine Floskeln, keine Werbesprache. Zwei bis fünf Sätze.',
-    '- Wenn der Käufer nach etwas fragt, das unten nicht steht, schreibe, dass du es nachsiehst.',
+    '- Keine Floskeln, keine Werbesprache.',
+    '- Beantworte JEDE Frage der Anfrage, soweit die Angaben unten sie hergeben. Fragt er nach Maßen, nenne sie',
+    '  — am besten als kurze Aufstellung je Position, nicht in einem Fließsatz.',
+    '- Steht etwas nicht unten, behaupte es nicht, sondern schreibe, dass du es nachsiehst. Das gilt besonders für',
+    '  Stapelhöhen: rechne keine zusammen, wenn bei den Positionen nicht ausdrücklich „stapelbar" steht.',
     '',
     `VERKÄUFER: ${s.seller.name}${s.seller.location ? `, ${s.seller.plz} ${s.seller.location}` : ''}`,
     s.seller.pickupInfo ? `ABHOLUNG: ${s.seller.pickupInfo}` : '',
     '',
-    picked.length ? 'GEFRAGTE POSITIONEN:' : 'KEINE POSITION ZUGEORDNET.',
-    ...picked.map((t) => `- ${t.maker === 'Sonstige' ? t.type : `${t.maker} ${t.type}`}${t.litres > 0 ? `, ${t.litres} l` : ''}: ${t.vb} EUR VB`),
+    picked.length ? 'GEFRAGTE POSITIONEN:' : 'KEINE POSITION ZUGEORDNET — hier der freie Bestand:',
+    /*
+     * NIE `stockForProposals` hier hineinschieben.
+     *
+     * Die Liste ist für das Modell gebaut, das den Vorgang plant: sie nennt
+     * „RESERVIERT", „im Kontakt" und „schon bei Dr. Katrin Berger". In einem
+     * Antwortentwurf an einen fremden Käufer stünde damit der Name eines anderen
+     * Interessenten und unser Verhandlungsstand — zwei Zeilen unter der Regel
+     * „Nenne nur Preise und Angaben, die unten stehen".
+     *
+     * Der Entwurf sieht deshalb nur, was ohnehin im öffentlichen Katalog steht:
+     * freie Positionen, ohne jede Zuordnung.
+     */
+    ...(picked.length
+      ? picked.map(zeile)
+      : db.tanks.filter((t) => t.status === 'verfuegbar').map(zeile)),
+    ...(zusammen.length ? ['', 'AUSGERECHNET:', ...zusammen.map((z) => `- ${z}`)] : []),
     '',
     'ANFRAGE:',
     message,
