@@ -289,7 +289,7 @@ function QuoteCard({ quote, go, startOpen }: { quote: Quote; go: Go; startOpen: 
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-amber-soft px-3 py-2 text-[13px] text-amber">
           <span>
             Abgelehnt, aber {collapseIds(gebunden.map((t) => t.id))} {gebunden.length === 1 ? 'hängt' : 'hängen'} noch an
-            diesem Angebot{reserviert.length > 0 ? ' — davon für Käufer sichtbar vergeben: ' + collapseIds(reserviert) : ''}.
+            diesem Angebot{reserviert.length > 0 ? ' — davon im Katalog als reserviert ausgewiesen: ' + collapseIds(reserviert) : ''}.
           </span>
           <Button
             size="sm"
