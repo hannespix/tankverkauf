@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { PriceLadder } from '../components/charts'
 import { LeadPicker } from '../components/LeadPicker'
 import { Button, Card, EmptyState, Field, Input, Pill, SectionTitle, Select, Stat, Textarea, cx, type Tone } from '../components/ui'
-import { IconHandshake, IconTrash } from '../components/icons'
-import { patchQuote, quoteToDeal, removeQuote } from '../lib/actions'
+import { IconHandshake, IconPlus, IconTrash } from '../components/icons'
+import { patchQuote, quoteToDeal, removeQuote, setQuoteTanks } from '../lib/actions'
 import { itemLabel, centsPerLitre, dateDE, eur, num, todayISO } from '../lib/format'
 import { useStore } from '../lib/store'
 import { VERDICT_LABEL, quoteMetrics } from '../lib/stats'
@@ -83,6 +83,15 @@ function QuoteCard({ quote }: { quote: Quote }) {
   const lead = db.leads.find((l) => l.id === quote.leadId)
   const portal = db.settings.portals.find((p) => p.id === quote.portalId)
   const [open, setOpen] = useState(false)
+  const [pick, setPick] = useState('')
+  // Nur freie Positionen, und nur solche, die nicht schon drin sind.
+  const addable = db.tanks
+    .filter((t) => t.status === 'verfuegbar' && !quote.tankIds.includes(t.id))
+    .filter((t) => {
+      const q = pick.trim().toLowerCase()
+      return !q || [t.id, t.maker, t.type, String(t.litres)].some((v) => v.toLowerCase().includes(q))
+    })
+    .slice(0, 20)
   const closed = quote.status === 'angenommen' || quote.status === 'abgelehnt'
 
   return (
@@ -136,11 +145,22 @@ function QuoteCard({ quote }: { quote: Quote }) {
           return (
             <li key={id}>
               <Pill tone={t.status === 'verkauft' ? 'neutral' : 'sky'}>
-                {itemLabel(t)}
+                <span className="tnum opacity-70">{t.id}</span> {itemLabel(t)}
+                {open && !closed && (
+                  <button
+                    type="button"
+                    aria-label={`${t.id} ${itemLabel(t)} aus dem Angebot nehmen`}
+                    onClick={() => setQuoteTanks(quote.id, quote.tankIds.filter((x) => x !== id))}
+                    className="-mr-1 ml-0.5 rounded px-1 leading-none hover:bg-black/10"
+                  >
+                    ×
+                  </button>
+                )}
               </Pill>
             </li>
           )
         })}
+        {quote.tankIds.length === 0 && <li className="text-[13px] text-amber">Keine Position im Angebot.</li>}
       </ul>
 
       {!open ? (
@@ -154,6 +174,33 @@ function QuoteCard({ quote }: { quote: Quote }) {
         </div>
       ) : (
         <div className="mt-3 space-y-3 border-t border-line pt-3">
+          {/*
+            Die Positionen eines Angebots ließen sich bisher überhaupt nicht
+            ändern — kein einziger Schreibweg fasste `tankIds` an. Wer eine
+            Position herausnehmen wollte, musste sie aus dem Bestand löschen.
+          */}
+          {!closed && (
+            <Field label="Positionen ändern" hint="Der geforderte Preis rechnet mit, solange er nicht von Hand gesetzt wurde.">
+              <div className="space-y-2">
+                <Input value={pick} onChange={(e) => setPick(e.target.value)} placeholder="Position suchen und hinzufügen …" />
+                {pick.trim() && (
+                  <div className="max-h-40 overflow-y-auto rounded-xl border border-line bg-surface-2 p-2">
+                    {addable.length === 0 && <p className="px-2 py-1 text-[13px] text-muted">Nichts Freies gefunden.</p>}
+                    {addable.map((t) => (
+                      <button key={t.id} type="button"
+                        onClick={() => { setQuoteTanks(quote.id, [...quote.tankIds, t.id]); setPick('') }}
+                        className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] hover:bg-surface-3">
+                        <IconPlus className="h-4 w-4 shrink-0" />
+                        <span className="tnum shrink-0 text-faint">{t.id}</span>
+                        <span className="truncate">{itemLabel(t)}</span>
+                        <span className="tnum ml-auto shrink-0 text-muted">{eur(t.vb)}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </Field>
+          )}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Field label="Unser Angebotspreis (€)">
               <Input type="number" className="tnum" value={quote.askPrice}

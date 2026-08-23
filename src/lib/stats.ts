@@ -1,4 +1,4 @@
-import type { DB, Deal, Maker, Tank, TankStatus } from '../types'
+import type { DB, Deal, Maker, Quote, Tank, TankStatus } from '../types'
 
 export interface Totals {
   count: number
@@ -135,4 +135,17 @@ export function judgeBundle(base: Totals, price: number): OfferVerdict {
   if (price >= base.target) return 'gut'
   if (price >= base.floor) return 'ok'
   return 'unter-limit'
+}
+
+/**
+ * Die offenen Angebote eines Interessenten, neueste zuerst.
+ *
+ * Vier Stellen im Werkzeug suchten „das“ Angebot mit einem nackten `.find()`
+ * und trafen damit stillschweigend das zuletzt angelegte — `createQuote` schiebt
+ * vorn ein. Wer zwei Angebote hat, bekam Gebote am falschen vermerkt.
+ * Angenommen und abgelehnt zählen nicht: daran ist nichts mehr zu verhandeln.
+ */
+export function openQuotesOf(db: DB, leadId: string | null): Quote[] {
+  if (!leadId) return []
+  return db.quotes.filter((q) => q.leadId === leadId && q.status !== 'abgelehnt' && q.status !== 'angenommen')
 }

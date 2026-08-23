@@ -6,6 +6,7 @@ import { buildPlan, checkProposals, type Plan, type Proposal } from '../lib/inbo
 import { applyProposal, quoteToDeal } from '../lib/actions'
 import { parseMessage } from '../lib/ads'
 import { eur } from '../lib/format'
+import { openQuotesOf } from '../lib/stats'
 import { prepareImage } from '../lib/photos'
 import { useStore } from '../lib/store'
 
@@ -194,7 +195,7 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
    * (`closed` in views/Quotes.tsx), sie fehlte nur hier.
    */
   const quote = useMemo(
-    () => (leadId ? db.quotes.find((q) => q.leadId === leadId && q.status !== 'abgelehnt' && q.status !== 'angenommen') ?? null : null),
+    () => openQuotesOf(db, leadId)[0] ?? null,
     [db.quotes, leadId],
   )
 

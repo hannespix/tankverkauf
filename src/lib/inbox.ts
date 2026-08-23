@@ -3,7 +3,7 @@ import { type ParsedMessage } from './ads'
 import { eur, itemLabel, num } from './format'
 import { buildCatalog } from './catalog'
 import { priceSelection } from './bundles'
-import { isOpen } from './stats'
+import { isOpen, openQuotesOf } from './stats'
 import type { DB, Lead, Tank } from '../types'
 
 /**
@@ -430,7 +430,7 @@ export function collapseIds(ids: string[]): string {
  */
 function floorFor(db: DB, leadId: string | null): number {
   if (!leadId) return 0
-  const quote = db.quotes.find((q) => q.leadId === leadId && q.status !== 'abgelehnt')
+  const quote = openQuotesOf(db, leadId)[0]
   const ids = quote?.tankIds ?? db.leads.find((l) => l.id === leadId)?.tankIds ?? []
   return db.tanks.filter((t) => ids.includes(t.id)).reduce((a, t) => a + t.floor, 0)
 }
@@ -582,9 +582,7 @@ export function buildPlan(proposals: Proposal[], parsed: ParsedMessage, db: DB, 
   // von Hand in der Bestandsliste zusammenklickt.
   // Erledigte Angebote zählen nicht mehr: ein angenommenes gehört zu einem
   // gebuchten Verkauf, und daran hängt kein neues Gebot mehr.
-  const openQuote = known
-    ? db.quotes.find((q) => q.leadId === known.id && q.status !== 'abgelehnt' && q.status !== 'angenommen') ?? null
-    : null
+  const openQuote = openQuotesOf(db, known?.id ?? null)[0] ?? null
   const posStep = steps.find((p) => p.kind === 'positionen')
   const withPositions = !!posStep || (known?.tankIds.length ?? 0) > 0
   // Nicht zum zweiten Mal. Steht schon ein Angebot offen, entstünde ein Duplikat

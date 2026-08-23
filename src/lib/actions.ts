@@ -4,6 +4,7 @@ import { STATUS_LABEL } from '../types'
 import { generateAd, portalOf } from './ads'
 import { SEED } from './seed'
 import { newId, store } from './store'
+import { openQuotesOf } from './stats'
 
 const now = () => new Date().toISOString()
 const tankName = (t: Tank) => `${t.maker === 'Sonstige' ? t.type : t.maker} ${t.litres} l`
@@ -191,11 +192,18 @@ export function removeLead(lead: Lead) {
     (db) => {
       db.leads = db.leads.filter((l) => l.id !== lead.id)
       db.tanks.forEach((t) => {
-        if (t.leadId === lead.id) {
+        // Eine verkaufte Position behält ihren Käufer. Ohne diese Bedingung
+        // verlor der Verkauf seinen Menschen, während er ihn selbst noch nannte.
+        if (t.leadId === lead.id && t.status !== 'verkauft') {
           t.leadId = null
           if (t.status === 'kontakt' || t.status === 'reserviert') t.status = 'verfuegbar'
         }
       })
+      // Angebote und Verkäufe zeigten danach auf einen Interessenten, den es
+      // nicht mehr gibt — die Angebotskarte rendert das stumm als „kein
+      // Interessent“, und niemand sieht, dass da einmal einer war.
+      for (const q of db.quotes) if (q.leadId === lead.id) q.leadId = null
+      for (const d of db.deals) if (d.leadId === lead.id) d.leadId = null
     },
     { kind: 'lead', text: `Interessent gelöscht: ${lead.name}` },
   )
@@ -431,7 +439,9 @@ export function applyProposal(p: Proposal, leadId: string | null, message: strin
     }
     case 'gebot': {
       if (p.amount == null) return { leadId, done: '', skipped: 'kein Betrag' }
-      const quote = target ? db.quotes.find((q) => q.leadId === target && q.status !== 'abgelehnt') : null
+      // Das jüngste offene Angebot. Ein angenommenes gehört zu einem gebuchten
+      // Verkauf — daran ist nichts mehr zu verhandeln.
+      const quote = openQuotesOf(db, target)[0] ?? null
       if (quote) {
         patchQuote(quote.id, { buyerOffer: p.amount }, `Gebot ${p.amount} € vermerkt`)
         return { leadId: target, done: p.title }
@@ -479,6 +489,54 @@ export function applyProposal(p: Proposal, leadId: string | null, message: strin
 }
 
 // ------------------------------------------------------------------- quotes
+
+/**
+ * Die Positionen eines Angebots ändern.
+ *
+ * Das ging bisher überhaupt nicht: kein einziger `patchQuote`-Aufruf im Projekt
+ * fasst `tankIds` an, und die Angebotskarte zeigt die Positionen als Marken ohne
+ * Bedienelement. Wer eine Position aus einem Angebot nehmen wollte, musste sie
+ * aus dem Bestand löschen.
+ *
+ * Der geforderte Preis rechnet mit, solange er dem entspricht, was die Regel für
+ * die alte Auswahl ergeben hätte — hat der Verkäufer von Hand einen anderen
+ * Preis eingetragen, bleibt der stehen.
+ */
+export function setQuoteTanks(quoteId: string, tankIds: string[]) {
+  store.mutate(
+    (db) => {
+      const q = db.quotes.find((x) => x.id === quoteId)
+      if (!q) return
+      const before = q.tankIds
+      const auto = askFor(db, before)
+      q.tankIds = [...tankIds]
+      if (q.askPrice === auto) q.askPrice = askFor(db, tankIds)
+      q.updatedAt = now()
+
+      // Neu dazugekommene binden, weggefallene freigeben — dieselbe Regel wie
+      // beim Anlegen und Löschen eines Angebots.
+      for (const id of tankIds.filter((x) => !before.includes(x))) {
+        const t = db.tanks.find((x) => x.id === id)
+        if (t && t.status === 'verfuegbar') {
+          t.status = 'kontakt'
+          t.leadId = q.leadId
+          t.updatedAt = now()
+        }
+      }
+      for (const id of before.filter((x) => !tankIds.includes(x))) {
+        const t = db.tanks.find((x) => x.id === id)
+        if (!t || t.status !== 'kontakt') continue
+        const heldElsewhere = db.quotes.some((o) => o.id !== quoteId && o.tankIds.includes(id) && o.status !== 'abgelehnt')
+        const stillWanted = db.leads.some((l) => l.id === t.leadId && l.tankIds.includes(id))
+        if (heldElsewhere || stillWanted) continue
+        t.status = 'verfuegbar'
+        t.leadId = null
+        t.updatedAt = now()
+      }
+    },
+    { kind: 'deal', text: `Angebot: ${tankIds.length} ${tankIds.length === 1 ? 'Position' : 'Positionen'}` },
+  )
+}
 
 /** Turn a selection of tanks into an offer, keeping the price ladder intact. */
 export function createQuote(input: {
@@ -651,6 +709,13 @@ export function assignDealLead(dealId: string, leadId: string | null) {
           lead.stage = 'gewonnen'
           lead.updatedAt = now()
         }
+      }
+
+      // Das Angebot, aus dem der Verkauf entstand, gehört demselben Menschen.
+      // Sonst nannten Angebot, Verkauf und Bestand drei verschiedene Namen.
+      const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x))
+      for (const q of db.quotes) {
+        if (q.leadId === previousId && sameSet(q.tankIds, deal.tankIds)) q.leadId = leadId
       }
 
       if (previousId) {
