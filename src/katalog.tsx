@@ -107,7 +107,18 @@ function App() {
       const treffer: { url: string; data: Catalog }[] = []
       for (const url of sources()) {
         try {
-          const res = await fetch(url, { cache: 'no-store' })
+          /*
+           * `cache: 'no-store'` wirkt nur auf den Browser.
+           *
+           * Davor liegt das CDN von GitHub Pages mit zehn Minuten
+           * Vorhaltezeit — es gibt dieselbe Adresse so lange aus seinem Speicher
+           * heraus, ganz gleich, was hier steht. Ein Parameter, der sich jede
+           * Minute ändert, macht die Adresse neu und holt die Datei vom
+           * Ursprung. Minutengenau, nicht sekundengenau: sonst wäre jeder Aufruf
+           * einzigartig und der Zwischenspeicher völlig wirkungslos.
+           */
+          const frisch = `${url}${url.includes('?') ? '&' : '?'}v=${Math.floor(Date.now() / 60000)}`
+          const res = await fetch(frisch, { cache: 'no-store' })
           if (!res.ok) continue
           treffer.push({ url, data: (await res.json()) as Catalog })
         } catch {

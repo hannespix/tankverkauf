@@ -9,11 +9,12 @@ import { dateDE, eur, num, relativeDE } from '../lib/format'
 import { store, useStore } from '../lib/store'
 import { byMaker, isOpen } from '../lib/stats'
 import type { Ad, AdScope, AdScopeKind, AdStatus, Maker, Portal, Tank } from '../types'
+import type { ViewProps } from '../App'
 
 const STATUS_TONE: Record<AdStatus, Tone> = { entwurf: 'neutral', online: 'green', offline: 'amber' }
 const STATUS_LABEL: Record<AdStatus, string> = { entwurf: 'Entwurf', online: 'Online', offline: 'Offline' }
 
-export default function Ads() {
+export default function Ads(_: ViewProps) {
   const { db } = useStore()
   const [creating, setCreating] = useState(false)
   const [openId, setOpenId] = useState<string | null>(null)

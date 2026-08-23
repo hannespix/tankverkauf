@@ -10,8 +10,9 @@ import { AI_MODELS } from '../lib/ai'
 import { BundleEditor } from '../components/BundleEditor'
 import { catalogPageUrl, catalogStamp } from '../lib/catalog'
 import { STYLE_LABEL, type CategoryDef, type DB, type Portal, type PortalStyle } from '../types'
+import type { ViewProps } from '../App'
 
-export default function Settings() {
+export default function Settings(_: ViewProps) {
   const { db, config, mode, login, repoPrivate, lastSyncAt, sync, error, publishError } = useStore()
   const readOnly = mode === 'demo'
   const [cfg, setCfg] = useState(config)

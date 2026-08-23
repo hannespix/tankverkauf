@@ -11,6 +11,7 @@ import { prepareImage } from '../lib/photos'
 import { store, useStore } from '../lib/store'
 import { VERDICT_LABEL, judgeBundle, judgeOffer, totals } from '../lib/stats'
 import { STATUS_LABEL, type Category, type Maker, type Tank, type TankStatus } from '../types'
+import type { ViewProps } from '../App'
 
 const STATUSES: TankStatus[] = ['verfuegbar', 'kontakt', 'reserviert', 'verkauft']
 
@@ -18,7 +19,7 @@ const STATUS_TONE: Record<TankStatus, Tone> = { verfuegbar: 'green', kontakt: 'a
 
 type SortKey = 'id' | 'maker' | 'type' | 'litres' | 'vb' | 'ctl' | 'status' | 'offer' | 'lead'
 
-export default function Tanks() {
+export default function Tanks({ focus }: ViewProps) {
   const { db } = useStore()
   // Demo edits live only in memory, so nothing needs locking down — the banner says so.
   const readOnly = false
@@ -28,7 +29,8 @@ export default function Tanks() {
   const [statusSel, setStatusSel] = useState<TankStatus[]>([])
   const [makerSel, setMakerSel] = useState<Maker[]>([])
   const [typeSel, setTypeSel] = useState<string[]>([])
-  const [leadSel, setLeadSel] = useState('')
+  // Kommt der Sprung von einem Menschen, ist sein Filter schon gesetzt.
+  const [leadSel, setLeadSel] = useState(focus.leadId ?? '')
   const [minL, setMinL] = useState('')
   const [maxL, setMaxL] = useState('')
   const [withOffer, setWithOffer] = useState(false)

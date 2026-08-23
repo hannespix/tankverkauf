@@ -6,12 +6,13 @@ import { LeadPicker } from '../components/LeadPicker'
 import { itemLabel, centsPerLitre, dateDE, eur, num } from '../lib/format'
 import { useStore } from '../lib/store'
 import { progress } from '../lib/stats'
+import type { ViewProps } from '../App'
 
-export default function Deals() {
+export default function Deals({ go, focus }: ViewProps) {
   const { db } = useStore()
   const readOnly = false
   // Deal id we are creating a brand-new buyer for.
-  const [leadSel, setLeadSel] = useState('')
+  const [leadSel, setLeadSel] = useState(focus.leadId ?? '')
   const [openOnly, setOpenOnly] = useState(false)
   const p = progress(db)
   const openMoney = db.deals.filter((d) => !d.paid).reduce((a, d) => a + d.price, 0)
@@ -75,7 +76,28 @@ export default function Deals() {
               <Card key={d.id}>
                 <SectionTitle
                   title={d.label}
-                  hint={`${dateDE(d.date)}${lead ? ` · ${lead.name}` : ''} · ${tanks.length} Position${tanks.length > 1 ? 'en' : ''}${litres > 0 ? ` · ${num(litres)} l` : ''}`}
+                  /* Der Käufername war Text im Untertitel — kein Weg zurück
+                     zu dem Menschen, mit dem das Geschäft lief. */
+                  hint={
+                    <span className="flex flex-wrap items-center gap-x-1.5">
+                      <span>{dateDE(d.date)}</span>
+                      {lead && (
+                        <>
+                          <span>·</span>
+                          <button
+                            type="button"
+                            onClick={() => go('leads', { leadId: lead.id })}
+                            className="tx font-semibold text-primary hover:underline"
+                          >
+                            {lead.name}
+                          </button>
+                        </>
+                      )}
+                      <span>
+                        · {tanks.length} Position{tanks.length > 1 ? 'en' : ''}{litres > 0 ? ` · ${num(litres)} l` : ''}
+                      </span>
+                    </span>
+                  }
                   action={
                     <div className="flex items-center gap-2">
                       <Pill tone={d.paid ? 'green' : 'amber'}>{d.paid ? 'bezahlt' : 'offen'}</Pill>

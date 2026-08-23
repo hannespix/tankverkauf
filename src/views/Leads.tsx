@@ -11,6 +11,7 @@ import { MAX_PER_LEAD } from '../lib/inbox'
 import { askFor } from '../lib/inbox'
 import { useStore } from '../lib/store'
 import { STAGE_LABEL, SOURCE_LABEL, QUOTE_STATUS_LABEL, type Lead, type LeadSource, type LeadStage } from '../types'
+import type { Go, ViewProps } from '../App'
 
 const STAGES: LeadStage[] = ['neu', 'kontakt', 'angebot', 'reserviert', 'gewonnen', 'verloren']
 const SOURCES: LeadSource[] = ['kleinanzeigen', 'telefon', 'email', 'empfehlung', 'vorort', 'sonstige']
@@ -19,10 +20,17 @@ const STAGE_TONE: Record<LeadStage, Tone> = {
   neu: 'sky', kontakt: 'amber', angebot: 'amber', reserviert: 'sky', gewonnen: 'green', verloren: 'neutral',
 }
 
-export default function Leads() {
+export default function Leads({ go, focus }: ViewProps) {
   const { db } = useStore()
   const readOnly = false
-  const [edit, setEdit] = useState<Lead | null>(null)
+  /*
+   * Ein Sprung auf einen Menschen öffnet seine Karte.
+   *
+   * Die Übersicht schickte bei „N Wiedervorlagen fällig" bisher nur auf die
+   * Liste; welcher der Menschen gemeint war, musste man erneut ablesen. Und vom
+   * Angebot oder Verkauf zurück gab es überhaupt keinen Weg.
+   */
+  const [edit, setEdit] = useState<Lead | null>(() => db.leads.find((l) => l.id === focus.leadId) ?? null)
   const [creating, setCreating] = useState(false)
   const [parsing, setParsing] = useState(false)
 
@@ -78,8 +86,8 @@ export default function Leads() {
         </Card>
       )}
 
-      {edit && <LeadModal lead={edit} onClose={() => setEdit(null)} readOnly={readOnly} />}
-      {creating && <LeadModal lead={null} onClose={() => setCreating(false)} readOnly={false} />}
+      {edit && <LeadModal lead={edit} onClose={() => setEdit(null)} readOnly={readOnly} go={go} />}
+      {creating && <LeadModal lead={null} onClose={() => setCreating(false)} readOnly={false} go={go} />}
       {parsing && <ParseModal onClose={() => setParsing(false)} />}
     </div>
   )
@@ -153,7 +161,7 @@ function LeadCard({ lead, onEdit, highlight }: { lead: Lead; onEdit: () => void;
   )
 }
 
-function LeadModal({ lead, onClose, readOnly }: { lead: Lead | null; onClose: () => void; readOnly: boolean }) {
+function LeadModal({ lead, onClose, readOnly, go }: { lead: Lead | null; onClose: () => void; readOnly: boolean; go: Go }) {
   const { db } = useStore()
 
   /**
@@ -181,7 +189,22 @@ function LeadModal({ lead, onClose, readOnly }: { lead: Lead | null; onClose: ()
   }
 
   const picked = live ? live.tankIds : (draft.tankIds ?? [])
-  const quote = openQuotesOf(db, live?.id ?? null)[0] ?? null
+  /*
+   * Der ganze Vorgang, nicht nur sein Anfang.
+   *
+   * `openQuotesOf` gibt seit jeher eine LISTE zurück, hier wurde überall nur
+   * `[0]` genommen: die Kachel zählte „+N weitere", der Dialog zeigte sie nicht.
+   * Und den Verkauf sah man auf der Kachel, im geöffneten Dialog aber nicht mehr
+   * — wer ihn öffnete, um eine Telefonnummer zu ändern, verlor die Information,
+   * dass der Mensch längst gekauft hat.
+   */
+  const alleAngebote = openQuotesOf(db, live?.id ?? null)
+  const verkaeufe = live ? db.deals.filter((d) => d.leadId === live.id) : []
+  // Die eigenen reservierten Positionen. In der Ankreuzliste tragen sie keine
+  // Marke — `foreign` greift nur bei FREMDEN Zusagen —, der Zustand war hier
+  // also gar nicht zu sehen.
+  const reserviertHier = live ? db.tanks.filter((t) => t.leadId === live.id && t.status === 'reserviert') : []
+  const quote = alleAngebote[0] ?? null
   const quoteIds = useMemo(() => new Set(quote?.tankIds ?? []), [quote])
   // Was auseinandergeht, und in welche Richtung. „2 von 1 Position“ stand da,
   // solange ich das Angebot für eine Teilmenge der Auswahl hielt — nach dem
@@ -251,6 +274,42 @@ function LeadModal({ lead, onClose, readOnly }: { lead: Lead | null; onClose: ()
   return (
     <Modal open onClose={onClose} title={lead ? lead.name : 'Neuer Interessent'} wide>
       <div className="space-y-4">
+        {/*
+          Der Vorgang auf einen Blick, ganz oben.
+          Angebot und Verkauf standen bisher unter der Ankreuzliste über alle 58
+          Positionen — wer wissen wollte, wo der Mensch steht, musste erst an
+          58 Zeilen vorbeiscrollen. Und der Verkauf fehlte im Dialog ganz,
+          obwohl die Kachel darüber ihn zeigt.
+        */}
+        {lead && (alleAngebote.length > 0 || verkaeufe.length > 0 || reserviertHier.length > 0) && (
+          <div className="flex flex-wrap items-center gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[13px]">
+            <span className="font-semibold text-muted">Stand:</span>
+            {alleAngebote.length > 0 && (
+              <Pill tone="sky">
+                {alleAngebote.length === 1 ? '1 offenes Angebot' : `${alleAngebote.length} offene Angebote`}
+              </Pill>
+            )}
+            {reserviertHier.length > 0 && <Pill tone="amber">{reserviertHier.length} reserviert</Pill>}
+            {verkaeufe.length > 0 && (
+              <Pill tone="green">
+                {verkaeufe.length === 1 ? 'verkauft' : `${verkaeufe.length} Verkäufe`} · {eur(verkaeufe.reduce((a, d) => a + d.price, 0))}
+              </Pill>
+            )}
+            <span className="ml-auto flex flex-wrap gap-2">
+              {quote && (
+                <Button size="sm" onClick={() => { onClose(); go('quotes', { leadId: lead.id, quoteId: quote.id }) }}>
+                  Zum Angebot
+                </Button>
+              )}
+              {verkaeufe.length > 0 && (
+                <Button size="sm" variant="ghost" onClick={() => { onClose(); go('deals', { leadId: lead.id }) }}>
+                  Zum Verkauf
+                </Button>
+              )}
+            </span>
+          </div>
+        )}
+
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Name"><Input value={cur('name') ?? ''} disabled={readOnly} onChange={(e) => set({ name: e.target.value })} autoFocus={!lead} /></Field>
           <Field label="Telefon"><Input value={cur('phone') ?? ''} disabled={readOnly} onChange={(e) => set({ phone: e.target.value })} inputMode="tel" /></Field>
@@ -374,6 +433,15 @@ function LeadModal({ lead, onClose, readOnly }: { lead: Lead | null; onClose: ()
                   </div>
                 )}
 
+                {/* Preis, Status, Einzelpreise, Reservieren und Buchen leben
+                    in der Angebotsansicht. Statt sie hier zu verdoppeln, führt
+                    ein Weg dorthin — mit vorgewähltem Kontakt und aufgeklappter
+                    Karte, sodass man nicht erst sucht. */}
+                <div className="mt-2">
+                  <Button size="sm" onClick={() => { onClose(); go('quotes', { leadId: lead.id, quoteId: quote.id }) }}>
+                    Angebot bearbeiten
+                  </Button>
+                </div>
               </>
             ) : (
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -387,6 +455,52 @@ function LeadModal({ lead, onClose, readOnly }: { lead: Lead | null; onClose: ()
                 </Button>
               </div>
             )}
+
+            {/* Die Kachel zählte sie („+N weitere"), der Dialog zeigte nur das
+                erste — die übrigen waren ausschließlich über die Angebotsansicht
+                erreichbar. */}
+            {alleAngebote.length > 1 && (
+              <ul className="mt-2 space-y-1 border-t border-line pt-2">
+                {alleAngebote.slice(1).map((q) => (
+                  <li key={q.id} className="flex flex-wrap items-center justify-between gap-2 text-[13px]">
+                    <span className="text-muted">
+                      <strong className="text-ink">{q.id}</strong> · {q.tankIds.length} Position{q.tankIds.length === 1 ? '' : 'en'} · {eur(q.askPrice)}
+                    </span>
+                    <span className="flex items-center gap-2">
+                      <Pill tone="neutral">{QUOTE_STATUS_LABEL[q.status]}</Pill>
+                      <Button size="sm" variant="ghost" onClick={() => { onClose(); go('quotes', { leadId: lead.id, quoteId: q.id }) }}>
+                        öffnen
+                      </Button>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {/* Der Verkauf stand auf der Kachel, im Dialog aber nirgends. */}
+        {lead && verkaeufe.length > 0 && (
+          <div className="rounded-xl border border-line bg-surface-2 p-3">
+            <p className="mb-1.5 text-[11px] font-bold text-muted uppercase">
+              {verkaeufe.length === 1 ? 'Verkauft' : `${verkaeufe.length} Verkäufe`}
+            </p>
+            <ul className="space-y-1">
+              {verkaeufe.map((d) => (
+                <li key={d.id} className="flex flex-wrap items-center justify-between gap-2 text-[13px]">
+                  <span className="text-muted">
+                    <strong className="text-ink">{eur(d.price)}</strong> · {d.tankIds.length} Position{d.tankIds.length === 1 ? '' : 'en'} · {dateDE(d.date)}
+                  </span>
+                  <span className="flex flex-wrap items-center gap-2">
+                    <Pill tone={d.paid ? 'green' : 'amber'}>{d.paid ? 'bezahlt' : 'offen'}</Pill>
+                    <Pill tone={d.pickedUp ? 'green' : 'sky'}>{d.pickedUp ? 'abgeholt' : 'Abholung offen'}</Pill>
+                    <Button size="sm" variant="ghost" onClick={() => { onClose(); go('deals', { leadId: lead.id }) }}>
+                      öffnen
+                    </Button>
+                  </span>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
 
