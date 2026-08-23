@@ -1,9 +1,11 @@
 import type { Ad, AdScope, DB, Lead, Quote, Tank, TankStatus } from '../types'
-import { MAX_PER_LEAD, askFor, collapseIds, describe, resolvePick, trimMessage, type Proposal } from './inbox'
+import { MAX_PER_LEAD, askFor, collapseIds, describe, resolvePick, trimMessage, type MessageContext, type Proposal } from './inbox'
 import { STATUS_LABEL } from '../types'
 import { generateAd, portalOf } from './ads'
+import { dateDE } from './format'
 import { SEED } from './seed'
 import { newId, store } from './store'
+import { openQuotesOf } from './stats'
 
 const now = () => new Date().toISOString()
 const tankName = (t: Tank) => `${t.maker === 'Sonstige' ? t.type : t.maker} ${t.litres} l`
@@ -190,12 +192,26 @@ export function removeLead(lead: Lead) {
   store.mutate(
     (db) => {
       db.leads = db.leads.filter((l) => l.id !== lead.id)
+      // Der Name gehört in den Verkauf, bevor der Interessent verschwindet.
+      // Deal kennt kein Käuferfeld — nur `leadId`. Wer den Interessenten
+      // löschte, nahm dem Verkauf damit seinen Menschen ganz, während der
+      // Kommentar hier das Gegenteil behauptete und `t.leadId` an verkauften
+      // Positionen ins Leere zeigen ließ.
+      for (const d of db.deals) {
+        if (d.leadId !== lead.id) continue
+        const line = `Käufer: ${lead.name}${lead.email ? ` · ${lead.email}` : ''}${lead.phone ? ` · ${lead.phone}` : ''}`
+        if (!d.note.includes(line)) d.note = d.note.trim() ? `${line}\n${d.note}` : line
+        d.leadId = null
+      }
       db.tanks.forEach((t) => {
-        if (t.leadId === lead.id) {
-          t.leadId = null
-          if (t.status === 'kontakt' || t.status === 'reserviert') t.status = 'verfuegbar'
-        }
+        if (t.leadId !== lead.id) return
+        t.leadId = null
+        if (t.status === 'kontakt' || t.status === 'reserviert') t.status = 'verfuegbar'
       })
+      // Angebote zeigten danach auf einen Interessenten, den es nicht mehr
+      // gibt — die Angebotskarte rendert das stumm als „kein Interessent“, und
+      // niemand sieht, dass da einmal einer war.
+      for (const q of db.quotes) if (q.leadId === lead.id) q.leadId = null
     },
     { kind: 'lead', text: `Interessent gelöscht: ${lead.name}` },
   )
@@ -353,14 +369,31 @@ export function addMissingSeedBundles(): number {
  * Wurzelschlüssel — migrate() baut sein Rückgabeobjekt aus einer festen Liste
  * und würde alles Neue beim Laden verwerfen.
  */
-export function noteOnLead(leadId: string, text: string, applied: string[], fromImage = false) {
+export function noteOnLead(leadId: string, text: string, applied: string[], fromImage = false, extra?: MessageContext) {
   store.mutate(
     (db) => {
       const l = db.leads.find((x) => x.id === leadId)
       if (!l) return
-      const entry = { at: now(), text: trimMessage(text), fromImage: fromImage || undefined, applied }
-      // Gedeckelt, weil db.json bei jedem Speichern vollständig geschrieben wird.
-      l.messages = [entry, ...(l.messages ?? [])].slice(0, MAX_PER_LEAD)
+      const body = trimMessage(text)
+      const seen = (l.messages ?? [])[0]
+      if (seen && seen.text === body) {
+        // Dieselbe Nachricht ein zweites Mal legt keinen zweiten Eintrag an —
+        // sie ergänzt nur, was inzwischen daraus geworden ist.
+        seen.applied = [...new Set([...seen.applied, ...applied])]
+      } else {
+        const entry = { at: now(), text: body, fromImage: fromImage || undefined, applied }
+        // Gedeckelt, weil db.json bei jedem Speichern vollständig geschrieben wird.
+        l.messages = [entry, ...(l.messages ?? [])].slice(0, MAX_PER_LEAD)
+      }
+      // Der Wortlaut liegt in `messages` und fällt nach zehn Nachrichten hinten
+      // heraus. Was daraus gelesen wurde, gehört in die Notiz: sie ist
+      // ungedeckelt und steht auf der Karte.
+      const lines = [extra?.summary?.trim(), ...(extra?.notes ?? [])].filter(Boolean) as string[]
+      if (lines.length > 0) {
+        const stamp = dateDE(new Date().toISOString().slice(0, 10))
+        const block = [`${stamp} — ${lines[0]}`, ...lines.slice(1).map((x) => `· ${x}`)].join('\n')
+        if (!l.note.includes(block)) l.note = l.note.trim() ? `${block}\n\n${l.note}` : block
+      }
       l.lastContact = new Date().toISOString().slice(0, 10)
       l.updatedAt = now()
     },
@@ -401,20 +434,41 @@ export function attachTanks(leadId: string, tankIds: string[]) {
  * ein Gebot ohne Angebot und ein Angebot ohne Positionen meldeten Vollzug und
  * schrieben nichts.
  */
-export function applyProposal(p: Proposal, leadId: string | null, message: string): { leadId: string | null; done: string; skipped?: string } {
+export function applyProposal(p: Proposal, leadId: string | null, message: string, ctx?: MessageContext): { leadId: string | null; done: string; skipped?: string } {
   const db = store.getSnapshot().db
   const target = p.leadId ?? leadId
+  // Auf der Nachricht stand bisher nur der erste Schritt — „Nachricht bei
+  // Ortlieb vermerken", eine Tautologie —, während im selben Zug 31 Fässer
+  // angehängt und ein Angebot entworfen wurde. Der Zug ist vorher bekannt.
+  const protokoll = ctx?.steps?.length ? ctx.steps : [describe(p)]
 
   switch (p.kind) {
     case 'lead.neu': {
       // Ohne tankIds: das Anlegen einer Person darf nicht still den Bestand ändern.
       const id = addLead({ name: p.name || p.email || 'Unbenannt', email: p.email, phone: p.phone, source: 'kleinanzeigen', stage: 'neu', tankIds: [] })
-      noteOnLead(id, message, [describe(p)])
+      noteOnLead(id, message, protokoll, ctx?.fromImage, ctx)
       return { leadId: id, done: p.title }
     }
     case 'lead.notiz': {
       if (!target) return { leadId, done: '', skipped: 'kein Interessent vorhanden' }
-      noteOnLead(target, message, [describe(p)])
+      // Eine Folgenachricht bringt oft den zweiten Kontaktweg mit: gefunden
+      // wurde der Interessent über die E-Mail, unterschrieben hat er mit
+      // Telefonnummer. Leere Felder werden gefüllt, abweichende nicht
+      // überschrieben — die kommen als Hinweis in die Notiz.
+      const l = db.leads.find((x) => x.id === target)
+      const fill: Partial<Lead> = {}
+      const clash: string[] = []
+      for (const [k, v] of [['email', p.email], ['phone', p.phone], ['name', p.name]] as const) {
+        if (!v?.trim() || !l) continue
+        const have = (l[k] ?? '').trim()
+        if (!have) fill[k] = v.trim()
+        else if (have.toLowerCase() !== v.trim().toLowerCase() && k !== 'name') {
+          clash.push(`Abweichend in der Nachricht: ${k === 'email' ? 'E-Mail' : 'Telefon'} ${v.trim()} (gespeichert: ${have})`)
+        }
+      }
+      if (Object.keys(fill).length) patchLead(target, fill, 'Kontaktdaten aus der Nachricht ergänzt')
+      noteOnLead(target, message, protokoll, ctx?.fromImage,
+        clash.length && ctx ? { ...ctx, notes: [...ctx.notes, ...clash] } : ctx ?? (clash.length ? { summary: '', notes: clash, steps: protokoll, fromImage: false } : undefined))
       return { leadId: target, done: p.title }
     }
     case 'lead.phase': {
@@ -431,7 +485,9 @@ export function applyProposal(p: Proposal, leadId: string | null, message: strin
     }
     case 'gebot': {
       if (p.amount == null) return { leadId, done: '', skipped: 'kein Betrag' }
-      const quote = target ? db.quotes.find((q) => q.leadId === target && q.status !== 'abgelehnt') : null
+      // Das jüngste offene Angebot. Ein angenommenes gehört zu einem gebuchten
+      // Verkauf — daran ist nichts mehr zu verhandeln.
+      const quote = openQuotesOf(db, target)[0] ?? null
       if (quote) {
         patchQuote(quote.id, { buyerOffer: p.amount }, `Gebot ${p.amount} € vermerkt`)
         return { leadId: target, done: p.title }
@@ -479,6 +535,78 @@ export function applyProposal(p: Proposal, leadId: string | null, message: strin
 }
 
 // ------------------------------------------------------------------- quotes
+
+/**
+ * Die Positionen eines Angebots ändern.
+ *
+ * Das ging bisher überhaupt nicht: kein einziger `patchQuote`-Aufruf im Projekt
+ * fasst `tankIds` an, und die Angebotskarte zeigt die Positionen als Marken ohne
+ * Bedienelement. Wer eine Position aus einem Angebot nehmen wollte, musste sie
+ * aus dem Bestand löschen.
+ *
+ * Der geforderte Preis rechnet mit, solange er dem entspricht, was die Regel für
+ * die alte Auswahl ergeben hätte — hat der Verkäufer von Hand einen anderen
+ * Preis eingetragen, bleibt der stehen.
+ */
+/**
+ * Hält ein Angebot diese Position noch fest?
+ *
+ * Drei Stellen hatten dafür drei Definitionen. Ein abgelehntes Angebot hält
+ * nichts mehr; jedes andere schon — auch ein angenommenes, denn daraus wird
+ * der Verkauf.
+ */
+function heldByQuote(db: DB, tankId: string, exceptQuoteId?: string): boolean {
+  return db.quotes.some((q) => q.id !== exceptQuoteId && q.tankIds.includes(tankId) && q.status !== 'abgelehnt')
+}
+
+export function setQuoteTanks(quoteId: string, tankIds: string[]) {
+  store.mutate(
+    (db) => {
+      const q = db.quotes.find((x) => x.id === quoteId)
+      if (!q) return
+      const before = q.tankIds
+      // Verkauftes kann niemandem mehr angeboten werden, und was einem anderen
+      // versprochen ist, wird nicht still umgehängt. Beide Aufrufer geben ihre
+      // Auswahl roh weiter; die Regel gehört deshalb hierher, nicht dorthin.
+      const wanted = [...new Set(tankIds)].filter((id) => {
+        const t = db.tanks.find((x) => x.id === id)
+        if (!t || t.status === 'verkauft') return false
+        return !(t.status === 'reserviert' && t.leadId && t.leadId !== q.leadId)
+      })
+      // Ein Angebot über nichts ist kein Angebot — es stünde mit 0 € da und
+      // ließe sich trotzdem als Verkauf buchen.
+      if (wanted.length === 0) return
+      const auto = askFor(db, before)
+      q.tankIds = wanted
+      if (q.askPrice === auto) q.askPrice = askFor(db, wanted)
+      q.updatedAt = now()
+
+      // Neu dazugekommene binden, weggefallene freigeben — dieselbe Regel wie
+      // beim Anlegen und Löschen eines Angebots.
+      for (const id of wanted.filter((x) => !before.includes(x))) {
+        const t = db.tanks.find((x) => x.id === id)
+        if (t && t.status === 'verfuegbar') {
+          t.status = 'kontakt'
+          // Ein Angebot ohne Interessent darf den Käufer nicht wegwischen, den
+          // die Position schon hatte — createQuote hält es genauso.
+          t.leadId = q.leadId ?? t.leadId
+          t.updatedAt = now()
+        }
+      }
+      for (const id of before.filter((x) => !wanted.includes(x))) {
+        const t = db.tanks.find((x) => x.id === id)
+        if (!t || t.status !== 'kontakt') continue
+        const heldElsewhere = heldByQuote(db, id, quoteId)
+        const stillWanted = db.leads.some((l) => l.id === t.leadId && l.tankIds.includes(id))
+        if (heldElsewhere || stillWanted) continue
+        t.status = 'verfuegbar'
+        t.leadId = null
+        t.updatedAt = now()
+      }
+    },
+    { kind: 'deal', text: `Angebot: ${tankIds.length} ${tankIds.length === 1 ? 'Position' : 'Positionen'}` },
+  )
+}
 
 /** Turn a selection of tanks into an offer, keeping the price ladder intact. */
 export function createQuote(input: {
@@ -544,9 +672,7 @@ export function removeQuote(id: string) {
       db.quotes = db.quotes.filter((x) => x.id !== id)
       // Release tanks that no other open offer still claims.
       for (const tid of q.tankIds) {
-        const stillOffered = db.quotes.some(
-          (o) => o.tankIds.includes(tid) && o.status !== 'abgelehnt',
-        )
+        const stillOffered = heldByQuote(db, tid, id)
         const t = db.tanks.find((x) => x.id === tid)
         if (t && !stillOffered && t.status === 'kontakt') {
           t.status = 'verfuegbar'
@@ -653,6 +779,13 @@ export function assignDealLead(dealId: string, leadId: string | null) {
         }
       }
 
+      // Das Angebot, aus dem der Verkauf entstand, gehört demselben Menschen.
+      // Sonst nannten Angebot, Verkauf und Bestand drei verschiedene Namen.
+      const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x))
+      for (const q of db.quotes) {
+        if (q.leadId === previousId && sameSet(q.tankIds, deal.tankIds)) q.leadId = leadId
+      }
+
       if (previousId) {
         const stillBuying = db.deals.some((d) => d.id !== dealId && d.leadId === previousId)
         const previous = db.leads.find((l) => l.id === previousId)
@@ -746,6 +879,12 @@ export function detachTanks(leadId: string, tankIds: string[]) {
       if (l) l.tankIds = l.tankIds.filter((id) => !tankIds.includes(id))
       for (const id of tankIds) {
         const t = db.tanks.find((x) => x.id === id)
+        // Ein Angebot, das die Position noch führt, hält sie fest. Ohne das gab
+        // ein Häkchen weniger im Interessentendialog eine Position frei, die im
+        // selben Bild daneben als „im Angebot" markiert stand — und die danach
+        // jedem anderen Angebot und jedem Katalogpaket wieder offenstand,
+        // während „Als Verkauf buchen" sie noch verkaufen konnte.
+        if (heldByQuote(db, id)) continue
         // Verkauftes und Reserviertes bleibt, wo es ist — das löst kein Abhaken.
         if (t && t.leadId === leadId && t.status === 'kontakt') {
           t.leadId = null

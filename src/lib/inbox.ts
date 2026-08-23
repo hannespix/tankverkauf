@@ -3,7 +3,7 @@ import { type ParsedMessage } from './ads'
 import { eur, itemLabel, num } from './format'
 import { buildCatalog } from './catalog'
 import { priceSelection } from './bundles'
-import { isOpen } from './stats'
+import { isOpen, openQuotesOf } from './stats'
 import type { DB, Lead, Tank } from '../types'
 
 /**
@@ -430,7 +430,7 @@ export function collapseIds(ids: string[]): string {
  */
 function floorFor(db: DB, leadId: string | null): number {
   if (!leadId) return 0
-  const quote = db.quotes.find((q) => q.leadId === leadId && q.status !== 'abgelehnt')
+  const quote = openQuotesOf(db, leadId)[0]
   const ids = quote?.tankIds ?? db.leads.find((l) => l.id === leadId)?.tankIds ?? []
   return db.tanks.filter((t) => ids.includes(t.id)).reduce((a, t) => a + t.floor, 0)
 }
@@ -455,6 +455,25 @@ export function describe(p: Proposal): string {
 /** Der Wortlaut wird gekappt — db.json wird bei jedem Speichern ganz geschrieben. */
 export const MAX_MESSAGE = 4000
 export const MAX_PER_LEAD = 10
+
+/**
+ * Was aus einer Nachricht neben den Schritten hängen bleibt.
+ *
+ * Der Befund der KI, die Hinweise „steht drin, kann aber nirgends hin" und die
+ * Liste dessen, was der Zug getan hat, lebten nur solange der Dialog offen war.
+ * Sie gehören an den Interessenten — sonst steht später ein Angebot da, und
+ * niemand weiß mehr, warum.
+ */
+export interface MessageContext {
+  /** Der Ein-Satz-Befund der KI. */
+  summary: string
+  /** Was in der Nachricht steht, aber (noch) nirgends hin kann. */
+  notes: string[]
+  /** Alle Schritte des Zuges — nicht nur der, der die Nachricht ablegt. */
+  steps: string[]
+  /** Der Wortlaut ist ein Transkript aus einem Bild, nicht der Originaltext. */
+  fromImage: boolean
+}
 
 export function trimMessage(text: string): string {
   return text.length <= MAX_MESSAGE ? text : `${text.slice(0, MAX_MESSAGE)}\n… (gekürzt, ${num(text.length)} Zeichen)`
@@ -504,11 +523,19 @@ export function buildPlan(proposals: Proposal[], parsed: ParsedMessage, db: DB, 
   const dead = proposals.filter((p) => TOTER_KNOPF.includes(p.kind))
   const has = (k: ProposalKind) => steps.some((p) => p.kind === k)
 
+  // Ein Vorschlag kann den Interessenten schon kennen: checkProposals prüft
+  // die genannte leadId am Bestand und setzt sie nur, wenn es ihn gibt. Ohne
+  // das fiel eine Folgenachricht durch — „Ok, ich nehme die beiden" trägt
+  // keine Signatur mehr, und ohne Kontaktweg im Text galt der Interessent als
+  // unbekannt. Der ganze Zug wurde dann verworfen und die Nachricht nirgends
+  // abgelegt.
+  const hinted = proposals.map((p) => p.leadId).find(Boolean) ?? null
   const known = findLead(db, parsed.email, parsed.phone)
+    ?? (hinted ? db.leads.find((l) => l.id === hinted) ?? null : null)
   // Interessent: nur ergänzen, wenn die KI keinen genannt hat und wirklich ein
   // Kontaktweg dasteht. Ein Name allein legt niemanden an — "Sehr geehrte Damen"
   // wäre sonst eine Person.
-  if (!has('lead.neu') && !has('lead.notiz') && (parsed.email || parsed.phone)) {
+  if (!has('lead.neu') && !has('lead.notiz') && (parsed.email || parsed.phone || known)) {
     steps.push(known
       ? mk('lead.notiz', `Nachricht bei ${known.name} vermerken`, 'Der Wortlaut wird angehängt, letzter Kontakt auf heute.', { leadId: known.id })
       : mk('lead.neu', `Interessent anlegen: ${parsed.name || parsed.email || parsed.phone}`,
@@ -517,6 +544,11 @@ export function buildPlan(proposals: Proposal[], parsed: ParsedMessage, db: DB, 
   }
 
   const notes: string[] = []
+  // Was kein Schritt aufnehmen kann, aber in der Nachricht steht. Es landet
+  // über den Vorgang in der Notiz des Interessenten — vorher war es nach dem
+  // Schließen des Dialogs weg.
+  for (const hint of parsed.pickupHints) notes.push(hint)
+  if (parsed.place) notes.push(`Ort in der Nachricht: ${parsed.place}`)
   if (dead.length > 0) {
     notes.push('Die Nachricht liest sich wie ein fester Kauf. Buchen kannst du unten, sobald ein Angebot steht — der Preis kommt dann von dort.')
   }
@@ -582,9 +614,7 @@ export function buildPlan(proposals: Proposal[], parsed: ParsedMessage, db: DB, 
   // von Hand in der Bestandsliste zusammenklickt.
   // Erledigte Angebote zählen nicht mehr: ein angenommenes gehört zu einem
   // gebuchten Verkauf, und daran hängt kein neues Gebot mehr.
-  const openQuote = known
-    ? db.quotes.find((q) => q.leadId === known.id && q.status !== 'abgelehnt' && q.status !== 'angenommen') ?? null
-    : null
+  const openQuote = openQuotesOf(db, known?.id ?? null)[0] ?? null
   const posStep = steps.find((p) => p.kind === 'positionen')
   const withPositions = !!posStep || (known?.tankIds.length ?? 0) > 0
   // Nicht zum zweiten Mal. Steht schon ein Angebot offen, entstünde ein Duplikat

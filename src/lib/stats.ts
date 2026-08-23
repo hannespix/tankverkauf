@@ -1,4 +1,4 @@
-import type { DB, Deal, Maker, Tank, TankStatus } from '../types'
+import type { DB, Deal, Maker, Quote, Tank, TankStatus } from '../types'
 
 export interface Totals {
   count: number
@@ -135,4 +135,43 @@ export function judgeBundle(base: Totals, price: number): OfferVerdict {
   if (price >= base.target) return 'gut'
   if (price >= base.floor) return 'ok'
   return 'unter-limit'
+}
+
+/**
+ * Die offenen Angebote eines Interessenten, neueste zuerst.
+ *
+ * Vier Stellen im Werkzeug suchten „das“ Angebot mit einem nackten `.find()`
+ * und trafen damit stillschweigend das zuletzt angelegte — `createQuote` schiebt
+ * vorn ein. Wer zwei Angebote hat, bekam Gebote am falschen vermerkt.
+ * Angenommen und abgelehnt zählen nicht: daran ist nichts mehr zu verhandeln.
+ */
+export function openQuotesOf(db: DB, leadId: string | null): Quote[] {
+  if (!leadId) return []
+  // Nach Datum, nicht nach Einfügereihenfolge: `createQuote` schiebt vorn ein,
+  // aber ein Statuswechsel weiter hinten verschob damit still, welches Angebot
+  // als „das" gilt — Gebote und die beiden Abgleich-Knöpfe hätten danach
+  // unverändert ausgesehen und ein anderes Angebot getroffen.
+  return db.quotes
+    .filter((q) => q.leadId === leadId && q.status !== 'abgelehnt' && q.status !== 'angenommen')
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : a.id < b.id ? 1 : -1))
+}
+
+/**
+ * Wie Auswahl und Angebot zueinander stehen, in einem Satzteil.
+ *
+ * „2 von 1 Position“ stand da, solange das Angebot für eine Teilmenge der
+ * Auswahl gehalten wurde. Es ist keine: über `setQuoteTanks` kommt eine
+ * Position ins Angebot, ohne dass sie je in der Auswahl stand.
+ */
+export function quoteRelation(quoteIds: string[], pickedIds: string[]): string {
+  const onlyQuote = quoteIds.filter((id) => !pickedIds.includes(id))
+  const onlyPicked = pickedIds.filter((id) => !quoteIds.includes(id))
+  if (onlyQuote.length === 0 && onlyPicked.length === 0) return 'deckungsgleich'
+  if (onlyQuote.length === 0) {
+    return `${quoteIds.length} von ${pickedIds.length} ${pickedIds.length === 1 ? 'Position' : 'Positionen'} im Angebot`
+  }
+  return [
+    onlyQuote.length ? `${onlyQuote.length} nur im Angebot` : '',
+    onlyPicked.length ? `${onlyPicked.length} nur in der Auswahl` : '',
+  ].filter(Boolean).join(', ')
 }

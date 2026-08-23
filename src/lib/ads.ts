@@ -599,6 +599,16 @@ export interface ParsedMessage {
   packagePrice: number | null
   /** Set when a guess covers suspiciously many positions, so the form can warn. */
   broadMatch: boolean
+  /**
+   * Sätze über Abholung, Lieferung oder einen Termin — wörtlich, nicht gedeutet.
+   *
+   * „Abholung könnte ich Freitag machen" fiel bisher komplett durch: kein
+   * Schritt konnte es aufnehmen, und in die Notiz kam es auch nicht. Ein Datum
+   * daraus zu rechnen wäre falsche Genauigkeit — der Satz selbst genügt.
+   */
+  pickupHints: string[]
+  /** Eine deutsche Postleitzahl mit Ort, falls die Nachricht eine nennt. */
+  place: string
 }
 
 /**
@@ -824,5 +834,17 @@ export function parseMessage(text: string, db: DB): ParsedMessage {
 
   const name = (afterGreeting?.[1] ?? standalone ?? '').trim()
 
-  return { name, phone, email, litresMentioned: all, matchedTankIds, offer, packagePrice, exact: exactIds.length > 0, broadMatch }
+  // Was der Käufer über Abholung sagt, steht fast immer in einem eigenen Satz.
+  // Genommen wird der Satz, nicht ein daraus geratenes Datum.
+  const pickupHints = [...new Set(
+    prose
+      .split(/(?<=[.!?])\s+|\n/)
+      .map((x) => x.trim())
+      .filter((x) => x.length >= 8 && x.length <= 160)
+      .filter((x) => /\b(abhol|abzuhol|abholen|liefer|anliefer|spedition|transport|termin|vorbeikommen|besichtig)/i.test(x)),
+  )]
+  const placeMatch = body.match(/\b(\d{5})\s+([A-ZÄÖÜ][\wäöüß.-]+(?:[ -][A-ZÄÖÜ][\wäöüß.-]+)?)/)
+  const place = placeMatch ? `${placeMatch[1]} ${placeMatch[2]}` : ''
+
+  return { name, phone, email, litresMentioned: all, matchedTankIds, offer, packagePrice, exact: exactIds.length > 0, broadMatch, pickupHints, place }
 }

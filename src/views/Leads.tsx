@@ -1,13 +1,14 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Button, Card, EmptyState, Field, Input, Modal, Pill, SectionTitle, Select, Textarea, cx, type Tone } from '../components/ui'
 import { IconCheck, IconPlus, IconSpark, IconTrash } from '../components/icons'
-import { addLead, createQuote, detachTanks, patchLead, patchQuote, removeLead } from '../lib/actions'
+import { addLead, attachTanks, createQuote, detachTanks, noteOnLead, patchLead, patchQuote, removeLead, setQuoteTanks } from '../lib/actions'
 import { parseMessage } from '../lib/ads'
 import { AiError, readMessage, type AiResult } from '../lib/ai'
 import { itemLabel, dateDE, eur, num, relativeDE, todayISO } from '../lib/format'
-import { totals } from '../lib/stats'
+import { openQuotesOf, quoteRelation, totals } from '../lib/stats'
+import { askFor } from '../lib/inbox'
 import { useStore } from '../lib/store'
-import { STAGE_LABEL, SOURCE_LABEL, type Lead, type LeadSource, type LeadStage } from '../types'
+import { STAGE_LABEL, SOURCE_LABEL, QUOTE_STATUS_LABEL, type Lead, type LeadSource, type LeadStage } from '../types'
 
 const STAGES: LeadStage[] = ['neu', 'kontakt', 'angebot', 'reserviert', 'gewonnen', 'verloren']
 const SOURCES: LeadSource[] = ['kleinanzeigen', 'telefon', 'email', 'empfehlung', 'vorort', 'sonstige']
@@ -86,6 +87,13 @@ function LeadCard({ lead, onEdit, highlight }: { lead: Lead; onEdit: () => void;
   const { db } = useStore()
   const tanks = lead.tankIds.map((id) => db.tanks.find((t) => t.id === id)).filter(Boolean)
   const sum = tanks.reduce((a, t) => a + (t?.vb ?? 0), 0)
+  // Angebot und Verkauf gehören auf dieselbe Karte wie das Interesse. Sonst
+  // zeigt sie eine Summe, die mit dem, was der Mensch bekommen hat, nichts zu
+  // tun hat — und der Weg dorthin führt über zwei andere Ansichten.
+  const open = openQuotesOf(db, lead.id)
+  const quote = open[0] ?? null
+  const deal = db.deals.find((d) => d.leadId === lead.id) ?? null
+  const messages = lead.messages ?? []
 
   return (
     <button type="button" onClick={onEdit}
@@ -107,6 +115,23 @@ function LeadCard({ lead, onEdit, highlight }: { lead: Lead; onEdit: () => void;
         </div>
       )}
 
+      {quote && (
+        <div className="tnum mt-1 text-[13px]">
+          <span className="text-muted">Angebot: </span>
+          <strong>{eur(quote.askPrice)}</strong>
+          {quote.buyerOffer != null && <span className="text-muted"> · geboten {eur(quote.buyerOffer)}</span>}
+          <span className="text-muted"> · {quoteRelation(quote.tankIds, lead.tankIds)}</span>
+          {open.length > 1 && <span className="text-muted"> · +{open.length - 1} {open.length === 2 ? 'weiteres' : 'weitere'}</span>}
+        </div>
+      )}
+      {deal && (
+        <div className="tnum mt-1 text-[13px]">
+          <span className="text-muted">Verkauft: </span>
+          <strong>{eur(deal.price)}</strong>
+          <span className="text-muted"> · {deal.paid ? 'bezahlt' : 'Zahlung offen'} · {deal.pickedUp ? 'abgeholt' : 'Abholung offen'}</span>
+        </div>
+      )}
+
       <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-faint">
         {lead.lastContact && <span>Kontakt {relativeDE(lead.lastContact)}</span>}
         {lead.nextFollowUp && (
@@ -117,26 +142,106 @@ function LeadCard({ lead, onEdit, highlight }: { lead: Lead; onEdit: () => void;
         {lead.budget != null && <span className="tnum">Budget {eur(lead.budget)}</span>}
       </div>
       {lead.note && <p className="mt-2 line-clamp-2 text-[13px] text-muted">{lead.note}</p>}
+      {messages.length > 0 && (
+        <p className="mt-1 text-xs text-faint">
+          {messages.length} eingelesene {messages.length === 1 ? 'Nachricht' : 'Nachrichten'}
+        </p>
+      )}
     </button>
   )
 }
 
 function LeadModal({ lead, onClose, readOnly }: { lead: Lead | null; onClose: () => void; readOnly: boolean }) {
   const { db } = useStore()
+
+  /**
+   * Der Entwurf hält nur, was im Formular angefasst wurde — alles andere kommt
+   * live aus der Datenbank.
+   *
+   * Vorher lag beim Öffnen eine Kopie des ganzen Datensatzes im Entwurf, und
+   * `save()` schrieb sie per Object.assign zurück: Notiz, Nachrichten und
+   * letzter Kontakt mit dem Stand von vorhin. Wer die Karte nur öffnete, um
+   * eine Telefonnummer zu korrigieren, machte damit alles zunichte, was der
+   * Posteingang inzwischen an diesem Interessenten vermerkt hatte. Für die
+   * Positionen war das schon geflickt — es galt aber für jedes andere Feld
+   * genauso.
+   */
+  const live = lead ? db.leads.find((l) => l.id === lead.id) ?? lead : null
   const [draft, setDraft] = useState<Partial<Lead>>(
-    lead ?? { name: '', phone: '', email: '', location: '', source: 'kleinanzeigen', stage: 'neu', tankIds: [], note: '', lastContact: todayISO() },
+    lead ? {} : { name: '', phone: '', email: '', location: '', source: 'kleinanzeigen', stage: 'neu', tankIds: [], note: '', lastContact: todayISO() },
   )
   const set = (patch: Partial<Lead>) => setDraft((d) => ({ ...d, ...patch }))
-  const openTanks = db.tanks.filter((t) => t.status !== 'verkauft' || (draft.tankIds ?? []).includes(t.id))
+  const [filter, setFilter] = useState('')
+
+  /** Angefasst schlägt gespeichert; ungefasst zeigt den Live-Stand. */
+  function cur<K extends keyof Lead>(k: K): Lead[K] | undefined {
+    return k in draft ? (draft[k] as Lead[K]) : live?.[k]
+  }
+
+  const picked = live ? live.tankIds : (draft.tankIds ?? [])
+  const quote = openQuotesOf(db, live?.id ?? null)[0] ?? null
+  const quoteIds = useMemo(() => new Set(quote?.tankIds ?? []), [quote])
+  // Was auseinandergeht, und in welche Richtung. „2 von 1 Position“ stand da,
+  // solange ich das Angebot für eine Teilmenge der Auswahl hielt — nach dem
+  // Abwählen einer Position stimmt das nicht mehr.
+  const onlyQuote = quote ? quote.tankIds.filter((id) => !picked.includes(id)) : []
+  const onlyPicked = quote ? picked.filter((id) => !quote.tankIds.includes(id)) : []
+  const differs = onlyQuote.length > 0 || onlyPicked.length > 0
+  const relation = quote ? quoteRelation(quote.tankIds, picked) : ''
+
+  // `openTanks` entstand bei jedem Render neu, deshalb griff der Memo darunter
+  // nie — bei 58 Positionen und einem Filterfeld ist das jede Taste.
+  const openTanks = useMemo(
+    () => db.tanks.filter((t) => t.status !== 'verkauft' || picked.includes(t.id)),
+    [db.tanks, picked],
+  )
+  const shown = useMemo(() => {
+    const q = filter.trim().toLowerCase()
+    if (!q) return openTanks
+    return openTanks.filter((t) => [t.id, t.maker, t.type, String(t.litres)].some((v) => v.toLowerCase().includes(q)))
+  }, [openTanks, filter])
+  const pickedSum = db.tanks.filter((t) => picked.includes(t.id)).reduce((a, t) => a + t.vb, 0)
+  const leadName = useMemo(() => new Map(db.leads.map((l) => [l.id, l.name])), [db.leads])
+  // Der Preis für eine noch nicht abgeschickte Auswahl — nicht bei jedem
+  // Tastendruck im Namensfeld neu durch den ganzen Katalog rechnen.
+  const wouldAsk = useMemo(() => (picked.length ? askFor(db, picked) : 0), [db, picked])
+
+  function toggleTank(id: string, on: boolean) {
+    // Ohne Interessenten gibt es noch nichts zu schreiben — dann trägt der Entwurf.
+    if (!live) {
+      set({ tankIds: on ? [...(draft.tankIds ?? []), id] : (draft.tankIds ?? []).filter((x) => x !== id) })
+      return
+    }
+    if (on) attachTanks(live.id, [id])
+    else detachTanks(live.id, [id])
+  }
+
+  function syncFromQuote(ids: string[]) {
+    if (!live) return
+    const add = ids.filter((id) => !picked.includes(id))
+    const drop = picked.filter((id) => !ids.includes(id))
+    if (add.length) attachTanks(live.id, add)
+    if (drop.length) detachTanks(live.id, drop)
+  }
+
+  function makeQuote() {
+    if (!live || picked.length === 0) return
+    createQuote({
+      label: `Anfrage ${live.name}`.trim(),
+      tankIds: picked,
+      askPrice: askFor(db, picked),
+      leadId: live.id,
+      portalId: null,
+      note: '',
+    })
+  }
 
   function save() {
     if (lead) {
-      // Abgehakte Positionen müssen auch wirklich frei werden. `patchLead` schreibt
-      // nur das Interessentenobjekt — die Position blieb auf „im Kontakt" mit
-      // gesetztem Käufer stehen und war für jeden anderen unsichtbar verbraucht.
-      const gone = lead.tankIds.filter((id) => !(draft.tankIds ?? []).includes(id))
-      patchLead(lead.id, draft, `Interessent aktualisiert: ${draft.name ?? lead.name}`)
-      if (gone.length > 0) detachTanks(lead.id, gone)
+      // Nur die angefassten Felder — der Entwurf enthält keine anderen mehr.
+      // `tankIds` bleibt trotzdem draußen: die Häkchen schreiben sofort.
+      const { tankIds: _ignored, ...rest } = draft
+      patchLead(lead.id, rest, `Interessent aktualisiert: ${cur('name') ?? lead.name}`)
     } else addLead(draft)
     onClose()
   }
@@ -145,46 +250,172 @@ function LeadModal({ lead, onClose, readOnly }: { lead: Lead | null; onClose: ()
     <Modal open onClose={onClose} title={lead ? lead.name : 'Neuer Interessent'} wide>
       <div className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Name"><Input value={draft.name ?? ''} disabled={readOnly} onChange={(e) => set({ name: e.target.value })} autoFocus={!lead} /></Field>
-          <Field label="Telefon"><Input value={draft.phone ?? ''} disabled={readOnly} onChange={(e) => set({ phone: e.target.value })} inputMode="tel" /></Field>
-          <Field label="E-Mail"><Input value={draft.email ?? ''} disabled={readOnly} onChange={(e) => set({ email: e.target.value })} inputMode="email" /></Field>
-          <Field label="Ort"><Input value={draft.location ?? ''} disabled={readOnly} onChange={(e) => set({ location: e.target.value })} /></Field>
+          <Field label="Name"><Input value={cur('name') ?? ''} disabled={readOnly} onChange={(e) => set({ name: e.target.value })} autoFocus={!lead} /></Field>
+          <Field label="Telefon"><Input value={cur('phone') ?? ''} disabled={readOnly} onChange={(e) => set({ phone: e.target.value })} inputMode="tel" /></Field>
+          <Field label="E-Mail"><Input value={cur('email') ?? ''} disabled={readOnly} onChange={(e) => set({ email: e.target.value })} inputMode="email" /></Field>
+          <Field label="Ort"><Input value={cur('location') ?? ''} disabled={readOnly} onChange={(e) => set({ location: e.target.value })} /></Field>
           <Field label="Quelle">
-            <Select value={draft.source} disabled={readOnly} onChange={(e) => set({ source: e.target.value as LeadSource })}>
+            <Select value={cur('source')} disabled={readOnly} onChange={(e) => set({ source: e.target.value as LeadSource })}>
               {SOURCES.map((s) => <option key={s} value={s}>{SOURCE_LABEL[s]}</option>)}
             </Select>
           </Field>
           <Field label="Phase">
-            <Select value={draft.stage} disabled={readOnly} onChange={(e) => set({ stage: e.target.value as LeadStage })}>
+            <Select value={cur('stage')} disabled={readOnly} onChange={(e) => set({ stage: e.target.value as LeadStage })}>
               {STAGES.map((s) => <option key={s} value={s}>{STAGE_LABEL[s]}</option>)}
             </Select>
           </Field>
-          <Field label="Budget (€)"><Input type="number" className="tnum" value={draft.budget ?? ''} disabled={readOnly} onChange={(e) => set({ budget: e.target.value === '' ? null : Number(e.target.value) })} /></Field>
-          <Field label="Letzter Kontakt"><Input type="date" value={draft.lastContact ?? ''} disabled={readOnly} onChange={(e) => set({ lastContact: e.target.value || null })} /></Field>
+          <Field label="Budget (€)"><Input type="number" className="tnum" value={cur('budget') ?? ''} disabled={readOnly} onChange={(e) => set({ budget: e.target.value === '' ? null : Number(e.target.value) })} /></Field>
+          <Field label="Letzter Kontakt"><Input type="date" value={cur('lastContact') ?? ''} disabled={readOnly} onChange={(e) => set({ lastContact: e.target.value || null })} /></Field>
           <Field label="Wiedervorlage" hint="Taucht auf der Übersicht auf, sobald das Datum erreicht ist.">
-            <Input type="date" value={draft.nextFollowUp ?? ''} disabled={readOnly} onChange={(e) => set({ nextFollowUp: e.target.value || null })} />
+            <Input type="date" value={cur('nextFollowUp') ?? ''} disabled={readOnly} onChange={(e) => set({ nextFollowUp: e.target.value || null })} />
           </Field>
         </div>
 
-        <Field label="Interesse an">
-          <div className="max-h-44 overflow-y-auto rounded-xl border border-line bg-surface-2 p-2">
-            <div className="grid gap-1 sm:grid-cols-2">
-              {openTanks.map((t) => {
-                const on = (draft.tankIds ?? []).includes(t.id)
-                return (
-                  <label key={t.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] hover:bg-surface-3">
-                    <input type="checkbox" checked={on} disabled={readOnly} className="h-4 w-4 accent-[var(--primary)]"
-                      onChange={() => set({ tankIds: on ? (draft.tankIds ?? []).filter((x) => x !== t.id) : [...(draft.tankIds ?? []), t.id] })} />
-                    <span className="truncate">{t.maker === 'Sonstige' ? t.type : `${t.maker} ${t.type}`} · {num(t.litres)} l</span>
-                    <span className="tnum ml-auto shrink-0 text-muted">{eur(t.vb)}</span>
-                  </label>
-                )
-              })}
+        <Field
+          as="div"
+          label="Interesse an"
+          hint={lead
+            ? 'Änderungen wirken sofort — die Karte, der Bestand und ein bestehendes Angebot lesen dieselben Daten.'
+            : 'Wird beim Anlegen übernommen.'}
+        >
+          <div className="space-y-2">
+            {openTanks.length > 8 && (
+              <Input
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                placeholder={`Filtern — ${openTanks.length} Positionen`}
+              />
+            )}
+            <div className="max-h-56 overflow-y-auto rounded-xl border border-line bg-surface-2 p-2">
+              {/* `min-w-0`: ohne das richten sich die Spalten nach ihrem Inhalt,
+                  `truncate` greift nie, und die Preisspalte steht auf dem Handy
+                  außerhalb des Kastens — gemessen 48 px daneben, ohne Balken. */}
+              <div className="grid gap-1 sm:grid-cols-2">
+                {shown.map((t) => {
+                  const on = picked.includes(t.id)
+                  const inQuote = quoteIds.has(t.id)
+                  /* Wem die Position sonst gehört. Vorher bot die Liste jede
+                     nicht verkaufte Position gleich aussehend an: eine für
+                     jemand anderen reservierte wanderte per Häkchen still in
+                     dieses Angebot und ließ sich von dort verkaufen — der
+                     erste Käufer verlor seine Zusage ohne einen Hinweis. */
+                  const foreign = t.leadId && t.leadId !== live?.id ? leadName.get(t.leadId) ?? null : null
+                  const taken = !on && t.status === 'reserviert' && !!foreign
+                  // Nur der Rufname auf der Marke: mit dem vollen Namen blieb von
+                  // „Rundtank · 3.700 l" ein „Rundtank · 3...." übrig, und bei
+                  // Tanks sind die Liter das Unterscheidende. Der ganze Name
+                  // steht im Tooltip der Zeile.
+                  const kurz = foreign ? foreign.split(/\s+/)[0] : null
+                  return (
+                    <label key={t.id}
+                      title={foreign ? (taken ? `Für ${foreign} reserviert — erst dort lösen.` : `Im Kontakt mit ${foreign}.`) : undefined}
+                      className={cx('flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-[13px]',
+                        taken ? 'cursor-not-allowed opacity-55' : 'cursor-pointer hover:bg-surface-3')}>
+                      <input type="checkbox" checked={on} disabled={readOnly || taken} className="h-4 w-4 accent-[var(--primary)]"
+                        onChange={() => toggleTank(t.id, !on)} />
+                      {/* Ohne die Nummer stehen zwei gleiche Tanks als zwei
+                          identische Zeilen da — und die Nummer ist ohnehin das,
+                          was in Anzeigen und Anfragen genannt wird. */}
+                      {/* Die Nummer trägt hier die Identität — in text-faint hatte
+                          sie 2,9 : 1 auf hellem Grund, das schwächste Zeichen der
+                          Zeile. */}
+                      <span className="tnum shrink-0 text-muted">{t.id}</span>
+                      <span className="min-w-0 truncate">{itemLabel(t)}</span>
+                      {/* Wo eine Position schon im Angebot steckt, muss man es sehen —
+                          sonst wirkt „Interesse“ und „angeboten“ wie dasselbe. */}
+                      {inQuote && <Pill tone="sky">im Angebot</Pill>}
+                      {t.status === 'verkauft' && <Pill tone="neutral">verkauft</Pill>}
+                      {t.status === 'reserviert' && kurz && <Pill tone="amber">für {kurz}</Pill>}
+                      {t.status === 'kontakt' && kurz && <Pill tone="neutral">bei {kurz}</Pill>}
+                      <span className="tnum ml-auto shrink-0 text-muted">{eur(t.vb)}</span>
+                    </label>
+                  )
+                })}
+                {shown.length === 0 && <p className="px-2 py-1.5 text-[13px] text-muted">Nichts gefunden.</p>}
+              </div>
             </div>
+            <p className="tnum text-[13px] text-muted">
+              {picked.length} {picked.length === 1 ? 'Position' : 'Positionen'} · {eur(pickedSum)} VB
+            </p>
           </div>
         </Field>
 
-        <Field label="Notiz"><Textarea rows={3} value={draft.note ?? ''} disabled={readOnly} onChange={(e) => set({ note: e.target.value })} placeholder="Gesprächsverlauf, Preisvorstellung, Abholung …" /></Field>
+        {/*
+          Angebot und Interesse sind zwei Fragen: worüber redet der Mensch, und
+          worüber wurde ein Preis genannt. Sie werden deshalb nicht heimlich
+          gleichgezogen — der Unterschied steht da, und beide Richtungen sind ein
+          ausdrücklicher Griff mit Verlaufseintrag.
+        */}
+        {lead && !readOnly && (
+          <div className="rounded-xl border border-line bg-surface-2 p-3">
+            {quote ? (
+              <>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-[13px]">
+                    <strong>Angebot {quote.id}</strong> · {relation === 'deckungsgleich' ? 'wie die Auswahl' : relation} · {eur(quote.askPrice)} gefordert
+                    {quote.buyerOffer != null && ` · ${eur(quote.buyerOffer)} geboten`}
+                  </span>
+                  <Pill tone={quote.status === 'verhandlung' ? 'amber' : 'sky'}>{QUOTE_STATUS_LABEL[quote.status]}</Pill>
+                </div>
+                {differs && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {/* Beide Knöpfe überschreiben Daten, in entgegengesetzte
+                        Richtungen — die Namen dürfen sich nicht bloß in der
+                        Wortstellung unterscheiden, und der zweite darf nicht wie
+                        eine Bildunterschrift aussehen. */}
+                    <Button size="sm" disabled={picked.length === 0} onClick={() => setQuoteTanks(quote.id, picked)}>
+                      Angebot anpassen ({picked.length})
+                    </Button>
+                    <Button size="sm" onClick={() => syncFromQuote(quote.tankIds)}>
+                      Auswahl anpassen ({quote.tankIds.length})
+                    </Button>
+                  </div>
+                )}
+
+              </>
+            ) : (
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[13px] text-muted">
+                  {picked.length === 0
+                    ? 'Noch kein Angebot. Erst etwas auswählen.'
+                    : `Aus der Auswahl wird ein Angebot über ${eur(wouldAsk)} — nach Katalogregel mit Paketen und Staffel.`}
+                </span>
+                <Button size="sm" variant="primary" disabled={picked.length === 0} onClick={makeQuote}>
+                  <IconPlus />Angebot erstellen
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+
+        <Field label="Notiz"><Textarea rows={3} value={cur('note') ?? ''} disabled={readOnly} onChange={(e) => set({ note: e.target.value })} placeholder="Gesprächsverlauf, Preisvorstellung, Abholung …" /></Field>
+
+        {/*
+          Die eingelesenen Nachrichten hatten bisher keinen Leser: `noteOnLead`
+          schrieb sie treu in die Datenbank, und keine Ansicht zeigte sie. Wer
+          über den Posteingang angelegt wurde, hatte damit einen leeren
+          Interessenten — der Wortlaut lag da, unsichtbar.
+        */}
+        {(live?.messages ?? []).length > 0 && (
+          <Field label={`Eingelesene Nachrichten (${(live?.messages ?? []).length})`} hint="Höchstens die letzten zehn. Der Wortlaut, so wie er ankam.">
+            <div className="max-h-56 space-y-2 overflow-y-auto rounded-xl border border-line bg-surface-2 p-2">
+              {(live?.messages ?? []).map((m, i) => (
+                <div key={i} className="rounded-lg bg-surface p-2.5 text-[13px]">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-faint">
+                    <span>{dateDE(m.at)}</span>
+                    {m.fromImage && <Pill tone="neutral">aus einem Bild gelesen</Pill>}
+                  </div>
+                  <p className="mt-1 whitespace-pre-wrap text-muted">{m.text}</p>
+                  {m.applied.length > 0 && (
+                    <p className="mt-1.5 flex flex-wrap gap-1.5">
+                      {m.applied.map((a) => <Pill key={a} tone="green">{a}</Pill>)}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </Field>
+        )}
 
         {!readOnly && (
           <div className="flex justify-between border-t border-line pt-4">
@@ -193,7 +424,7 @@ function LeadModal({ lead, onClose, readOnly }: { lead: Lead | null; onClose: ()
             ) : <span />}
             <div className="flex gap-2">
               <Button onClick={onClose}>Abbrechen</Button>
-              <Button variant="primary" onClick={save} disabled={!draft.name?.trim()}>Speichern</Button>
+              <Button variant="primary" onClick={save} disabled={!cur('name')?.trim()}>Speichern</Button>
             </div>
           </div>
         )}
@@ -342,7 +573,20 @@ function ParseModal({ onClose }: { onClose: () => void }) {
                 name: parsed.name || 'Anfrage aus Käuferliste',
                 phone: parsed.phone, email: parsed.email,
                 source: 'kleinanzeigen', stage: tankIds.length ? 'angebot' : 'neu',
-                tankIds, note: text.trim(),
+                tankIds, note: '',
+              })
+              // Derselbe Ort wie beim Posteingang: der Wortlaut in die
+              // Nachrichtenliste, das Gelesene in die Notiz. Vorher legte
+              // dieser Weg den ganzen Text in `note` und der andere in
+              // `messages` — zwei Ablagen für dieselbe Nachricht.
+              noteOnLead(leadId, text.trim(), ['Aus Nachricht angelegt'], false, {
+                summary: 'Aus Nachricht angelegt.',
+                notes: [
+                  parsed.packagePrice != null ? `Genannter Paketpreis: ${eur(parsed.packagePrice)}` : '',
+                  parsed.offer != null ? `Gebot in der Nachricht: ${eur(parsed.offer)}` : '',
+                ].filter(Boolean),
+                steps: ['Aus Nachricht angelegt'],
+                fromImage: false,
               })
               // A named price is already a negotiation — record it as an offer straight away.
               if (tankIds.length > 0) {
