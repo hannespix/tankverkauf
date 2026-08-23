@@ -724,6 +724,50 @@ export function setQuoteReserved(quoteId: string, tankIds: string[], on: boolean
   )
 }
 
+/**
+ * Alle Positionen eines Angebots freigeben.
+ *
+ * Eine Absage gab bisher nichts frei. Weder ein Angebot auf „abgelehnt" zu
+ * stellen noch einen Interessenten auf „verloren" löste eine einzige Bindung —
+ * es gab überhaupt keinen Knopf dafür. Wer für 31 Dekofässer eine Absage bekam,
+ * musste danach 31 Häkchen einzeln abwählen, sonst blieben sie für jeden
+ * anderen Käufer verbraucht.
+ *
+ * Freigegeben wird nur, was wirklich niemand mehr hält: hängt die Position noch
+ * in einem anderen Angebot oder in der Auswahl eines Interessenten, bleibt sie.
+ * Verkauftes bleibt ohnehin.
+ */
+export function releaseQuoteTanks(quoteId: string) {
+  store.mutate(
+    (db) => {
+      const q = db.quotes.find((x) => x.id === quoteId)
+      if (!q) return
+      const frei: string[] = []
+      for (const tid of q.tankIds) {
+        const t = db.tanks.find((x) => x.id === tid)
+        if (!t || t.status === 'verkauft' || t.status === 'verfuegbar') continue
+        if (heldByQuote(db, tid, quoteId)) continue
+        if (db.leads.some((l) => l.tankIds.includes(tid))) continue
+        t.status = 'verfuegbar'
+        t.leadId = null
+        t.updatedAt = now()
+        frei.push(tid)
+      }
+      if (frei.length === 0) return
+      // Die Phase zieht mit: wer nichts mehr hält, steht nicht mehr auf
+      // „reserviert". Auf „verloren" setzt das Werkzeug niemanden von selbst —
+      // das ist eine Aussage über einen Menschen, keine über den Bestand.
+      const l = q.leadId ? db.leads.find((x) => x.id === q.leadId) : null
+      if (l && l.stage === 'reserviert' && !db.tanks.some((t) => t.leadId === l.id && t.status === 'reserviert')) {
+        l.stage = 'angebot'
+        l.updatedAt = now()
+      }
+      q.updatedAt = now()
+    },
+    { kind: 'deal', text: `Positionen freigegeben: ${quoteId}` },
+  )
+}
+
 export function setQuoteTanks(quoteId: string, tankIds: string[]) {
   store.mutate(
     (db) => {
@@ -803,12 +847,26 @@ export function createQuote(input: {
   const id = newId('Q')
   store.mutate(
     (db) => {
+      /*
+       * Dieselben Schranken wie beim Ändern der Positionen.
+       *
+       * Sie standen bisher NUR in `setQuoteTanks`. Der Weg über die
+       * Bestandsliste — anhaken, „Angebot erstellen" — ging vollständig daran
+       * vorbei: verkaufte und fremd zugesagte Positionen kamen ungeprüft durch.
+       * Die Regel gehört hierher, damit sie für jeden Weg gilt, statt für den
+       * einen, an den beim Bauen gerade jemand gedacht hat.
+       */
+      const tankIds = [...new Set(input.tankIds)].filter((tid) => {
+        const t = db.tanks.find((x) => x.id === tid)
+        if (!t || t.status === 'verkauft') return false
+        return !(t.status === 'reserviert' && t.leadId && t.leadId !== input.leadId)
+      })
       db.quotes.unshift({
         id,
         label: input.label || 'Angebot',
         leadId: input.leadId,
         portalId: input.portalId,
-        tankIds: input.tankIds,
+        tankIds,
         askPrice: input.askPrice,
         buyerOffer: null,
         status: 'entwurf',
@@ -818,7 +876,7 @@ export function createQuote(input: {
         updatedAt: now(),
       })
       // Tanks in an open offer are no longer simply "available".
-      for (const tid of input.tankIds) {
+      for (const tid of tankIds) {
         const t = db.tanks.find((x) => x.id === tid)
         if (t && t.status === 'verfuegbar') {
           t.status = 'kontakt'
@@ -857,8 +915,14 @@ export function removeQuote(id: string) {
       for (const tid of q.tankIds) {
         const stillOffered = heldByQuote(db, tid, id)
         const t = db.tanks.find((x) => x.id === tid)
+        // `leadId` muss mit. Es blieb hier als einziger Freigabeweg stehen —
+        // `setQuoteTanks` und `detachTanks` löschen es. Eine Position mit
+        // Status „verfügbar" und gesetztem Namen ist unsichtbar belegt: der
+        // Bestand zeigt sie frei, `freeFor` im Posteingang überspringt sie.
+        const nochGewollt = db.leads.some((l) => l.id === t?.leadId && l.tankIds.includes(tid))
         if (t && !stillOffered && t.status === 'kontakt') {
           t.status = 'verfuegbar'
+          if (!nochGewollt) t.leadId = null
           t.updatedAt = now()
         }
       }
@@ -910,6 +974,27 @@ export function createDeal(input: { label: string; tankIds: string[]; price: num
         t.dealId = id
         t.leadId = input.leadId ?? t.leadId
         t.updatedAt = now()
+      }
+      /*
+       * Ein Verkauf schließt die Angebote, die er erledigt.
+       *
+       * Das tat bisher nur `quoteToDeal`. Wer im Bestand buchte oder über den
+       * Posteingang, ließ das zugehörige Angebot offen stehen — mit scharfem
+       * Knopf „Als Verkauf buchen", der nicht prüfte, ob schon verkauft ist.
+       * Ein zweiter Klick verdoppelte den Umsatz, weil `revenue()` je Verkauf
+       * zählt.
+       *
+       * Geschlossen wird jedes offene Angebot, dessen Positionen jetzt
+       * sämtlich verkauft sind — nicht schon eines, das zufällig eine davon
+       * nennt: wer sechs anbietet und zwei verkauft, verhandelt über den Rest
+       * weiter.
+       */
+      const verkauft = new Set(input.tankIds)
+      for (const q of db.quotes) {
+        if (q.status === 'angenommen' || q.status === 'abgelehnt') continue
+        if (q.tankIds.length === 0 || !q.tankIds.every((tid) => verkauft.has(tid))) continue
+        q.status = 'angenommen'
+        q.updatedAt = now()
       }
       if (input.leadId) {
         const l = db.leads.find((x) => x.id === input.leadId)

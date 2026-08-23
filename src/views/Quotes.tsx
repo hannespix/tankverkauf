@@ -3,7 +3,7 @@ import { PriceLadder } from '../components/charts'
 import { LeadPicker } from '../components/LeadPicker'
 import { Button, Card, EmptyState, Field, Input, Pill, SectionTitle, Select, Stat, Textarea, cx, type Tone } from '../components/ui'
 import { IconHandshake, IconLock, IconPlus, IconTrash } from '../components/icons'
-import { patchQuote, quoteToDeal, removeQuote, setQuoteLinePrice, setQuoteReserved, setQuoteTanks } from '../lib/actions'
+import { patchQuote, quoteToDeal, releaseQuoteTanks, removeQuote, setQuoteLinePrice, setQuoteReserved, setQuoteTanks } from '../lib/actions'
 import { itemLabel, centsPerLitre, dateDE, eur, num, todayISO } from '../lib/format'
 import { collapseIds, publicEffect } from '../lib/inbox'
 import { Verlauf } from '../components/Verlauf'
@@ -110,6 +110,10 @@ function QuoteCard({ quote }: { quote: Quote }) {
   const offene = positionen.filter((t) => t.status !== 'verkauft' && !fremd.includes(t))
   const reserviert = offene.filter((t) => t.status === 'reserviert').map((t) => t.id)
   const reservierbar = offene.filter((t) => t.status !== 'reserviert').map((t) => t.id)
+  // Was dieses Angebot noch bindet, und ob überhaupt noch etwas zu verkaufen ist.
+  const gebunden = positionen.filter((t) => t.status === 'kontakt' || t.status === 'reserviert')
+  const verkauft = positionen.filter((t) => t.status === 'verkauft')
+  const buchbar = positionen.length > 0 && verkauft.length < positionen.length
 
   /**
    * Reservieren wirkt nach außen, deshalb wird gefragt — und die Frage nennt,
@@ -249,11 +253,30 @@ function QuoteCard({ quote }: { quote: Quote }) {
         </p>
       )}
 
-      {quote.status === 'abgelehnt' && reserviert.length > 0 && (
-        <p className="mt-2 rounded-lg bg-amber-soft px-3 py-2 text-[13px] text-amber">
-          Das Angebot ist abgelehnt, {collapseIds(reserviert)} {reserviert.length === 1 ? 'steht' : 'stehen'} aber
-          weiter reserviert — für Käufer sichtbar vergeben. Unten lösen.
-        </p>
+      {/*
+        Abgelehnt — und die Ware hängt weiter fest.
+        Eine Absage gab bisher nichts frei, und es gab keinen Knopf dafür: wer
+        für 31 Fässer abgesagt bekam, musste 31 Häkchen einzeln abwählen.
+        Automatisch aufgelöst wird es trotzdem nicht — eine falsch zugeordnete
+        Absage gäbe sonst zugesagte Ware wieder öffentlich frei.
+      */}
+      {quote.status === 'abgelehnt' && gebunden.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-amber-soft px-3 py-2 text-[13px] text-amber">
+          <span>
+            Abgelehnt, aber {collapseIds(gebunden.map((t) => t.id))} {gebunden.length === 1 ? 'hängt' : 'hängen'} noch an
+            diesem Angebot{reserviert.length > 0 ? ' — davon für Käufer sichtbar vergeben: ' + collapseIds(reserviert) : ''}.
+          </span>
+          <Button
+            size="sm"
+            onClick={() => {
+              if (confirm(`${gebunden.length} ${gebunden.length === 1 ? 'Position' : 'Positionen'} (${collapseIds(gebunden.map((t) => t.id))}) freigeben? Sie stehen danach wieder für jeden zur Verfügung.`)) {
+                releaseQuoteTanks(quote.id)
+              }
+            }}
+          >
+            Positionen freigeben
+          </Button>
+        </div>
       )}
 
       {/*
@@ -292,8 +315,21 @@ function QuoteCard({ quote }: { quote: Quote }) {
             </Button>
           )}
           <Button onClick={() => setOpen(true)}>Bearbeiten</Button>
+          {/*
+            Nicht mehr scharf, wenn es nichts zu buchen gibt.
+            Der Knopf prüfte nichts: ein Angebot, dessen Positionen anderswo
+            schon verkauft wurden, ließ sich ein zweites Mal buchen — und
+            `revenue()` zählt je Verkauf, der Umsatz verdoppelte sich. Ein
+            Angebot über null Positionen (entsteht, wenn die letzte Position aus
+            dem Bestand gelöscht wird) war ebenfalls buchbar.
+          */}
           {!closed && (
-            <Button variant="primary" onClick={() => { if (confirm(`„${quote.label}“ zu ${eur(m.decisive)} als Verkauf buchen?`)) quoteToDeal(quote.id) }}>
+            <Button
+              variant="primary"
+              disabled={!buchbar}
+              title={positionen.length === 0 ? 'Keine Position im Angebot' : buchbar ? undefined : 'Alle Positionen sind bereits verkauft'}
+              onClick={() => { if (confirm(`„${quote.label}“ zu ${eur(m.decisive)} als Verkauf buchen?`)) quoteToDeal(quote.id) }}
+            >
               <IconHandshake />Als Verkauf buchen
             </Button>
           )}

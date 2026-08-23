@@ -24,7 +24,7 @@ const mem = new Map<string, string>()
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { store } from './store'
-import { applyProposal, detachTanks, noteOnLead, removeLead, saveReply, setQuoteLinePrice, setQuoteReserved, setQuoteTanks } from './actions'
+import { applyProposal, createDeal, createQuote, detachTanks, noteOnLead, releaseQuoteTanks, removeLead, removeQuote, saveReply, setQuoteLinePrice, setQuoteReserved, setQuoteTanks } from './actions'
 import { quoteMail } from './mail'
 import { resolveBundle } from './bundles'
 import { openQuotesOf, quoteMetrics, quoteRelation } from './stats'
@@ -497,4 +497,91 @@ test('B28 · reservieren geht auch ohne zugeordneten Interessenten', () => {
   // Und wieder lösen geht genauso — sonst wäre es die Einbahnstraße von vorher.
   setQuoteReserved('Q-1', ['T-1', 'T-2'], false)
   assert.equal(db().tanks[0]!.status, 'kontakt', 'Q-1 führt sie weiter')
+})
+
+/*
+ * B29 bis B33 — die Regeln gelten auf jedem Weg, nicht nur auf einem.
+ *
+ * Die Schutzregeln standen in setQuoteTanks. Der Weg über die Bestandsliste —
+ * anhaken, "Angebot erstellen" oder "Als Verkauf buchen" — ging vollständig
+ * daran vorbei. Jeder Fall hier ist ein Weg, auf dem Geld verlorenging.
+ */
+
+test('B29 · ein neues Angebot nimmt keine verkaufte Position auf', () => {
+  setDb({
+    tanks: [tank('T-1', { status: 'verkauft', dealId: 'D-1' }), tank('T-2')],
+    leads: [lead('L-1')],
+  })
+  const id = createQuote({ label: 'Test', tankIds: ['T-1', 'T-2'], askPrice: 2000, leadId: 'L-1', portalId: null, note: '' })
+  assert.deepEqual(db().quotes.find((q) => q.id === id)!.tankIds, ['T-2'])
+})
+
+test('B30 · ein neues Angebot nimmt nicht, was einem anderen zugesagt ist', () => {
+  setDb({
+    tanks: [tank('T-1', { status: 'reserviert', leadId: 'L-2' }), tank('T-2')],
+    leads: [lead('L-1'), lead('L-2')],
+  })
+  const id = createQuote({ label: 'Test', tankIds: ['T-1', 'T-2'], askPrice: 2000, leadId: 'L-1', portalId: null, note: '' })
+  assert.deepEqual(db().quotes.find((q) => q.id === id)!.tankIds, ['T-2'])
+  assert.equal(db().tanks[0]!.leadId, 'L-2', 'die fremde Zusage bleibt stehen')
+})
+
+test('B31 · ein Verkauf schließt das Angebot, das er erledigt', () => {
+  /*
+   * Das tat bisher nur quoteToDeal. Wer im Bestand buchte, ließ das Angebot
+   * offen — mit scharfem Knopf "Als Verkauf buchen", der nicht prüfte, ob schon
+   * verkauft ist. Ein zweiter Klick verdoppelte den Umsatz.
+   */
+  setDb({
+    tanks: [tank('T-1'), tank('T-2')],
+    leads: [lead('L-1')],
+    quotes: [quote('Q-1', { leadId: 'L-1', tankIds: ['T-1', 'T-2'], askPrice: 2000 })],
+  })
+  createDeal({ label: 'Verkauf', tankIds: ['T-1', 'T-2'], price: 1900, leadId: 'L-1', date: '2026-01-01', note: '' })
+  assert.equal(db().quotes[0]!.status, 'angenommen')
+})
+
+test('B32 · ein teilweise verkauftes Angebot bleibt offen', () => {
+  // Wer sechs anbietet und zwei verkauft, verhandelt über den Rest weiter.
+  setDb({
+    tanks: [tank('T-1'), tank('T-2'), tank('T-3')],
+    leads: [lead('L-1')],
+    quotes: [quote('Q-1', { leadId: 'L-1', tankIds: ['T-1', 'T-2', 'T-3'], askPrice: 3000 })],
+  })
+  createDeal({ label: 'Teil', tankIds: ['T-1'], price: 900, leadId: 'L-1', date: '2026-01-01', note: '' })
+  assert.equal(db().quotes[0]!.status, 'gesendet', 'zwei Positionen sind noch zu verhandeln')
+})
+
+test('B33 · freigeben löst, was nur dieses Angebot hält', () => {
+  // T-1 hängt nur an Q-1, T-2 zusätzlich an der Auswahl des Interessenten.
+  setDb({
+    tanks: [
+      tank('T-1', { status: 'reserviert', leadId: 'L-1' }),
+      tank('T-2', { status: 'kontakt', leadId: 'L-1' }),
+    ],
+    leads: [lead('L-1', { tankIds: ['T-2'], stage: 'reserviert' })],
+    quotes: [quote('Q-1', { leadId: 'L-1', tankIds: ['T-1', 'T-2'], askPrice: 2000, status: 'abgelehnt' })],
+  })
+  releaseQuoteTanks('Q-1')
+  assert.equal(db().tanks[0]!.status, 'verfuegbar')
+  assert.equal(db().tanks[0]!.leadId, null)
+  assert.equal(db().tanks[1]!.status, 'kontakt', 'der Interessent will sie noch')
+  assert.equal(db().leads[0]!.stage, 'angebot', 'nichts mehr reserviert, also nicht mehr diese Phase')
+})
+
+test('B34 · ein gelöschtes Angebot lässt keinen unsichtbar belegten Bestand zurück', () => {
+  /*
+   * removeQuote war der einzige Freigabeweg, der leadId stehen ließ. Status
+   * "verfügbar" mit gesetztem Namen ist unsichtbar belegt: der Bestand zeigt
+   * die Position frei, freeFor im Posteingang überspringt sie trotzdem.
+   */
+  setDb({
+    tanks: [tank('T-1', { status: 'kontakt', leadId: 'L-1' })],
+    leads: [lead('L-1')],
+    quotes: [quote('Q-1', { leadId: 'L-1', tankIds: ['T-1'], askPrice: 1000 })],
+  })
+  removeQuote('Q-1')
+  const t = db().tanks[0]!
+  assert.equal(t.status, 'verfuegbar')
+  assert.equal(t.leadId, null)
 })
