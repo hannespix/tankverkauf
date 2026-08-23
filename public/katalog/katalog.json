@@ -7,7 +7,7 @@
   "imprintUrl": "https://www.weingut-pix.de/impressum/",
   "privacy": "Verantwortlich für diese Seite: Weingut Pix, 79241 Ihringen, info@weingut-pix.de. Vollständige Anschrift im Impressum.\n\nDiese Seite wird von GitHub Inc. (GitHub Pages) ausgeliefert. Beim Aufruf überträgt Ihr Browser technisch bedingt Ihre IP-Adresse an GitHub; GitHub speichert sie in Server-Protokollen. Rechtsgrundlage ist Art. 6 Abs. 1 lit. f DSGVO — ohne diese Übertragung lässt sich keine Seite ausliefern.\n\nDie Seite setzt keine Cookies, misst kein Nutzungsverhalten und bindet keine fremden Inhalte ein. Schrift und Bilder werden von derselben Adresse geladen wie die Seite selbst.\n\nIhre Auswahl bleibt in Ihrem Browser und wird nirgends gespeichert. Klicken Sie auf „Anfrage senden“, öffnet sich Ihr eigenes E-Mail-Programm mit einem vorbereiteten Text. Abgeschickt wird die Nachricht erst von Ihnen. Was Sie uns dabei schreiben — Name, Adresse, Telefonnummer — verarbeiten wir ausschließlich, um Ihre Anfrage zu beantworten und ein Geschäft abzuwickeln (Art. 6 Abs. 1 lit. b DSGVO), und löschen es, sobald die gesetzlichen Aufbewahrungsfristen abgelaufen sind.\n\nSie haben das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung der Verarbeitung, Datenübertragbarkeit und Widerspruch sowie das Recht, sich bei einer Aufsichtsbehörde zu beschweren.",
   "vatRate": 0.19,
-  "updatedAt": "2026-08-23T15:45:35.074Z",
+  "updatedAt": "2026-08-23T16:29:18.059Z",
   "items": [
     {
       "id": "T-03",
@@ -209,7 +209,6 @@
         "h": 85
       },
       "photos": [
-        "fotos/T-14-rdppst.jpg",
         "fotos/T-14-atxo7w.jpg"
       ],
       "tags": [],
