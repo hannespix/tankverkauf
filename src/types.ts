@@ -140,6 +140,18 @@ export interface Quote {
   tankIds: string[]
   /** What we are asking for the bundle, brutto. */
   askPrice: number
+  /**
+   * Negotiated price per position, brutto — sparse.
+   *
+   * Only positions whose price was actually touched appear here; everything
+   * else falls back to the tank's own VB. Sparse on purpose: an untouched line
+   * follows the stock price when that changes, which is what you want for a
+   * position nobody has negotiated yet.
+   *
+   * `migrate()` passes quotes through untouched (store.ts), so old quotes
+   * arrive without this field — every read must go through `linePrice()`.
+   */
+  prices?: Record<string, number>
   /** What the buyer put on the table, brutto. */
   buyerOffer: number | null
   status: QuoteStatus

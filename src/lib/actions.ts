@@ -5,7 +5,7 @@ import { generateAd, portalOf } from './ads'
 import { dateDE } from './format'
 import { SEED } from './seed'
 import { newId, store } from './store'
-import { openQuotesOf } from './stats'
+import { lineSum, openQuotesOf } from './stats'
 
 const now = () => new Date().toISOString()
 const tankName = (t: Tank) => `${t.maker === 'Sonstige' ? t.type : t.maker} ${t.litres} l`
@@ -127,6 +127,13 @@ export function removeTank(tank: Tank) {
       })
       db.quotes.forEach((q) => {
         q.tankIds = q.tankIds.filter((id) => id !== tank.id)
+        // Der ausgehandelte Preis der Position geht mit ihr. Bliebe er liegen,
+        // wüchse die Karte um Einträge, die kein Bildschirm je zeigt — und ein
+        // später unter derselben Nummer angelegter Zugang erbte ihn.
+        if (q.prices && tank.id in q.prices) {
+          delete q.prices[tank.id]
+          if (Object.keys(q.prices).length === 0) delete q.prices
+        }
       })
       // Ein Angebotspaket, das auf eine gelöschte Position zeigt, würde auf der
       // Käuferseite stillschweigend kleiner werden, ohne dass es jemand merkt.
@@ -589,6 +596,54 @@ function heldByQuote(db: DB, tankId: string, exceptQuoteId?: string): boolean {
   return db.quotes.some((q) => q.id !== exceptQuoteId && q.tankIds.includes(tankId) && q.status !== 'abgelehnt')
 }
 
+/** Sum of a quote's line prices over a given selection of ids. */
+function sumLines(db: DB, q: Pick<Quote, 'prices'>, ids: string[]): number {
+  return lineSum(
+    q,
+    ids.map((id) => db.tanks.find((t) => t.id === id)).filter((t): t is Tank => Boolean(t)),
+  )
+}
+
+/**
+ * Der Preis einer einzelnen Position in einem Angebot.
+ *
+ * Ein Angebot forderte bisher eine einzige Zahl für alles. Wer über sechs Tanks
+ * verhandelte und bei einem 150 € nachließ, konnte das nirgends festhalten — er
+ * konnte nur die Gesamtsumme drücken, und welche Position den Nachlass trug,
+ * wusste danach niemand mehr.
+ *
+ * Gespeichert wird nur, was vom Bestandspreis abweicht. Wer auf die VB
+ * zurückstellt, löscht den Eintrag — sonst fröre die Zeile auf einem Preis
+ * fest, der einmal die VB war, und liefe bei der nächsten Preisrunde still
+ * daneben.
+ */
+export function setQuoteLinePrice(quoteId: string, tankId: string, price: number | null) {
+  store.mutate(
+    (db) => {
+      const q = db.quotes.find((x) => x.id === quoteId)
+      const t = db.tanks.find((x) => x.id === tankId)
+      if (!q || !t || !q.tankIds.includes(tankId)) return
+      const zeilenVorher = sumLines(db, q, q.tankIds)
+      // Negatives gibt es nicht, und eine Zugabe schreibt man als 0.
+      const clean = price == null || !Number.isFinite(price) ? null : Math.max(0, Math.round(price))
+      if (clean == null || clean === t.vb) {
+        if (q.prices) {
+          delete q.prices[tankId]
+          if (Object.keys(q.prices).length === 0) delete q.prices
+        }
+      } else {
+        // Nicht patchQuote: dessen Object.assign ersetzt die ganze Karte.
+        q.prices = { ...q.prices, [tankId]: clean }
+      }
+      // Der geforderte Preis rechnet mit, solange er die Summe der Zeilen war —
+      // dieselbe Regel wie beim Ändern der Positionen.
+      if (q.askPrice === zeilenVorher) q.askPrice = sumLines(db, q, q.tankIds)
+      q.updatedAt = now()
+    },
+    { kind: 'deal', text: `Angebot: Preis für ${tankId} geändert` },
+  )
+}
+
 export function setQuoteTanks(quoteId: string, tankIds: string[]) {
   store.mutate(
     (db) => {
@@ -606,9 +661,27 @@ export function setQuoteTanks(quoteId: string, tankIds: string[]) {
       // Ein Angebot über nichts ist kein Angebot — es stünde mit 0 € da und
       // ließe sich trotzdem als Verkauf buchen.
       if (wanted.length === 0) return
+      /*
+       * Nachrechnen nur, solange der Preis niemandem gehört.
+       *
+       * Die Regel galt bisher nur gegen die Katalogrechnung. Mit Einzelpreisen
+       * gibt es einen zweiten Stand, den der Verkäufer selbst gesetzt hat — die
+       * Summe der Zeilen. Beide gelten als "nicht von Hand gesetzt": wer 5.400
+       * stehen hat, weil das die Summe seiner Zeilen ist, meint 5.400 für DIESE
+       * Positionen, nicht für die, die gleich dazukommen.
+       */
       const auto = askFor(db, before)
+      const zeilenVorher = sumLines(db, q, before)
       q.tankIds = wanted
+      // Preiszeilen weggefallener Positionen mitnehmen. Bliebe der Eintrag
+      // liegen, tauchte beim Wiederhinzufügen still ein Preis auf, den in
+      // dieser Runde niemand gesetzt hat.
+      if (q.prices) {
+        for (const id of Object.keys(q.prices)) if (!wanted.includes(id)) delete q.prices[id]
+        if (Object.keys(q.prices).length === 0) delete q.prices
+      }
       if (q.askPrice === auto) q.askPrice = askFor(db, wanted)
+      else if (q.askPrice === zeilenVorher) q.askPrice = sumLines(db, q, wanted)
       q.updatedAt = now()
 
       // Neu dazugekommene binden, weggefallene freigeben — dieselbe Regel wie

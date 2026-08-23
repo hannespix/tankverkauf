@@ -3,11 +3,11 @@ import { PriceLadder } from '../components/charts'
 import { LeadPicker } from '../components/LeadPicker'
 import { Button, Card, EmptyState, Field, Input, Pill, SectionTitle, Select, Stat, Textarea, cx, type Tone } from '../components/ui'
 import { IconHandshake, IconPlus, IconTrash } from '../components/icons'
-import { patchQuote, quoteToDeal, removeQuote, setQuoteTanks } from '../lib/actions'
+import { patchQuote, quoteToDeal, removeQuote, setQuoteLinePrice, setQuoteTanks } from '../lib/actions'
 import { itemLabel, centsPerLitre, dateDE, eur, num, todayISO } from '../lib/format'
 import { Verlauf } from '../components/Verlauf'
 import { useStore } from '../lib/store'
-import { VERDICT_LABEL, quoteMetrics } from '../lib/stats'
+import { VERDICT_LABEL, linePrice, quoteMetrics } from '../lib/stats'
 import { QUOTE_STATUS_LABEL, type Quote, type QuoteStatus } from '../types'
 
 const STATUSES: QuoteStatus[] = ['entwurf', 'gesendet', 'verhandlung', 'angenommen', 'abgelehnt']
@@ -32,7 +32,7 @@ export default function Quotes() {
   const openValue = openQuotes.reduce((a, q) => a + (q.buyerOffer ?? q.askPrice), 0)
   const openLitres = openQuotes.reduce(
     (a, q) => a + q.tankIds.reduce((x, id) => x + (db.tanks.find((t) => t.id === id)?.litres ?? 0), 0), 0)
-  const belowFloor = openQuotes.filter((q) => quoteMetrics(db, q.tankIds, q.askPrice, q.buyerOffer).verdict === 'unter-limit')
+  const belowFloor = openQuotes.filter((q) => quoteMetrics(db, q.tankIds, q.askPrice, q.buyerOffer, q.prices).verdict === 'unter-limit')
 
   return (
     <div className="space-y-4">
@@ -80,7 +80,7 @@ export default function Quotes() {
 
 function QuoteCard({ quote }: { quote: Quote }) {
   const { db } = useStore()
-  const m = quoteMetrics(db, quote.tankIds, quote.askPrice, quote.buyerOffer)
+  const m = quoteMetrics(db, quote.tankIds, quote.askPrice, quote.buyerOffer, quote.prices)
   const lead = db.leads.find((l) => l.id === quote.leadId)
   const portal = db.settings.portals.find((p) => p.id === quote.portalId)
   const [open, setOpen] = useState(false)
@@ -108,7 +108,21 @@ function QuoteCard({ quote }: { quote: Quote }) {
           quote.validUntil ? `gültig bis ${dateDE(quote.validUntil)}` : null,
         ].filter(Boolean).join(' · ')}
         action={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {/*
+              Zwei verschiedene Zustände, zwei verschiedene Sätze.
+              Die Gesamtwarnung misst die eine Zahl gegen die Summe der
+              Untergrenzen — ein Angebot kann darüber liegen und trotzdem eine
+              einzelne Position verschenken. Beide gleich zu benennen wäre die
+              Warnung, die niemand mehr liest.
+            */}
+            {m.underFloor.length > 0 && (
+              <Pill tone="rose">
+                {m.underFloor.length === 1
+                  ? `${m.underFloor[0]} unter seiner Untergrenze`
+                  : `${m.underFloor.length} Positionen unter ihrer Untergrenze`}
+              </Pill>
+            )}
             {m.verdict && (
               <Pill tone={m.verdict === 'unter-limit' ? 'rose' : m.verdict === 'ok' ? 'amber' : 'green'}>
                 {VERDICT_LABEL[m.verdict]}
@@ -132,43 +146,54 @@ function QuoteCard({ quote }: { quote: Quote }) {
       </div>
 
       <div className="mt-4">
-        <div className="mb-1 flex items-baseline justify-between text-[13px]">
+        {/*
+          Stand hier vorher "800 € unter Einzel-VB", während die Leiter darunter
+          bei gesetztem Käufergebot dessen Zahl zeichnete: zwei Werte
+          nebeneinander, die Verschiedenes maßen. Jetzt steht ausdrücklich da,
+          welche Zahl welche ist.
+        */}
+        <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-[13px]">
           <span className="font-semibold text-muted">Wo liegt der Preis?</span>
           <span className="tnum text-muted">
-            {m.discount > 0 ? `${eur(m.discount)} unter Einzel-VB (${(m.discountPct * 100).toFixed(0)} %)` : 'auf VB-Niveau'}
+            Einzelpreise {eur(m.lines)} · gefordert {eur(m.askPrice)}
+            {m.bundleOff > 0 && ` · ${eur(m.bundleOff)} Paketnachlass`}
+            {m.bundleOff < 0 && ` · ${eur(-m.bundleOff)} darüber`}
           </span>
         </div>
+        {m.lines !== m.vb && (
+          <p className="mb-1 text-xs text-muted">
+            Ohne verhandelte Zeilen stünden hier {eur(m.vb)} — die Summe der Bestands-VB.
+          </p>
+        )}
         <PriceLadder floor={m.floor} target={m.target} vb={m.vb} offer={m.decisive} format={eur} />
       </div>
 
-      <ul className="mt-2 flex flex-wrap gap-1.5">
-        {quote.tankIds.map((id) => {
-          const t = db.tanks.find((x) => x.id === id)
-          if (!t) return null
-          return (
-            <li key={id}>
-              <Pill tone={t.status === 'verkauft' ? 'neutral' : 'sky'}>
-                <span className="tnum opacity-70">{t.id}</span> {itemLabel(t)}
-                {/* Die letzte Position bleibt: ein Angebot über nichts stünde
-                    mit 0 € da und ließe sich trotzdem als Verkauf buchen.
-                    setQuoteTanks lehnt es ohnehin ab — ohne diesen Griff wäre
-                    das ein Knopf, der stumm nichts tut. */}
-                {open && !closed && quote.tankIds.length > 1 && (
-                  <button
-                    type="button"
-                    aria-label={`${t.id} ${itemLabel(t)} aus dem Angebot nehmen`}
-                    onClick={() => setQuoteTanks(quote.id, quote.tankIds.filter((x) => x !== id))}
-                    className="-mr-1.5 ml-1 flex h-6 w-6 items-center justify-center rounded leading-none hover:bg-black/10"
-                  >
-                    ×
-                  </button>
-                )}
-              </Pill>
-            </li>
-          )
-        })}
-        {quote.tankIds.length === 0 && <li className="text-[13px] text-amber">Keine Position im Angebot.</li>}
-      </ul>
+      {/*
+        Gelesen wird kompakt, bearbeitet wird in Zeilen.
+        Im aufgeklappten Zustand übernimmt die Preisliste weiter unten dieselben
+        Positionen samt Nummer, Preisfeld und Entfernen-Knopf — beides zugleich
+        zu zeigen hieße, dieselbe Position zweimal mit zwei Bedienungen
+        anzubieten. Der ausgehandelte Preis steht auch in der Marke, sonst müsste
+        man zum Nachsehen erst aufklappen.
+      */}
+      {!(open && !closed) && (
+        <ul className="mt-2 flex flex-wrap gap-1.5">
+          {quote.tankIds.map((id) => {
+            const t = db.tanks.find((x) => x.id === id)
+            if (!t) return null
+            const preis = linePrice(quote, t)
+            return (
+              <li key={id}>
+                <Pill tone={t.status === 'verkauft' ? 'neutral' : preis < t.floor ? 'rose' : 'sky'}>
+                  <span className="tnum">{t.id}</span> {itemLabel(t)}
+                  {preis !== t.vb && <span className="tnum ml-1 opacity-80">· {eur(preis)}</span>}
+                </Pill>
+              </li>
+            )
+          })}
+          {quote.tankIds.length === 0 && <li className="text-[13px] text-amber">Keine Position im Angebot.</li>}
+        </ul>
+      )}
 
       {/*
         Der Schriftwechsel gehört auch hierher.
@@ -204,8 +229,84 @@ function QuoteCard({ quote }: { quote: Quote }) {
             Position herausnehmen wollte, musste sie aus dem Bestand löschen.
           */}
           {!closed && (
-            <Field as="div" label="Positionen ändern" hint="Der geforderte Preis rechnet mit, solange er nicht von Hand gesetzt wurde.">
+            <Field as="div" label="Positionen und Einzelpreise">
               <div className="space-y-2">
+                {/*
+                  Eine Zeile je Position, nie zusammengefasst.
+                  T-17, T-18 und T-19 sind bis aufs letzte Feld baugleich — die
+                  Nummer ist das einzige, was sie unterscheidet. Deshalb steht
+                  sie vorn, ungedimmt, und in jedem aria-label: sonst kündigt
+                  eine Vorlesehilfe drei identische "Preis"-Felder an. Und
+                  sobald sich zwei Preise unterscheiden, könnte eine gruppierte
+                  Zeile sie ohnehin nicht mehr zeigen.
+                */}
+                <ul className="max-h-72 space-y-1 overflow-y-auto rounded-xl border border-line bg-surface-2 p-2">
+                  {quote.tankIds.map((id) => {
+                    const t = db.tanks.find((x) => x.id === id)
+                    if (!t) return null
+                    const preis = linePrice(quote, t)
+                    const drunter = preis < t.floor
+                    return (
+                      <li key={id} className="flex items-center gap-2 text-[13px]">
+                        <span className="tnum w-12 shrink-0 font-semibold">{t.id}</span>
+                        <span className="truncate">{itemLabel(t)}</span>
+                        <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            aria-label={`Preis für ${t.id}, ${itemLabel(t)}`}
+                            // Ungesetzt bleibt das Feld LEER und zeigt die VB nur
+                            // blass als Platzhalter. Stünde die Zahl darin, sähe
+                            // niemand mehr, welche Zeile er wirklich bewegt hat.
+                            value={quote.prices?.[t.id] ?? ''}
+                            placeholder={String(t.vb)}
+                            onChange={(e) => setQuoteLinePrice(quote.id, t.id, e.target.value === '' ? null : Number(e.target.value))}
+                            className={cx(
+                              'tnum w-24 rounded-lg border bg-surface px-2 py-1 text-right',
+                              drunter ? 'border-rose text-rose' : 'border-line',
+                            )}
+                          />
+                          <span className="w-3 text-faint">€</span>
+                          {quote.tankIds.length > 1 && (
+                            <button
+                              type="button"
+                              aria-label={`${t.id} ${itemLabel(t)} aus dem Angebot nehmen`}
+                              onClick={() => setQuoteTanks(quote.id, quote.tankIds.filter((x) => x !== id))}
+                              className="flex h-6 w-6 items-center justify-center rounded leading-none text-faint hover:bg-surface-3 hover:text-rose"
+                            >
+                              ×
+                            </button>
+                          )}
+                        </span>
+                      </li>
+                    )
+                  })}
+                </ul>
+                <div className="flex flex-wrap items-center justify-between gap-2 text-[13px]">
+                  <span className="tnum text-muted">
+                    Summe der Einzelpreise <strong>{eur(m.lines)}</strong>
+                    {m.bundleOff !== 0 && ` · gefordert ${eur(m.askPrice)}`}
+                  </span>
+                  {/* Kurz beschriftet: die lange Fassung lief aus der Karte
+                      heraus und landete unter dem schwebenden Posteingang. */}
+                  {m.bundleOff !== 0 && (
+                    <Button size="sm" onClick={() => patchQuote(quote.id, { askPrice: m.lines })}>
+                      Summe übernehmen
+                    </Button>
+                  )}
+                </div>
+                {/* Der Hinweis gehört hierher, nicht ans Ende des Blocks: als
+                    Field-hint stand er unter dem Suchfeld und damit zwei
+                    Bildschirmdrittel von der Zahl entfernt, die er erklärt. */}
+                <p className="text-xs text-muted">
+                  Leer heißt: Preis aus dem Bestand. Der geforderte Gesamtpreis rechnet mit,
+                  solange er nicht von Hand gesetzt wurde.
+                </p>
+                {m.underFloor.length > 0 && (
+                  <p className="text-[13px] text-rose">
+                    Unter der eigenen Untergrenze: {m.underFloor.join(', ')}.
+                  </p>
+                )}
                 {quote.tankIds.length === 1 && (
                   <p className="text-[13px] text-muted">
                     Die letzte Position bleibt — ein Angebot über nichts stünde mit 0 € da. Erst eine weitere hinzufügen, dann diese entfernen.

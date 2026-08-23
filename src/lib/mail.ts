@@ -12,11 +12,14 @@
 import type { DB, Quote, Tank } from '../types'
 import { dateDE, eur, itemLabel, num } from './format'
 import { dims as fmtDims } from './format'
+import { linePrice, lineSum } from './stats'
 
-function zeile(t: Tank): string {
+function zeile(t: Tank, preis: number | null): string {
   const size = fmtDims(t.dims)
   const merkmale = t.tags.length ? ` — ${t.tags.join(', ')}` : ''
-  return `· ${t.id}  ${itemLabel(t)}${size ? `, ${size}` : ''}${merkmale}`
+  // Der Preis steht am Zeilenende, hinter den Merkmalen: davor gelesen trennte
+  // er die Beschreibung von dem, was sie beschreibt.
+  return `· ${t.id}  ${itemLabel(t)}${size ? `, ${size}` : ''}${merkmale}${preis == null ? '' : ` · ${eur(preis)}`}`
 }
 
 export interface MailEntwurf {
@@ -40,8 +43,20 @@ export function quoteMail(db: DB, quote: Quote): MailEntwurf {
     .filter((t): t is Tank => !!t)
   const lead = quote.leadId ? db.leads.find((l) => l.id === quote.leadId) ?? null : null
   const s = db.settings.seller
-  const summe = positionen.reduce((a, t) => a + t.vb, 0)
+  const summe = lineSum(quote, positionen)
   const spart = summe - quote.askPrice
+  /*
+   * Einzelpreise nur drucken, wenn welche ausgehandelt wurden.
+   *
+   * Sonst veröffentlichte jede Angebotsmail einen Preis je Position, ohne dass
+   * dafür ein Anlass bestünde — und lüde den Käufer ein, sich die drei
+   * günstigsten herauszupicken. Hat der Verkäufer dagegen selbst eine Zeile
+   * bewegt, ist die Aufschlüsselung genau das, was er zeigen will.
+   *
+   * Alles oder nichts: eine Liste, in der zwei Zeilen einen Preis tragen und
+   * vier nicht, sieht nach einem Fehler aus.
+   */
+  const zeigePreise = positionen.length > 1 && Object.keys(quote.prices ?? {}).length > 0
   const liter = positionen.reduce((a, t) => a + t.litres, 0)
 
   /*
@@ -62,7 +77,7 @@ export function quoteMail(db: DB, quote: Quote): MailEntwurf {
     '',
     `gern fasse ich zusammen, worüber wir gesprochen haben — ${kopf}:`,
     '',
-    ...positionen.map(zeile),
+    ...positionen.map((t) => zeile(t, zeigePreise ? linePrice(quote, t) : null)),
     '',
     positionen.length > 1 && spart > 0
       ? `Einzeln zusammen ${eur(summe)}. Bei Abnahme aller ${positionen.length} Positionen ${eur(quote.askPrice)} — also ${eur(spart)} weniger.`
