@@ -60,7 +60,18 @@ function sources(): string[] {
  * zusammenfassung und Paketübernahme müssen dieselbe Bündelung sehen, sonst
  * normalisiert der Stückzahlregler eine Paketauswahl auseinander.
  */
-const lotKey = (i: CatalogItem) => `${i.maker}|${i.type}|${i.litres}|${i.vb}|${i.reserved ? 'r' : 'f'}`
+const lotKey = (i: Zeile) => `${i.maker}|${i.type}|${i.litres}|${i.vb}|${zustand(i)}`
+
+/**
+ * Eine Zeile der Liste — lieferbar, vorgemerkt oder verkauft.
+ *
+ * Verkauftes kommt aus `catalog.soldItems` und trägt weder Preis noch Fotos
+ * (siehe `SoldItem`). Beides wird hier auf einen unschädlichen Wert gesetzt,
+ * damit die Liste EINEN Typ verarbeitet statt zweier.
+ */
+type Zeile = CatalogItem & { sold?: boolean }
+
+const zustand = (i: Zeile) => (i.sold ? 's' : i.reserved ? 'r' : 'f')
 
 function App() {
   const [dark, setDark] = useTheme()
@@ -158,12 +169,26 @@ function App() {
     }
   }, [])
 
+  /*
+   * Verkauftes bekommt einen Preis von 0 und keine Fotos — beides steht in der
+   * veröffentlichten Datei gar nicht erst drin. Der Preis wird an einer
+   * verkauften Zeile nie gedruckt; die 0 dient nur dem Los-Schlüssel, damit
+   * verkaufte Stücke desselben Typs zu EINEM Los zusammenfallen, auch wenn ihre
+   * VB zu Lebzeiten verschieden war.
+   */
+  const verkauft = useMemo<Zeile[]>(
+    () => (catalog?.soldItems ?? []).map((i) => ({ ...i, vb: 0, photos: [], reserved: false, sold: true })),
+    [catalog],
+  )
+
   const groups = useMemo(() => {
     if (!catalog) return []
     const needle = q.trim().toLowerCase()
     const bundle = onlyBundle ? (catalog.bundles ?? []).find((b) => b.id === onlyBundle) : null
     const inBundle = bundle ? new Set([...bundle.ids, ...bundle.giftIds]) : null
-    const items = catalog.items.filter((i) => {
+    const items: Zeile[] = [...catalog.items, ...verkauft].filter((i) => {
+      // Ein Paket zeigt nur, was dazugehört — und verkauft ist daraus nichts:
+      // `resolveBundle` löst gegen den offenen Bestand auf.
       if (inBundle && !inBundle.has(i.id)) return false
       if (cat && i.category !== cat) return false
       if (!needle) return true
@@ -188,12 +213,22 @@ function App() {
         for (const pic of pics) if (!lot.photos.includes(pic)) lot.photos.push(pic)
         lot.tags = lot.tags.filter((t) => tags.includes(t))
       } else {
-        g.lots.push({ key, maker: i.maker, type: i.type, litres: i.litres, vb: i.vb, dims: i.dims, photos: [...new Set(pics)], tags: [...tags], reserved: i.reserved, ids: [i.id] })
+        g.lots.push({ key, maker: i.maker, type: i.type, litres: i.litres, vb: i.vb, dims: i.dims, photos: [...new Set(pics)], tags: [...tags], reserved: i.reserved, sold: Boolean(i.sold), ids: [i.id] })
       }
       byCat.set(i.category, g)
     }
+    /*
+     * Verkauftes ans Ende seiner Gruppe — sonst steht am Eingang, was niemand
+     * mehr bekommt.
+     *
+     * Sortiert wird NUR die Anzeigereihenfolge. `lotOrder` und `normalise`
+     * lesen `catalog.items` in Array-Reihenfolge; würde die umgestellt,
+     * verlöre eine übernommene Paketauswahl beim nächsten Druck auf „+" ihre
+     * Zusammenstellung. Diese Sortierung fasst das Array nicht an.
+     */
+    for (const g of byCat.values()) g.lots.sort((a, b) => Number(a.sold) - Number(b.sold))
     return [...byCat.entries()].map(([id, g]) => ({ id, ...g }))
-  }, [catalog, q, cat, onlyBundle])
+  }, [catalog, verkauft, q, cat, onlyBundle])
 
   const chosen = useMemo(() => catalog?.items.filter((i) => picked.has(i.id)) ?? [], [catalog, picked])
   const sum = chosen.reduce((a, i) => a + i.vb, 0)
@@ -285,12 +320,25 @@ function App() {
     })
   }
 
+  /*
+   * Die Filterleiste führt jede Gattung, die die Liste zeigt — auch eine
+   * restlos verkaufte.
+   *
+   * Erst standen hier nur Gattungen mit freier Ware. Dann fehlte „Maschinen" in
+   * der Leiste, während die Gruppe „Maschinen · alle 6 verkauft" drei
+   * Bildschirme tiefer sehr wohl stand: wer die Chips liest, schließt auf „gibt
+   * es nicht" und findet sie beim Scrollen doch.
+   */
   const categories = useMemo(() => {
     if (!catalog) return []
     const seen = new Map<string, string>()
-    catalog.items.forEach((i) => seen.set(i.category, i.categoryLabel))
+    ;[...catalog.items, ...verkauft].forEach((i) => seen.set(i.category, i.categoryLabel))
     return [...seen.entries()]
-  }, [catalog])
+  }, [catalog, verkauft])
+
+  const reserviertZahl = useMemo(() => (catalog?.items ?? []).filter((i) => i.reserved).length, [catalog])
+  const frei = (catalog?.items.length ?? 0) - reserviertZahl
+  const gesamtbestand = (catalog?.items.length ?? 0) + verkauft.length
 
 /** "T-03, T-04, T-05" becomes "T-03–T-05" — 52 ids shrink from 340 to 35 characters. */
 function idRanges(ids: string[]): string {
@@ -375,20 +423,40 @@ function idRanges(ids: string[]): string {
       <Card className="rise-in">
         <h1 className="text-xl font-extrabold tracking-tight sm:text-2xl">Kellertechnik aus Betriebsauflösung</h1>
         {catalog.intro && <p className="mt-2 text-sm leading-relaxed text-muted">{catalog.intro}</p>}
+        {/*
+          Das Verhältnis, nicht zwei lose Zahlen.
+          „N Positionen verfügbar" hat hier schon einmal gelogen — es galt auch
+          für reservierte Ware. Mit sichtbar Verkauftem würde es ein zweites Mal
+          falsch, denn verkaufte Stücke sind nicht reserviert. „X von Y" ist bei
+          drei Verkäufen harmlos und wahr und bei vierzig immer noch wahr.
+        */}
         <p className="tnum mt-3 text-[13px] text-muted">
-          {/* „verfügbar" galt bisher auch für reservierte Ware. */}
-          {catalog.items.filter((i) => !i.reserved).length} Positionen verfügbar
-          {catalog.items.some((i) => i.reserved) && `, ${catalog.items.filter((i) => i.reserved).length} reserviert`}
+          <strong className="text-ink">{frei} von {gesamtbestand} Positionen</strong>
+          {frei === 1 ? ' ist noch frei' : ' sind noch frei'}
+          {reserviertZahl > 0 && ` · ${reserviertZahl} reserviert`}
+          {verkauft.length > 0 && ` · ${verkauft.length} verkauft`}
           {catalog.location && ` · Standort ${catalog.location}`}
           {' · '}Preise brutto inkl. {Math.round(catalog.vatRate * 100)} % MwSt.
         </p>
+        {/* Einmal am Kopf statt an jeder grauen Zeile: der Satz kündigt an, was
+            der Leser gleich sieht, und nimmt der Kennzeichnung den Beigeschmack
+            eines Angebots, das keines ist. */}
+        {verkauft.length > 0 && (
+          <p className="mt-2 text-[13px] text-muted">
+            Verkauftes bleibt in der Liste stehen — grau, ohne Preis und ohne Auswahl. So sehen Sie, was schon verkauft ist.
+          </p>
+        )}
         {/* Einmal deutlich, nicht in jeder der 58 Zeilen. Ein "VB" hinter jedem Preis
             wäre nicht nur Rauschen, es lüde auch dazu ein, den bereits gerechneten
             Paketpreis ein zweites Mal zu verhandeln. */}
-        <p className="mt-2 text-[13px] text-muted">
-          <strong className="text-ink">Alle Einzelpreise sind Verhandlungsbasis (VB).</strong> Nennen Sie uns Ihr Angebot —
-          die Paketpreise unten sind bereits gerechnet.
-        </p>
+        {/* „Nennen Sie uns Ihr Angebot" über einem Bestand, in dem nichts mehr
+            frei ist, verspricht etwas, das die Seite nicht mehr halten kann. */}
+        {catalog.items.length > 0 && (
+          <p className="mt-2 text-[13px] text-muted">
+            <strong className="text-ink">Alle Einzelpreise sind Verhandlungsbasis (VB).</strong> Nennen Sie uns Ihr Angebot —
+            die Paketpreise unten sind bereits gerechnet.
+          </p>
+        )}
       </Card>
 
       <Card pad={false} className="rise-in" style={{ '--d': '40ms' } as React.CSSProperties}>
@@ -453,7 +521,7 @@ function idRanges(ids: string[]): string {
                   */}
                   {!!b.short && b.short > 0 && (
                     <p className="mt-1.5 text-[13px] font-semibold text-amber">
-                      {b.short === 1 ? 'Eine Position daraus ist' : `${b.short} Positionen daraus sind`} inzwischen weg —
+                      {b.short === 1 ? 'Eine Position daraus ist' : `${b.short} Positionen daraus sind`} inzwischen vergriffen —
                       {' '}Name und Beschreibung nennen noch den ursprünglichen Zuschnitt. Es gelten Preis und Umfang unten.
                     </p>
                   )}
@@ -509,12 +577,44 @@ function idRanges(ids: string[]): string {
 
       <div ref={liste} className="scroll-mt-20" />
 
-      {groups.map((g, gi) => (
+      {/*
+        Der Satz steht VOR der Liste, nicht dahinter.
+        Am Fuß gelesen hat der Käufer erst zwanzig graue Zeilen hinter sich und
+        weiß bis dahin nicht, ob noch etwas kommt. Geprüft wird gegen den
+        UNGEFILTERTEN Bestand — sonst meldete eine Suche nach „Speidel" das Ende
+        der ganzen Auflösung, nur weil die Speidel weg sind; eine erfolglose
+        Suche bekommt weiter „Nichts gefunden" unter der Liste.
+      */}
+      {catalog.items.length === 0 && (
+        <Card>
+          <EmptyState
+            title="Alle Positionen sind verkauft"
+            hint="Vielen Dank für das Interesse. Was unten steht, ist der Bestand, wie er war."
+          />
+        </Card>
+      )}
+
+      {groups.map((g, gi) => {
+        // Dieselbe Aufteilung wie im Kopf. Vorher zählte „N Positionen" hier
+        // Freies UND Reserviertes, oben aber nur Freies — wer die Gruppenzahlen
+        // addierte, landete nie bei der Zahl im Kopf. Die Formulierung „X von Y"
+        // lädt zum Nachrechnen ausdrücklich ein.
+        const zahl = (f: (l: Lot) => boolean) => g.lots.filter(f).reduce((a, l) => a + l.ids.length, 0)
+        const gFrei = zahl((l) => !l.sold && !l.reserved)
+        const gRes = zahl((l) => l.reserved)
+        const gWeg = zahl((l) => l.sold)
+        return (
         <Card key={g.id} pad={false} className="rise-in" style={{ '--d': `${140 + gi * 70}ms` } as React.CSSProperties}>
           <div className="border-b border-line px-4 py-3">
             <div className="flex items-baseline justify-between gap-3">
               <h2 className="font-bold">{g.label}</h2>
-              <span className="tnum text-[13px] text-muted">{g.lots.reduce((a, l) => a + l.ids.length, 0)} Positionen</span>
+              <span className="tnum text-[13px] text-muted">
+                {[
+                  gFrei > 0 ? `${gFrei} frei` : '',
+                  gRes > 0 ? `${gRes} reserviert` : '',
+                  gWeg > 0 ? `${gFrei + gRes > 0 ? '' : 'alle '}${gWeg} verkauft` : '',
+                ].filter(Boolean).join(' · ')}
+              </span>
             </div>
             {/* Ein Satz über die ganze Gruppe — die Verwendung, die man der einzelnen
                 Zeile nicht ansieht. */}
@@ -542,7 +642,7 @@ function idRanges(ids: string[]): string {
                     // franste über 20 Zeilen sichtbar aus.
                     'accent tx relative grid grid-cols-[3.5rem_1fr] items-center gap-x-3 gap-y-2 px-4 py-3',
                     'sm:grid-cols-[4rem_1fr_7.5rem_6rem]',
-                    taken > 0 ? 'accent-on bg-primary-soft/40' : 'hover:bg-surface-2',
+                    taken > 0 ? 'accent-on bg-primary-soft/40' : !lot.sold && 'hover:bg-surface-2',
                     /*
                       Zurückgenommen wird über die Fläche, nicht über die
                       Deckkraft. `opacity` auf der ganzen Zeile multipliziert
@@ -553,11 +653,24 @@ function idRanges(ids: string[]): string {
                       am Kind.
                     */
                     lot.reserved && taken === 0 && 'bg-surface-2/60',
+                    /*
+                      Eine Stufe TIEFER als Vorgemerktes, und tiefer als der
+                      Mauszeiger-Ton.
+                      `bg-surface-2` war beides nicht: gemessen unterschied es
+                      sich von einer überfahrenen freien Zeile um 0 % und von
+                      einer vorgemerkten um 2 %. Mit der Maus färbte sich damit
+                      jede Zeile, auf die man zeigte, in die Farbe „weg".
+                    */
+                    lot.sold && 'bg-surface-3',
                   )}
                 >
                   {/* Immer ein Bildplatz, auch ohne Bild — sonst verschiebt sich alles
                       dahinter um 64 px, sobald ein Foto fehlt. */}
-                  {lot.photos.length > 0 ? (
+                  {lot.sold ? (
+                    // Von verkaufter Ware geht kein Foto hinaus. Der Platz bleibt
+                    // trotzdem stehen, sonst verschiebt sich die ganze Zeile.
+                    <span className="block h-14 w-14 rounded-xl bg-surface-3 ring-1 ring-line sm:h-16 sm:w-16" />
+                  ) : lot.photos.length > 0 ? (
                     // Kein target="_blank" mehr: das öffnete die nackte JPEG-Datei in
                     // einem neuen Tab, und zurück kam man nur über die Tableiste.
                     <button
@@ -579,13 +692,24 @@ function idRanges(ids: string[]): string {
                       )}
                     </button>
                   ) : (
-                    <span className="flex h-14 w-14 items-center justify-center rounded-xl bg-surface-2 text-[11px] text-faint ring-1 ring-line sm:h-16 sm:w-16">
+                    <span className="flex h-14 w-14 items-center justify-center rounded-xl bg-surface-2 text-[11px] text-muted ring-1 ring-line sm:h-16 sm:w-16">
                       kein Bild
                     </span>
                   )}
 
                   <span className="min-w-0">
-                    <span className="block font-semibold">{lot.maker === 'Sonstige' ? lot.type : `${lot.maker} ${lot.type}`}</span>
+                    {/*
+                      Zurückgenommen gehört auch der Name.
+                      Foto und Preis waren weg, der Titel stand weiter in voller
+                      Tinte — gemessen 17,4:1, Wort für Wort so laut wie an
+                      lieferbarer Ware. Bei 40 von 58 verkauft war das letzte
+                      Bild vor dem Fuß eine Wand aus elf fetten Namen, die alle
+                      nicht zu haben sind. `text-muted` bleibt mit 5,34:1 gut
+                      lesbar — es soll leiser sein, nicht unlesbar.
+                    */}
+                    <span className={cx('block font-semibold', lot.sold && 'text-muted')}>
+                      {lot.maker === 'Sonstige' ? lot.type : `${lot.maker} ${lot.type}`}
+                    </span>
                     <span className="tnum flex flex-wrap items-center gap-x-1.5 text-[13px] text-muted">
                       <span>
                         {lot.litres > 0 && `${num(lot.litres)} Liter · `}
@@ -601,7 +725,14 @@ function idRanges(ids: string[]): string {
                           onClick={() => toggleDetails(lot.key)}
                           aria-expanded={shown}
                           aria-controls={`d-${lot.key}`}
-                          className="tx -my-1 inline-flex min-h-8 items-center gap-0.5 py-1 font-semibold text-primary hover:underline"
+                          className={cx(
+                            'tx -my-1 inline-flex min-h-8 items-center gap-0.5 py-1 font-semibold hover:underline',
+                            // Grün ist auf dieser Seite die Farbe des Handelns. An
+                            // einer verkauften Zeile war „Details" damit das
+                            // lauteste Zeichen — auf der einzigen Zeile, auf der
+                            // es nichts zu tun gibt.
+                            lot.sold ? 'text-muted' : 'text-primary',
+                          )}
                         >
                           {shown ? 'weniger' : 'Details'}
                           <svg viewBox="0 0 24 24" aria-hidden className={cx('tx h-3.5 w-3.5', shown && 'rotate-180')}
@@ -621,6 +752,14 @@ function idRanges(ids: string[]): string {
                       schwächste Zeichen der ganzen Zeile — ausgerechnet das
                       einzige, das die Sache trägt.
                     */}
+                    {/*
+                      Kein Satz an der Zeile.
+                      Er stand hier — und bei 40 Verkauften achtzehnmal wörtlich
+                      auf derselben Seite, obwohl der Kopf denselben Sachverhalt
+                      schon einmal erklärt. Die Zeile sagt es auch ohne ihn: keine
+                      Fläche zum Anfassen, kein Foto, kein Preis, und rechts das
+                      Wort, wo sonst der Preis steht.
+                    */}
                     {lot.reserved && (
                       <span className="mt-1 block">
                         <span className="inline-flex items-center rounded-full bg-amber-soft px-2 py-0.5 text-[11px] font-bold text-amber">
@@ -638,8 +777,22 @@ function idRanges(ids: string[]): string {
 
                   {/* Bedienung und Preis rutschen am Handy in eine eigene Zeile unter
                       den Text, stehen ab sm aber in festen Spalten nebeneinander. */}
-                  <span className="col-start-2 flex items-center justify-between gap-3 sm:col-start-3 sm:justify-center">
-                    {many ? (
+                  {/*
+                    Die Zelle bleibt auch bei Verkauftem stehen. Sie ist Spalte 3
+                    UND trägt am Handy den Preis; ließe man sie weg, fiele der
+                    Handy-Preis ganz aus und die Preisspalte am Schreibtisch
+                    rutschte in die falsche Spur.
+                  */}
+                  <span className={cx(
+                    'col-start-2 flex items-center gap-3 sm:col-start-3 sm:justify-center',
+                    // Ein einzelnes Kind rutscht bei `justify-between` nach LINKS.
+                    // Am Handy stand die Marke damit dort, wo sonst „Auswählen"
+                    // steht, statt rechts, wo sonst der Preis steht.
+                    lot.sold ? 'justify-end' : 'justify-between',
+                  )}>
+                    {lot.sold ? (
+                      <span className="sm:hidden"><SoldMark /></span>
+                    ) : many ? (
                       <span className="flex items-center gap-1.5">
                         <Step label="weniger" disabled={taken === 0} onClick={() => setLotCount(lot, taken - 1)}>−</Step>
                         <span className={cx('tnum w-8 text-center font-bold', taken > 0 && 'text-primary')} key={taken}>
@@ -667,15 +820,25 @@ function idRanges(ids: string[]): string {
                           : lot.reserved ? 'Anstellen' : 'Auswählen'}
                       </button>
                     )}
-                    <span className="tnum text-right sm:hidden">
-                      <span className="block font-bold">{eur(lot.vb)}</span>
-                      {many && <span className="block text-[11px] font-medium text-muted">je Stück</span>}
-                    </span>
+                    {/* Kein Preis an verkaufter Ware — die Begründung steht am
+                        Typ `SoldItem`. Rechts steht stattdessen der Zustand. */}
+                    {!lot.sold && (
+                      <span className="tnum text-right sm:hidden">
+                        <span className="block font-bold">{eur(lot.vb)}</span>
+                        {many && <span className="block text-[11px] font-medium text-muted">je Stück</span>}
+                      </span>
+                    )}
                   </span>
 
                   <span className="tnum hidden text-right sm:block">
-                    <span className="block font-bold">{eur(lot.vb)}</span>
-                    {many && <span className="block text-[11px] font-medium text-muted">je Stück</span>}
+                    {lot.sold ? (
+                      <SoldMark />
+                    ) : (
+                      <>
+                        <span className="block font-bold">{eur(lot.vb)}</span>
+                        {many && <span className="block text-[11px] font-medium text-muted">je Stück</span>}
+                      </>
+                    )}
                   </span>
 
                   {/* Über die volle Breite unter der Zeile — eingerückt auf die
@@ -703,15 +866,28 @@ function idRanges(ids: string[]): string {
             })}
           </ul>
         </Card>
-      ))}
+        )
+      })}
 
+      {/*
+        Drei Fälle, nicht einer. „Nichts gefunden — Suche anpassen" war der
+        einzige Leerzustand, den die Seite kannte; bei restlos verkauftem
+        Bestand ist das der falsche Satz, und seit Verkauftes stehen bleibt,
+        wäre `groups` dort ohnehin nie leer. Geprüft wird gegen den
+        UNGEFILTERTEN Bestand — sonst meldete eine Suche nach „Speidel" das
+        Ende der ganzen Auflösung, nur weil die Speidel weg sind.
+      */}
       {groups.length === 0 && <Card><EmptyState title="Nichts gefunden" hint="Suche oder Kategorie anpassen." /></Card>}
 
       <Card className="scroll-mt-20">
         <div ref={auswahl} />
         <h2 className="font-bold">Ihre Auswahl</h2>
         {chosen.length === 0 ? (
-          <p className="mt-2 text-sm text-muted">Kreuzen Sie oben an, was für Sie infrage kommt.</p>
+          <p className="mt-2 text-sm text-muted">
+            {catalog.items.length === 0
+              ? 'Es ist nichts mehr frei.'
+              : 'Kreuzen Sie oben an, was für Sie infrage kommt.'}
+          </p>
         ) : (
           <>
             <ul className="mt-3 space-y-1 text-sm">
@@ -1051,6 +1227,28 @@ function Arrow({ side, onClick }: { side: 'left' | 'right'; onClick: () => void 
   )
 }
 
+/**
+ * Das Wort steht da, wo sonst der Preis steht.
+ *
+ * In Worten und in voller Deckkraft, nicht als Farbe der Zeile: die Fläche
+ * allein hat sich hier schon einmal als das schwächste Zeichen erwiesen,
+ * ausgerechnet als das einzige, das die Sache trägt. Grau statt Amber — Amber
+ * heißt auf dieser Seite „hier ist noch etwas zu tun", und an einer verkauften
+ * Position ist nichts mehr zu tun.
+ *
+ * `text-faint` wäre die naheliegende Farbe für Verbrauchtes und war der Fehler:
+ * gemessen 3,75:1 auf `surface-3` — unter der Schwelle, und ausgerechnet an dem
+ * einen Zeichen, das die Zeile trägt. Denselben Fehler hatte der Hinweis
+ * „reserviert" schon einmal. Zurückgenommen wird die ZEILE, nicht das Wort.
+ */
+function SoldMark() {
+  return (
+    <span className="inline-flex items-center rounded-full bg-surface-3 px-2 py-0.5 text-[11px] font-bold text-muted ring-1 ring-line-strong">
+      verkauft
+    </span>
+  )
+}
+
 interface Lot {
   key: string
   maker: string
@@ -1070,6 +1268,8 @@ interface Lot {
    */
   tags: string[]
   reserved: boolean
+  /** Weg. Steht als Beleg in der Liste, ist aber nicht zu haben. */
+  sold: boolean
   ids: string[]
 }
 
@@ -1087,7 +1287,10 @@ interface Summary {
 function summarise(items: CatalogItem[]): Summary[] {
   const map = new Map<string, Summary>()
   for (const i of items) {
-    const key = `${i.maker}|${i.type}|${i.litres}|${i.vb}|${i.reserved ? 'r' : 'f'}`
+    // Derselbe Schlüssel wie in der Liste — als Aufruf, nicht als zweite
+    // Abschrift. Die Abschrift zog bei einer Änderung nicht mit, und dann
+    // fasste der Warenkorb anders zusammen als die Zeilen darüber.
+    const key = lotKey(i)
     const hit = map.get(key)
     if (hit) {
       hit.count += 1

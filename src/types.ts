@@ -350,6 +350,39 @@ export interface CatalogItem {
 }
 
 /**
+ * Eine verkaufte Position, wie der Käufer sie sieht.
+ *
+ * Ein EIGENES Feld, keine Kennzeichnung innerhalb von `items` — und das ist
+ * keine Geschmacksfrage. Die Käuferseite holt die Liste bei jeder Rückkehr in
+ * den Tab neu, ihr eigenes Programm aber nie. Wer den Tab offen lässt oder die
+ * Seite noch im Zwischenspeicher hat, liest die NEUE Datei mit dem ALTEN Code.
+ * Ein Kennzeichen in `items` überliest der: er zählte Verkauftes als lieferbar,
+ * böte es zum Ankreuzen an, rechnete es in den Paketpreis und schriebe es in
+ * die Anfrage-Mail. Ein unbekanntes Feld überliest er dagegen folgenlos.
+ *
+ * Ohne Preis und ohne Foto, beides mit Absicht:
+ *
+ * Der Preis wäre die Verhandlungsbasis, nicht der erzielte — und er ankert nur
+ * dort etwas, wo es noch Vergleichbares gibt; dessen Preis steht dann eine
+ * Zeile darüber. Er ist also entweder überflüssig oder ankert ins Leere.
+ *
+ * Ohne Fotos bleibt die Bildmenge genau die der lieferbaren Ware. Sonst müsste
+ * `photoStamp` dieselbe erweiterte Menge sehen wie `writeCatalog`, und liefen
+ * die beiden auseinander, zeigte die Liste dauerhaft ein totes Bild, während
+ * das Werkzeug „aktuell" meldet.
+ */
+export interface SoldItem {
+  id: string
+  category: string
+  categoryLabel: string
+  maker: string
+  type: string
+  litres: number
+  dims: Dims | null
+  tags: string[]
+}
+
+/**
  * Ein Paket, wie es der Käufer sieht: gegen den heutigen Bestand aufgelöst und
  * ausgerechnet. Der konfigurierte Nachlass bleibt in der privaten Datenbank —
  * veröffentlicht wird nur, was das Paket kostet, und das steht ohnehin dran.
@@ -391,6 +424,14 @@ export interface Catalog {
   vatRate: number
   updatedAt: string
   items: CatalogItem[]
+  /**
+   * Was verkauft ist — sichtbar, aber nicht zu haben.
+   *
+   * Steht bewusst NEBEN `items`, nicht darin: siehe `SoldItem`. Fehlt in
+   * älteren veröffentlichten Dateien, dann zeigt die Seite wie bisher nur den
+   * offenen Bestand.
+   */
+  soldItems?: SoldItem[]
   /** Überschrift und Hinweis je Gruppe. Fehlt in älteren veröffentlichten Dateien. */
   categories: { id: string; label: string; note: string }[]
   /** Fertig geschnürte Angebote. Fehlt in älteren veröffentlichten Dateien. */
