@@ -191,19 +191,26 @@ export function removeLead(lead: Lead) {
   store.mutate(
     (db) => {
       db.leads = db.leads.filter((l) => l.id !== lead.id)
+      // Der Name gehört in den Verkauf, bevor der Interessent verschwindet.
+      // Deal kennt kein Käuferfeld — nur `leadId`. Wer den Interessenten
+      // löschte, nahm dem Verkauf damit seinen Menschen ganz, während der
+      // Kommentar hier das Gegenteil behauptete und `t.leadId` an verkauften
+      // Positionen ins Leere zeigen ließ.
+      for (const d of db.deals) {
+        if (d.leadId !== lead.id) continue
+        const line = `Käufer: ${lead.name}${lead.email ? ` · ${lead.email}` : ''}${lead.phone ? ` · ${lead.phone}` : ''}`
+        if (!d.note.includes(line)) d.note = d.note.trim() ? `${line}\n${d.note}` : line
+        d.leadId = null
+      }
       db.tanks.forEach((t) => {
-        // Eine verkaufte Position behält ihren Käufer. Ohne diese Bedingung
-        // verlor der Verkauf seinen Menschen, während er ihn selbst noch nannte.
-        if (t.leadId === lead.id && t.status !== 'verkauft') {
-          t.leadId = null
-          if (t.status === 'kontakt' || t.status === 'reserviert') t.status = 'verfuegbar'
-        }
+        if (t.leadId !== lead.id) return
+        t.leadId = null
+        if (t.status === 'kontakt' || t.status === 'reserviert') t.status = 'verfuegbar'
       })
-      // Angebote und Verkäufe zeigten danach auf einen Interessenten, den es
-      // nicht mehr gibt — die Angebotskarte rendert das stumm als „kein
-      // Interessent“, und niemand sieht, dass da einmal einer war.
+      // Angebote zeigten danach auf einen Interessenten, den es nicht mehr
+      // gibt — die Angebotskarte rendert das stumm als „kein Interessent“, und
+      // niemand sieht, dass da einmal einer war.
       for (const q of db.quotes) if (q.leadId === lead.id) q.leadId = null
-      for (const d of db.deals) if (d.leadId === lead.id) d.leadId = null
     },
     { kind: 'lead', text: `Interessent gelöscht: ${lead.name}` },
   )
@@ -502,31 +509,55 @@ export function applyProposal(p: Proposal, leadId: string | null, message: strin
  * die alte Auswahl ergeben hätte — hat der Verkäufer von Hand einen anderen
  * Preis eingetragen, bleibt der stehen.
  */
+/**
+ * Hält ein Angebot diese Position noch fest?
+ *
+ * Drei Stellen hatten dafür drei Definitionen. Ein abgelehntes Angebot hält
+ * nichts mehr; jedes andere schon — auch ein angenommenes, denn daraus wird
+ * der Verkauf.
+ */
+function heldByQuote(db: DB, tankId: string, exceptQuoteId?: string): boolean {
+  return db.quotes.some((q) => q.id !== exceptQuoteId && q.tankIds.includes(tankId) && q.status !== 'abgelehnt')
+}
+
 export function setQuoteTanks(quoteId: string, tankIds: string[]) {
   store.mutate(
     (db) => {
       const q = db.quotes.find((x) => x.id === quoteId)
       if (!q) return
       const before = q.tankIds
+      // Verkauftes kann niemandem mehr angeboten werden, und was einem anderen
+      // versprochen ist, wird nicht still umgehängt. Beide Aufrufer geben ihre
+      // Auswahl roh weiter; die Regel gehört deshalb hierher, nicht dorthin.
+      const wanted = [...new Set(tankIds)].filter((id) => {
+        const t = db.tanks.find((x) => x.id === id)
+        if (!t || t.status === 'verkauft') return false
+        return !(t.status === 'reserviert' && t.leadId && t.leadId !== q.leadId)
+      })
+      // Ein Angebot über nichts ist kein Angebot — es stünde mit 0 € da und
+      // ließe sich trotzdem als Verkauf buchen.
+      if (wanted.length === 0) return
       const auto = askFor(db, before)
-      q.tankIds = [...tankIds]
-      if (q.askPrice === auto) q.askPrice = askFor(db, tankIds)
+      q.tankIds = wanted
+      if (q.askPrice === auto) q.askPrice = askFor(db, wanted)
       q.updatedAt = now()
 
       // Neu dazugekommene binden, weggefallene freigeben — dieselbe Regel wie
       // beim Anlegen und Löschen eines Angebots.
-      for (const id of tankIds.filter((x) => !before.includes(x))) {
+      for (const id of wanted.filter((x) => !before.includes(x))) {
         const t = db.tanks.find((x) => x.id === id)
         if (t && t.status === 'verfuegbar') {
           t.status = 'kontakt'
-          t.leadId = q.leadId
+          // Ein Angebot ohne Interessent darf den Käufer nicht wegwischen, den
+          // die Position schon hatte — createQuote hält es genauso.
+          t.leadId = q.leadId ?? t.leadId
           t.updatedAt = now()
         }
       }
-      for (const id of before.filter((x) => !tankIds.includes(x))) {
+      for (const id of before.filter((x) => !wanted.includes(x))) {
         const t = db.tanks.find((x) => x.id === id)
         if (!t || t.status !== 'kontakt') continue
-        const heldElsewhere = db.quotes.some((o) => o.id !== quoteId && o.tankIds.includes(id) && o.status !== 'abgelehnt')
+        const heldElsewhere = heldByQuote(db, id, quoteId)
         const stillWanted = db.leads.some((l) => l.id === t.leadId && l.tankIds.includes(id))
         if (heldElsewhere || stillWanted) continue
         t.status = 'verfuegbar'
@@ -602,9 +633,7 @@ export function removeQuote(id: string) {
       db.quotes = db.quotes.filter((x) => x.id !== id)
       // Release tanks that no other open offer still claims.
       for (const tid of q.tankIds) {
-        const stillOffered = db.quotes.some(
-          (o) => o.tankIds.includes(tid) && o.status !== 'abgelehnt',
-        )
+        const stillOffered = heldByQuote(db, tid, id)
         const t = db.tanks.find((x) => x.id === tid)
         if (t && !stillOffered && t.status === 'kontakt') {
           t.status = 'verfuegbar'
@@ -811,6 +840,12 @@ export function detachTanks(leadId: string, tankIds: string[]) {
       if (l) l.tankIds = l.tankIds.filter((id) => !tankIds.includes(id))
       for (const id of tankIds) {
         const t = db.tanks.find((x) => x.id === id)
+        // Ein Angebot, das die Position noch führt, hält sie fest. Ohne das gab
+        // ein Häkchen weniger im Interessentendialog eine Position frei, die im
+        // selben Bild daneben als „im Angebot" markiert stand — und die danach
+        // jedem anderen Angebot und jedem Katalogpaket wieder offenstand,
+        // während „Als Verkauf buchen" sie noch verkaufen konnte.
+        if (heldByQuote(db, id)) continue
         // Verkauftes und Reserviertes bleibt, wo es ist — das löst kein Abhaken.
         if (t && t.leadId === leadId && t.status === 'kontakt') {
           t.leadId = null

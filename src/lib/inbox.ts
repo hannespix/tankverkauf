@@ -504,11 +504,19 @@ export function buildPlan(proposals: Proposal[], parsed: ParsedMessage, db: DB, 
   const dead = proposals.filter((p) => TOTER_KNOPF.includes(p.kind))
   const has = (k: ProposalKind) => steps.some((p) => p.kind === k)
 
+  // Ein Vorschlag kann den Interessenten schon kennen: checkProposals prüft
+  // die genannte leadId am Bestand und setzt sie nur, wenn es ihn gibt. Ohne
+  // das fiel eine Folgenachricht durch — „Ok, ich nehme die beiden" trägt
+  // keine Signatur mehr, und ohne Kontaktweg im Text galt der Interessent als
+  // unbekannt. Der ganze Zug wurde dann verworfen und die Nachricht nirgends
+  // abgelegt.
+  const hinted = proposals.map((p) => p.leadId).find(Boolean) ?? null
   const known = findLead(db, parsed.email, parsed.phone)
+    ?? (hinted ? db.leads.find((l) => l.id === hinted) ?? null : null)
   // Interessent: nur ergänzen, wenn die KI keinen genannt hat und wirklich ein
   // Kontaktweg dasteht. Ein Name allein legt niemanden an — "Sehr geehrte Damen"
   // wäre sonst eine Person.
-  if (!has('lead.neu') && !has('lead.notiz') && (parsed.email || parsed.phone)) {
+  if (!has('lead.neu') && !has('lead.notiz') && (parsed.email || parsed.phone || known)) {
     steps.push(known
       ? mk('lead.notiz', `Nachricht bei ${known.name} vermerken`, 'Der Wortlaut wird angehängt, letzter Kontakt auf heute.', { leadId: known.id })
       : mk('lead.neu', `Interessent anlegen: ${parsed.name || parsed.email || parsed.phone}`,

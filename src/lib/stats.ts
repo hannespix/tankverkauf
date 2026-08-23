@@ -147,5 +147,31 @@ export function judgeBundle(base: Totals, price: number): OfferVerdict {
  */
 export function openQuotesOf(db: DB, leadId: string | null): Quote[] {
   if (!leadId) return []
-  return db.quotes.filter((q) => q.leadId === leadId && q.status !== 'abgelehnt' && q.status !== 'angenommen')
+  // Nach Datum, nicht nach Einfügereihenfolge: `createQuote` schiebt vorn ein,
+  // aber ein Statuswechsel weiter hinten verschob damit still, welches Angebot
+  // als „das" gilt — Gebote und die beiden Abgleich-Knöpfe hätten danach
+  // unverändert ausgesehen und ein anderes Angebot getroffen.
+  return db.quotes
+    .filter((q) => q.leadId === leadId && q.status !== 'abgelehnt' && q.status !== 'angenommen')
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : a.id < b.id ? 1 : -1))
+}
+
+/**
+ * Wie Auswahl und Angebot zueinander stehen, in einem Satzteil.
+ *
+ * „2 von 1 Position“ stand da, solange das Angebot für eine Teilmenge der
+ * Auswahl gehalten wurde. Es ist keine: über `setQuoteTanks` kommt eine
+ * Position ins Angebot, ohne dass sie je in der Auswahl stand.
+ */
+export function quoteRelation(quoteIds: string[], pickedIds: string[]): string {
+  const onlyQuote = quoteIds.filter((id) => !pickedIds.includes(id))
+  const onlyPicked = pickedIds.filter((id) => !quoteIds.includes(id))
+  if (onlyQuote.length === 0 && onlyPicked.length === 0) return 'deckungsgleich'
+  if (onlyQuote.length === 0) {
+    return `${quoteIds.length} von ${pickedIds.length} ${pickedIds.length === 1 ? 'Position' : 'Positionen'} im Angebot`
+  }
+  return [
+    onlyQuote.length ? `${onlyQuote.length} nur im Angebot` : '',
+    onlyPicked.length ? `${onlyPicked.length} nur in der Auswahl` : '',
+  ].filter(Boolean).join(', ')
 }

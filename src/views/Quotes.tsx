@@ -146,7 +146,11 @@ function QuoteCard({ quote }: { quote: Quote }) {
             <li key={id}>
               <Pill tone={t.status === 'verkauft' ? 'neutral' : 'sky'}>
                 <span className="tnum opacity-70">{t.id}</span> {itemLabel(t)}
-                {open && !closed && (
+                {/* Die letzte Position bleibt: ein Angebot über nichts stünde
+                    mit 0 € da und ließe sich trotzdem als Verkauf buchen.
+                    setQuoteTanks lehnt es ohnehin ab — ohne diesen Griff wäre
+                    das ein Knopf, der stumm nichts tut. */}
+                {open && !closed && quote.tankIds.length > 1 && (
                   <button
                     type="button"
                     aria-label={`${t.id} ${itemLabel(t)} aus dem Angebot nehmen`}

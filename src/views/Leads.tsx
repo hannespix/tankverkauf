@@ -5,7 +5,7 @@ import { addLead, attachTanks, createQuote, detachTanks, patchLead, patchQuote, 
 import { parseMessage } from '../lib/ads'
 import { AiError, readMessage, type AiResult } from '../lib/ai'
 import { itemLabel, dateDE, eur, num, relativeDE, todayISO } from '../lib/format'
-import { openQuotesOf, totals } from '../lib/stats'
+import { openQuotesOf, quoteRelation, totals } from '../lib/stats'
 import { askFor } from '../lib/inbox'
 import { useStore } from '../lib/store'
 import { STAGE_LABEL, SOURCE_LABEL, QUOTE_STATUS_LABEL, type Lead, type LeadSource, type LeadStage } from '../types'
@@ -90,7 +90,8 @@ function LeadCard({ lead, onEdit, highlight }: { lead: Lead; onEdit: () => void;
   // Angebot und Verkauf gehören auf dieselbe Karte wie das Interesse. Sonst
   // zeigt sie eine Summe, die mit dem, was der Mensch bekommen hat, nichts zu
   // tun hat — und der Weg dorthin führt über zwei andere Ansichten.
-  const quote = openQuotesOf(db, lead.id)[0] ?? null
+  const open = openQuotesOf(db, lead.id)
+  const quote = open[0] ?? null
   const deal = db.deals.find((d) => d.leadId === lead.id) ?? null
   const messages = lead.messages ?? []
 
@@ -119,7 +120,8 @@ function LeadCard({ lead, onEdit, highlight }: { lead: Lead; onEdit: () => void;
           <span className="text-muted">Angebot: </span>
           <strong>{eur(quote.askPrice)}</strong>
           {quote.buyerOffer != null && <span className="text-muted"> · geboten {eur(quote.buyerOffer)}</span>}
-          <span className="text-muted"> · {quote.tankIds.length} von {lead.tankIds.length}</span>
+          <span className="text-muted"> · {quoteRelation(quote.tankIds, lead.tankIds)}</span>
+          {open.length > 1 && <span className="text-muted"> · +{open.length - 1} weiteres</span>}
         </div>
       )}
       {deal && (
@@ -151,23 +153,31 @@ function LeadCard({ lead, onEdit, highlight }: { lead: Lead; onEdit: () => void;
 
 function LeadModal({ lead, onClose, readOnly }: { lead: Lead | null; onClose: () => void; readOnly: boolean }) {
   const { db } = useStore()
+
+  /**
+   * Der Entwurf hält nur, was im Formular angefasst wurde — alles andere kommt
+   * live aus der Datenbank.
+   *
+   * Vorher lag beim Öffnen eine Kopie des ganzen Datensatzes im Entwurf, und
+   * `save()` schrieb sie per Object.assign zurück: Notiz, Nachrichten und
+   * letzter Kontakt mit dem Stand von vorhin. Wer die Karte nur öffnete, um
+   * eine Telefonnummer zu korrigieren, machte damit alles zunichte, was der
+   * Posteingang inzwischen an diesem Interessenten vermerkt hatte. Für die
+   * Positionen war das schon geflickt — es galt aber für jedes andere Feld
+   * genauso.
+   */
+  const live = lead ? db.leads.find((l) => l.id === lead.id) ?? lead : null
   const [draft, setDraft] = useState<Partial<Lead>>(
-    lead ?? { name: '', phone: '', email: '', location: '', source: 'kleinanzeigen', stage: 'neu', tankIds: [], note: '', lastContact: todayISO() },
+    lead ? {} : { name: '', phone: '', email: '', location: '', source: 'kleinanzeigen', stage: 'neu', tankIds: [], note: '', lastContact: todayISO() },
   )
   const set = (patch: Partial<Lead>) => setDraft((d) => ({ ...d, ...patch }))
   const [filter, setFilter] = useState('')
 
-  /**
-   * Die Positionsliste kommt bei einem bestehenden Interessenten aus der
-   * Datenbank, nicht aus dem Entwurf.
-   *
-   * Vorher hing sie am Entwurf, der beim Öffnen einmal eingefroren wurde — und
-   * `save()` schrieb ihn komplett zurück. Wer die Karte nur öffnete, um eine
-   * Telefonnummer zu korrigieren, überschrieb damit die Auswahl mit dem Stand
-   * von vorhin. Jetzt schreibt jedes Häkchen sofort, und Speichern fasst die
-   * Positionen gar nicht mehr an.
-   */
-  const live = lead ? db.leads.find((l) => l.id === lead.id) ?? lead : null
+  /** Angefasst schlägt gespeichert; ungefasst zeigt den Live-Stand. */
+  function cur<K extends keyof Lead>(k: K): Lead[K] | undefined {
+    return k in draft ? (draft[k] as Lead[K]) : live?.[k]
+  }
+
   const picked = live ? live.tankIds : (draft.tankIds ?? [])
   const quote = openQuotesOf(db, live?.id ?? null)[0] ?? null
   const quoteIds = useMemo(() => new Set(quote?.tankIds ?? []), [quote])
@@ -177,24 +187,24 @@ function LeadModal({ lead, onClose, readOnly }: { lead: Lead | null; onClose: ()
   const onlyQuote = quote ? quote.tankIds.filter((id) => !picked.includes(id)) : []
   const onlyPicked = quote ? picked.filter((id) => !quote.tankIds.includes(id)) : []
   const differs = onlyQuote.length > 0 || onlyPicked.length > 0
-  const relation = !quote
-    ? ''
-    : !differs
-      ? 'deckungsgleich'
-      : onlyQuote.length === 0
-        ? `${quote.tankIds.length} von ${picked.length} ${picked.length === 1 ? 'Position' : 'Positionen'} im Angebot`
-        : [
-            onlyQuote.length ? `${onlyQuote.length} nur im Angebot` : '',
-            onlyPicked.length ? `${onlyPicked.length} nur in der Auswahl` : '',
-          ].filter(Boolean).join(', ')
+  const relation = quote ? quoteRelation(quote.tankIds, picked) : ''
 
-  const openTanks = db.tanks.filter((t) => t.status !== 'verkauft' || picked.includes(t.id))
+  // `openTanks` entstand bei jedem Render neu, deshalb griff der Memo darunter
+  // nie — bei 58 Positionen und einem Filterfeld ist das jede Taste.
+  const openTanks = useMemo(
+    () => db.tanks.filter((t) => t.status !== 'verkauft' || picked.includes(t.id)),
+    [db.tanks, picked],
+  )
   const shown = useMemo(() => {
     const q = filter.trim().toLowerCase()
     if (!q) return openTanks
     return openTanks.filter((t) => [t.id, t.maker, t.type, String(t.litres)].some((v) => v.toLowerCase().includes(q)))
   }, [openTanks, filter])
   const pickedSum = db.tanks.filter((t) => picked.includes(t.id)).reduce((a, t) => a + t.vb, 0)
+  const leadName = useMemo(() => new Map(db.leads.map((l) => [l.id, l.name])), [db.leads])
+  // Der Preis für eine noch nicht abgeschickte Auswahl — nicht bei jedem
+  // Tastendruck im Namensfeld neu durch den ganzen Katalog rechnen.
+  const wouldAsk = useMemo(() => (picked.length ? askFor(db, picked) : 0), [db, picked])
 
   function toggleTank(id: string, on: boolean) {
     // Ohne Interessenten gibt es noch nichts zu schreiben — dann trägt der Entwurf.
@@ -228,10 +238,10 @@ function LeadModal({ lead, onClose, readOnly }: { lead: Lead | null; onClose: ()
 
   function save() {
     if (lead) {
-      // Ohne `tankIds`: die Positionen schreiben ihre Häkchen selbst, und ein
-      // eingefrorener Entwurf darf sie nicht überschreiben.
+      // Nur die angefassten Felder — der Entwurf enthält keine anderen mehr.
+      // `tankIds` bleibt trotzdem draußen: die Häkchen schreiben sofort.
       const { tankIds: _ignored, ...rest } = draft
-      patchLead(lead.id, rest, `Interessent aktualisiert: ${draft.name ?? lead.name}`)
+      patchLead(lead.id, rest, `Interessent aktualisiert: ${cur('name') ?? lead.name}`)
     } else addLead(draft)
     onClose()
   }
@@ -240,24 +250,24 @@ function LeadModal({ lead, onClose, readOnly }: { lead: Lead | null; onClose: ()
     <Modal open onClose={onClose} title={lead ? lead.name : 'Neuer Interessent'} wide>
       <div className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Name"><Input value={draft.name ?? ''} disabled={readOnly} onChange={(e) => set({ name: e.target.value })} autoFocus={!lead} /></Field>
-          <Field label="Telefon"><Input value={draft.phone ?? ''} disabled={readOnly} onChange={(e) => set({ phone: e.target.value })} inputMode="tel" /></Field>
-          <Field label="E-Mail"><Input value={draft.email ?? ''} disabled={readOnly} onChange={(e) => set({ email: e.target.value })} inputMode="email" /></Field>
-          <Field label="Ort"><Input value={draft.location ?? ''} disabled={readOnly} onChange={(e) => set({ location: e.target.value })} /></Field>
+          <Field label="Name"><Input value={cur('name') ?? ''} disabled={readOnly} onChange={(e) => set({ name: e.target.value })} autoFocus={!lead} /></Field>
+          <Field label="Telefon"><Input value={cur('phone') ?? ''} disabled={readOnly} onChange={(e) => set({ phone: e.target.value })} inputMode="tel" /></Field>
+          <Field label="E-Mail"><Input value={cur('email') ?? ''} disabled={readOnly} onChange={(e) => set({ email: e.target.value })} inputMode="email" /></Field>
+          <Field label="Ort"><Input value={cur('location') ?? ''} disabled={readOnly} onChange={(e) => set({ location: e.target.value })} /></Field>
           <Field label="Quelle">
-            <Select value={draft.source} disabled={readOnly} onChange={(e) => set({ source: e.target.value as LeadSource })}>
+            <Select value={cur('source')} disabled={readOnly} onChange={(e) => set({ source: e.target.value as LeadSource })}>
               {SOURCES.map((s) => <option key={s} value={s}>{SOURCE_LABEL[s]}</option>)}
             </Select>
           </Field>
           <Field label="Phase">
-            <Select value={draft.stage} disabled={readOnly} onChange={(e) => set({ stage: e.target.value as LeadStage })}>
+            <Select value={cur('stage')} disabled={readOnly} onChange={(e) => set({ stage: e.target.value as LeadStage })}>
               {STAGES.map((s) => <option key={s} value={s}>{STAGE_LABEL[s]}</option>)}
             </Select>
           </Field>
-          <Field label="Budget (€)"><Input type="number" className="tnum" value={draft.budget ?? ''} disabled={readOnly} onChange={(e) => set({ budget: e.target.value === '' ? null : Number(e.target.value) })} /></Field>
-          <Field label="Letzter Kontakt"><Input type="date" value={draft.lastContact ?? ''} disabled={readOnly} onChange={(e) => set({ lastContact: e.target.value || null })} /></Field>
+          <Field label="Budget (€)"><Input type="number" className="tnum" value={cur('budget') ?? ''} disabled={readOnly} onChange={(e) => set({ budget: e.target.value === '' ? null : Number(e.target.value) })} /></Field>
+          <Field label="Letzter Kontakt"><Input type="date" value={cur('lastContact') ?? ''} disabled={readOnly} onChange={(e) => set({ lastContact: e.target.value || null })} /></Field>
           <Field label="Wiedervorlage" hint="Taucht auf der Übersicht auf, sobald das Datum erreicht ist.">
-            <Input type="date" value={draft.nextFollowUp ?? ''} disabled={readOnly} onChange={(e) => set({ nextFollowUp: e.target.value || null })} />
+            <Input type="date" value={cur('nextFollowUp') ?? ''} disabled={readOnly} onChange={(e) => set({ nextFollowUp: e.target.value || null })} />
           </Field>
         </div>
 
@@ -280,9 +290,24 @@ function LeadModal({ lead, onClose, readOnly }: { lead: Lead | null; onClose: ()
                 {shown.map((t) => {
                   const on = picked.includes(t.id)
                   const inQuote = quoteIds.has(t.id)
+                  /* Wem die Position sonst gehört. Vorher bot die Liste jede
+                     nicht verkaufte Position gleich aussehend an: eine für
+                     jemand anderen reservierte wanderte per Häkchen still in
+                     dieses Angebot und ließ sich von dort verkaufen — der
+                     erste Käufer verlor seine Zusage ohne einen Hinweis. */
+                  const foreign = t.leadId && t.leadId !== live?.id ? leadName.get(t.leadId) ?? null : null
+                  const taken = !on && t.status === 'reserviert' && !!foreign
+                  // Nur der Rufname auf der Marke: mit dem vollen Namen blieb von
+                  // „Rundtank · 3.700 l" ein „Rundtank · 3...." übrig, und bei
+                  // Tanks sind die Liter das Unterscheidende. Der ganze Name
+                  // steht im Tooltip der Zeile.
+                  const kurz = foreign ? foreign.split(/\s+/)[0] : null
                   return (
-                    <label key={t.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] hover:bg-surface-3">
-                      <input type="checkbox" checked={on} disabled={readOnly} className="h-4 w-4 accent-[var(--primary)]"
+                    <label key={t.id}
+                      title={foreign ? (taken ? `Für ${foreign} reserviert — erst dort lösen.` : `Im Kontakt mit ${foreign}.`) : undefined}
+                      className={cx('flex items-center gap-2 rounded-lg px-2 py-1.5 text-[13px]',
+                        taken ? 'cursor-not-allowed opacity-55' : 'cursor-pointer hover:bg-surface-3')}>
+                      <input type="checkbox" checked={on} disabled={readOnly || taken} className="h-4 w-4 accent-[var(--primary)]"
                         onChange={() => toggleTank(t.id, !on)} />
                       {/* Ohne die Nummer stehen zwei gleiche Tanks als zwei
                           identische Zeilen da — und die Nummer ist ohnehin das,
@@ -293,6 +318,8 @@ function LeadModal({ lead, onClose, readOnly }: { lead: Lead | null; onClose: ()
                           sonst wirkt „Interesse“ und „angeboten“ wie dasselbe. */}
                       {inQuote && <Pill tone="sky">im Angebot</Pill>}
                       {t.status === 'verkauft' && <Pill tone="neutral">verkauft</Pill>}
+                      {t.status === 'reserviert' && kurz && <Pill tone="amber">für {kurz}</Pill>}
+                      {t.status === 'kontakt' && kurz && <Pill tone="neutral">bei {kurz}</Pill>}
                       <span className="tnum ml-auto shrink-0 text-muted">{eur(t.vb)}</span>
                     </label>
                   )
@@ -340,7 +367,7 @@ function LeadModal({ lead, onClose, readOnly }: { lead: Lead | null; onClose: ()
                 <span className="text-[13px] text-muted">
                   {picked.length === 0
                     ? 'Noch kein Angebot. Erst etwas auswählen.'
-                    : `Aus der Auswahl wird ein Angebot über ${eur(askFor(db, picked))} — nach Katalogregel mit Paketen und Staffel.`}
+                    : `Aus der Auswahl wird ein Angebot über ${eur(wouldAsk)} — nach Katalogregel mit Paketen und Staffel.`}
                 </span>
                 <Button size="sm" variant="primary" disabled={picked.length === 0} onClick={makeQuote}>
                   <IconPlus />Angebot erstellen
@@ -350,7 +377,7 @@ function LeadModal({ lead, onClose, readOnly }: { lead: Lead | null; onClose: ()
           </div>
         )}
 
-        <Field label="Notiz"><Textarea rows={3} value={draft.note ?? ''} disabled={readOnly} onChange={(e) => set({ note: e.target.value })} placeholder="Gesprächsverlauf, Preisvorstellung, Abholung …" /></Field>
+        <Field label="Notiz"><Textarea rows={3} value={cur('note') ?? ''} disabled={readOnly} onChange={(e) => set({ note: e.target.value })} placeholder="Gesprächsverlauf, Preisvorstellung, Abholung …" /></Field>
 
         {/*
           Die eingelesenen Nachrichten hatten bisher keinen Leser: `noteOnLead`
@@ -386,7 +413,7 @@ function LeadModal({ lead, onClose, readOnly }: { lead: Lead | null; onClose: ()
             ) : <span />}
             <div className="flex gap-2">
               <Button onClick={onClose}>Abbrechen</Button>
-              <Button variant="primary" onClick={save} disabled={!draft.name?.trim()}>Speichern</Button>
+              <Button variant="primary" onClick={save} disabled={!cur('name')?.trim()}>Speichern</Button>
             </div>
           </div>
         )}
