@@ -152,6 +152,20 @@ function App() {
   const chosen = useMemo(() => catalog?.items.filter((i) => picked.has(i.id)) ?? [], [catalog, picked])
   const sum = chosen.reduce((a, i) => a + i.vb, 0)
   const litres = chosen.reduce((a, i) => a + i.litres, 0)
+  /*
+   * Reserviertes zählt nicht in den Mengenpreis.
+   *
+   * Es tat es bisher: wer sechs Tanks ankreuzte, von denen zwei reserviert
+   * waren, sah den Staffelpreis für sechs — 4.700 € statt der 2.800 €, die für
+   * die vier lieferbaren gelten. Der Käufer zog die beiden Einzelpreise ab, kam
+   * auf 2.600 € und las die Forderung als Wortbruch.
+   *
+   * Reservierte Stücke stehen deshalb zu ihrem Einzelpreis daneben. Wird eine
+   * frei, rechnet die Seite von selbst neu — die Zahl entsteht bei jedem
+   * Laden aus dem Bestand, nicht aus einer gespeicherten Zusage.
+   */
+  const lieferbar = useMemo(() => chosen.filter((i) => !i.reserved), [chosen])
+  const vorgemerkt = useMemo(() => chosen.filter((i) => i.reserved), [chosen])
 
   // ?? [] überall: eine ältere veröffentlichte Datei kennt diese Felder nicht, und
   // in der Minute zwischen Veröffentlichen und Deploy liefert dieselbe Adresse noch
@@ -159,8 +173,12 @@ function App() {
   const bundles = useMemo(() => catalog?.bundles ?? [], [catalog])
   const tiers = useMemo(() => catalog?.tiers ?? [], [catalog])
 
+  // Auch der Staffelhinweis („eine fehlt noch") darf nur zählen, was zu haben
+  // ist — sonst lockt er mit einem Mengenpreis, für den kein Stück mehr frei ist.
   const stock = useMemo(
-    () => new Map<string, Priced>((catalog?.items ?? []).map((i) => [i.id, { id: i.id, category: i.category, vb: i.vb }])),
+    () => new Map<string, Priced>(
+      (catalog?.items ?? []).filter((i) => !i.reserved).map((i) => [i.id, { id: i.id, category: i.category, vb: i.vb }]),
+    ),
     [catalog],
   )
   const catLabel = useMemo(() => {
@@ -169,9 +187,15 @@ function App() {
   }, [catalog])
 
   const pricing = useMemo(
-    () => priceSelection(chosen, bundles, tiers, catLabel, stock),
-    [chosen, bundles, tiers, catLabel, stock],
+    () => priceSelection(lieferbar, bundles, tiers, catLabel, stock),
+    [lieferbar, bundles, tiers, catLabel, stock],
   )
+  // Der Gesamtpreis der Auswahl: gerechneter Preis für das Lieferbare, plus die
+  // vorgemerkten Stücke zu ihrem Einzelpreis. `gesamt` ist die eine Zahl, die
+  // überall steht — Warenkorb, mitlaufende Leiste und Anfrage-Mail.
+  const vorgemerktSum = vorgemerkt.reduce((a, i) => a + i.vb, 0)
+  const gesamt = pricing.price + vorgemerktSum
+  const gespart = pricing.saved
 
   /**
    * Die Reihenfolge innerhalb eines Loses, über den ganzen Bestand — ungefiltert.
@@ -258,7 +282,7 @@ function idRanges(ids: string[]): string {
       // UNSER Preis, nicht der des Käufers — deshalb eine eigene Marke. Stünde er
       // als Zahl in der Prosa, läse ihn die Auswertung als Gebot und der Käufer
       // erschiene als Preisdrücker gegenüber der Summe der Einzelpreise.
-      pricing.saved > 0 ? `${PACKAGE_MARK} ${pricing.price}` : null,
+      gespart > 0 ? `${PACKAGE_MARK} ${gesamt}` : null,
       '(Bitte stehen lassen, beschleunigt die Bearbeitung.)',
       '— — —',
       '',
@@ -276,7 +300,7 @@ function idRanges(ids: string[]): string {
       `Summe der genannten Preise: ${eur(sum)}${litres ? ` · ${num(litres)} l` : ''}`,
       ...(pricing.saved > 0
         ? [
-            `Paketpreis laut Liste: ${eur(pricing.price)} (${eur(pricing.saved)} günstiger)`,
+            `Paketpreis laut Liste: ${eur(gesamt)} (${eur(gespart)} günstiger)`,
             ...pricing.parts.map((p) => `  · ${p.label}: ${eur(p.price)} statt ${eur(p.full)}`),
           ]
         : []),
@@ -306,7 +330,9 @@ function idRanges(ids: string[]): string {
         <h1 className="text-xl font-extrabold tracking-tight sm:text-2xl">Kellertechnik aus Betriebsauflösung</h1>
         {catalog.intro && <p className="mt-2 text-sm leading-relaxed text-muted">{catalog.intro}</p>}
         <p className="tnum mt-3 text-[13px] text-muted">
-          {catalog.items.length} Positionen verfügbar
+          {/* „verfügbar" galt bisher auch für vergebene Ware. */}
+          {catalog.items.filter((i) => !i.reserved).length} Positionen verfügbar
+          {catalog.items.some((i) => i.reserved) && `, ${catalog.items.filter((i) => i.reserved).length} vergeben`}
           {catalog.location && ` · Standort ${catalog.location}`}
           {' · '}Preise brutto inkl. {Math.round(catalog.vatRate * 100)} % MwSt.
         </p>
@@ -371,6 +397,20 @@ function idRanges(ids: string[]): string {
                     <span className="tnum shrink-0 text-lg font-extrabold">{eur(b.price)}</span>
                   </div>
                   <p className="mt-1 text-[13px] leading-relaxed text-muted">{b.blurb}</p>
+                  {/*
+                    Name und Beschreibung sind von Hand geschrieben und nennen
+                    Stückzahl und Liter des ursprünglichen Zuschnitts. Fällt
+                    etwas heraus, stimmt beides nicht mehr — „Raumspar-Keller,
+                    8.000 l" stand über vier Positionen mit 4.700 l. Preis und
+                    Umfang darunter sind gerechnet und stimmen; der Satz hier
+                    sagt, welche der beiden Angaben gilt.
+                  */}
+                  {!!b.short && b.short > 0 && (
+                    <p className="mt-1.5 text-[13px] font-semibold text-amber">
+                      {b.short === 1 ? 'Eine Position daraus ist' : `${b.short} Positionen daraus sind`} inzwischen weg —
+                      {' '}Name und Beschreibung nennen noch den ursprünglichen Zuschnitt. Es gelten Preis und Umfang unten.
+                    </p>
+                  )}
                   {gifts.length > 0 && (
                     <p className="mt-1.5 text-[13px] font-semibold text-primary">
                       Ohne Aufpreis dabei: {gifts.map((g) => (g.maker === 'Sonstige' ? g.type : `${g.maker} ${g.type}`)).join(', ')}
@@ -457,7 +497,16 @@ function idRanges(ids: string[]): string {
                     'accent tx relative grid grid-cols-[3.5rem_1fr] items-center gap-x-3 gap-y-2 px-4 py-3',
                     'sm:grid-cols-[4rem_1fr_7.5rem_6rem]',
                     taken > 0 ? 'accent-on bg-primary-soft/40' : 'hover:bg-surface-2',
-                    lot.reserved && 'opacity-70',
+                    /*
+                      Zurückgenommen wird über die Fläche, nicht über die
+                      Deckkraft. `opacity` auf der ganzen Zeile multipliziert
+                      sich den Baum hinunter — der Hinweis „schon vergeben"
+                      konnte sich daraus nicht befreien und war mit 2,87:1 das
+                      schwächste Zeichen der Zeile, ausgerechnet das einzige,
+                      das die Sache trägt. Gemessen: 0,7 auch mit opacity-100
+                      am Kind.
+                    */
+                    lot.reserved && taken === 0 && 'bg-surface-2/60',
                   )}
                 >
                   {/* Immer ein Bildplatz, auch ohne Bild — sonst verschiebt sich alles
@@ -516,9 +565,25 @@ function idRanges(ids: string[]): string {
                         </button>
                       )}
                     </span>
+                    {/*
+                      Der Sachverhalt in Worten, nicht als Etikett.
+                      „Ersatzinteresse möglich" ist ein Substantiv, aus dem der
+                      Käufer selbst erschließen musste, dass jemand zuerst da
+                      war, dass die Zusage platzen kann und dass eine Anfrage
+                      trotzdem erwünscht ist. Und `opacity-100` hebt den Hinweis
+                      aus der gedimmten Zeile heraus: er war mit 2,87:1 das
+                      schwächste Zeichen der ganzen Zeile — ausgerechnet das
+                      einzige, das die Sache trägt.
+                    */}
                     {lot.reserved && (
-                      <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-soft px-2 py-0.5 text-[11px] font-bold text-amber">
-                        reserviert — Ersatzinteresse möglich
+                      <span className="mt-1 block">
+                        <span className="inline-flex items-center rounded-full bg-amber-soft px-2 py-0.5 text-[11px] font-bold text-amber">
+                          schon vergeben
+                        </span>
+                        <span className="mt-0.5 block text-[12px] text-muted">
+                          {lot.ids.length > 1 ? 'Diese Stücke sind' : 'Bereits'} einem anderen Interessenten zugesagt.
+                          {' '}Melden Sie sich trotzdem — platzt die Zusage, sind Sie der Nächste.
+                        </span>
                       </span>
                     )}
                   </span>
@@ -546,7 +611,12 @@ function idRanges(ids: string[]): string {
                             : 'border-line-strong bg-surface hover:border-primary hover:text-primary',
                         )}
                       >
-                        {taken > 0 ? <><IconCheck />Gewählt</> : 'Auswählen'}
+                        {/* Wer sich auf vergebene Ware meldet, kauft nicht — er
+                            stellt sich an. Derselbe Knopf mit demselben Wort
+                            hätte das verschwiegen. */}
+                        {taken > 0
+                          ? <><IconCheck />{lot.reserved ? 'Vorgemerkt' : 'Gewählt'}</>
+                          : lot.reserved ? 'Anstellen' : 'Auswählen'}
                       </button>
                     )}
                     <span className="tnum text-right sm:hidden">
@@ -599,11 +669,25 @@ function idRanges(ids: string[]): string {
             <ul className="mt-3 space-y-1 text-sm">
               {summarise(chosen).map((r) => (
                 <li key={r.key} className="flex justify-between gap-3">
-                  <span>{r.count > 1 && <strong>{r.count}× </strong>}{r.name}{r.litres > 0 && ` · ${num(r.litres)} l`}</span>
+                  <span>
+                    {r.count > 1 && <strong>{r.count}× </strong>}{r.name}{r.litres > 0 && ` · ${num(r.litres)} l`}
+                    {/* Das Feld gab es schon in `summarise`, nur zeigte es
+                        niemand — im Warenkorb sah vergebene Ware aus wie jede
+                        andere. */}
+                    {r.reserved && <span className="ml-1 text-[12px] font-semibold text-amber">· vorgemerkt</span>}
+                  </span>
                   <span className="tnum shrink-0 text-muted">{eur(r.total)}</span>
                 </li>
               ))}
             </ul>
+            {vorgemerkt.length > 0 && (
+              <p className="mt-3 rounded-xl bg-amber-soft p-3 text-[13px] text-amber">
+                {vorgemerkt.length === 1 ? 'Eine Position ist' : `${vorgemerkt.length} Positionen sind`} bereits
+                {' '}vergeben und {vorgemerkt.length === 1 ? 'steht' : 'stehen'} zum Einzelpreis darin — ein Mengenpreis
+                {' '}gilt dafür nicht, solange die Zusage hält. Wird {vorgemerkt.length === 1 ? 'sie' : 'eine'} frei,
+                {' '}rechnen wir neu.
+              </p>
+            )}
             <div className="mt-3 flex flex-wrap items-baseline justify-between gap-2 border-t border-line pt-3">
               <span className="font-bold">{chosen.length} Positionen{litres > 0 && ` · ${num(litres)} l`}</span>
               <span className={cx('tnum text-xl font-extrabold', pricing.saved > 0 && 'text-base font-semibold text-muted line-through')}>
@@ -625,7 +709,7 @@ function idRanges(ids: string[]): string {
                 </ul>
                 <div className="mt-2 flex flex-wrap items-baseline justify-between gap-2 border-t border-line pt-2">
                   <span className="font-bold">Ihr Paketpreis</span>
-                  <span key={pricing.price} className="tnum pop text-2xl font-extrabold">{eur(pricing.price)}</span>
+                  <span key={gesamt} className="tnum pop text-2xl font-extrabold">{eur(gesamt)}</span>
                 </div>
                 <p className="tnum mt-0.5 text-right text-[13px] font-semibold text-primary">
                   {eur(pricing.saved)} günstiger
@@ -721,7 +805,7 @@ function idRanges(ids: string[]): string {
                 {litres > 0 && ` · ${num(litres)} l`}
               </span>
               <span className="tnum flex items-baseline gap-2">
-                <span key={pricing.price} className="pop text-lg font-extrabold">{eur(pricing.price)}</span>
+                <span key={gesamt} className="pop text-lg font-extrabold">{eur(gesamt)}</span>
                 {pricing.saved > 0 && <s className="text-[13px] text-muted">{eur(sum)}</s>}
               </span>
             </span>

@@ -24,8 +24,9 @@ const mem = new Map<string, string>()
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { store } from './store'
-import { applyProposal, detachTanks, noteOnLead, removeLead, saveReply, setQuoteLinePrice, setQuoteTanks } from './actions'
+import { applyProposal, detachTanks, noteOnLead, removeLead, saveReply, setQuoteLinePrice, setQuoteReserved, setQuoteTanks } from './actions'
 import { quoteMail } from './mail'
+import { resolveBundle } from './bundles'
 import { openQuotesOf, quoteMetrics, quoteRelation } from './stats'
 import type { DB, Deal, Lead, Quote, Tank } from '../types'
 
@@ -363,4 +364,113 @@ test('B20 · die Angebots-E-Mail zeigt Einzelpreise nur, wenn welche gesetzt sin
   for (const nadel of ['468', '540']) {
     assert.ok(!mit.includes(nadel), `„${nadel}" darf nicht in der Angebots-E-Mail stehen`)
   }
+})
+
+/*
+ * B21 bis B27 — Reservieren aus dem Angebot.
+ *
+ * „Reserviert" war eine Einbahnstraße: gesetzt wurde es nur über den KI-Vorgang
+ * oder von Hand in der Bestandsliste, und kein Angebotsvorgang löste es je
+ * wieder auf. Die Fälle hier nageln beide Richtungen fest — und die drei
+ * Schranken, an denen es sonst still Ware verschöbe.
+ */
+
+test('B21 · reservieren setzt Status UND Namen', () => {
+  // Der bestehende KI-Weg setzt nur den Status. Eine so reservierte Position ist
+  // für niemanden reserviert — und genau deshalb greift die Schutzsperre gegen
+  // fremde Zugriffe bei ihr nicht.
+  setDb({
+    tanks: [tank('T-1'), tank('T-2')],
+    leads: [lead('L-1', { name: 'Weber', stage: 'angebot' })],
+    quotes: [quote('Q-1', { leadId: 'L-1', tankIds: ['T-1', 'T-2'], askPrice: 2000 })],
+  })
+  setQuoteReserved('Q-1', ['T-1', 'T-2'], true)
+  for (const t of db().tanks) {
+    assert.equal(t.status, 'reserviert')
+    assert.equal(t.leadId, 'L-1')
+  }
+  assert.equal(db().leads[0]!.stage, 'reserviert', 'die Phase zieht mit')
+})
+
+test('B22 · Verkauftes bleibt verkauft', () => {
+  // Ein Rückschritt auf „reserviert" würde die Position über isOpen wieder in
+  // den öffentlichen Katalog heben — der einzige wirklich zerstörerische Fehlgriff.
+  setDb({
+    tanks: [tank('T-1', { status: 'verkauft', dealId: 'D-1' }), tank('T-2')],
+    leads: [lead('L-1')],
+    quotes: [quote('Q-1', { leadId: 'L-1', tankIds: ['T-1', 'T-2'], askPrice: 2000 })],
+  })
+  setQuoteReserved('Q-1', ['T-1', 'T-2'], true)
+  assert.equal(db().tanks[0]!.status, 'verkauft')
+  assert.equal(db().tanks[1]!.status, 'reserviert')
+})
+
+test('B23 · was einem anderen zugesagt ist, wird nicht umgehängt', () => {
+  setDb({
+    tanks: [tank('T-1', { status: 'reserviert', leadId: 'L-2' }), tank('T-2')],
+    leads: [lead('L-1'), lead('L-2')],
+    quotes: [quote('Q-1', { leadId: 'L-1', tankIds: ['T-1', 'T-2'], askPrice: 2000 })],
+  })
+  setQuoteReserved('Q-1', ['T-1', 'T-2'], true)
+  assert.equal(db().tanks[0]!.leadId, 'L-2', 'die fremde Zusage bleibt stehen')
+  assert.equal(db().tanks[1]!.leadId, 'L-1')
+})
+
+test('B24 · lösen gibt ganz frei, wenn kein Angebot die Position mehr hält', () => {
+  // Der Handweg über die Bestandsliste patcht nur den Status und lässt leadId
+  // stehen; die Position gilt danach für buildPlan weiter als belegt.
+  setDb({
+    tanks: [tank('T-1', { status: 'reserviert', leadId: 'L-1' })],
+    leads: [lead('L-1', { stage: 'reserviert' })],
+    quotes: [quote('Q-1', { leadId: 'L-1', tankIds: ['T-1'], askPrice: 1000, status: 'abgelehnt' })],
+  })
+  setQuoteReserved('Q-1', ['T-1'], false)
+  const t = db().tanks[0]!
+  assert.equal(t.status, 'verfuegbar')
+  assert.equal(t.leadId, null, 'kein Schutt, den buildPlan später für eine Zusage hält')
+  assert.equal(db().leads[0]!.stage, 'angebot', 'die Phase geht mit zurück')
+})
+
+test('B25 · lösen lässt „im Kontakt" stehen, solange ein Angebot sie führt', () => {
+  setDb({
+    tanks: [tank('T-1', { status: 'reserviert', leadId: 'L-1' })],
+    leads: [lead('L-1')],
+    quotes: [
+      quote('Q-1', { leadId: 'L-1', tankIds: ['T-1'], askPrice: 1000 }),
+      quote('Q-2', { leadId: 'L-1', tankIds: ['T-1'], askPrice: 900 }),
+    ],
+  })
+  setQuoteReserved('Q-1', ['T-1'], false)
+  const t = db().tanks[0]!
+  assert.equal(t.status, 'kontakt', 'Q-2 führt sie noch')
+  assert.equal(t.leadId, 'L-1')
+})
+
+test('B26 · nur Positionen dieses Angebots', () => {
+  // Sonst wäre die Funktion ein Weg, über eine fremde Id beliebige Ware zu binden.
+  setDb({
+    tanks: [tank('T-1'), tank('T-9')],
+    leads: [lead('L-1')],
+    quotes: [quote('Q-1', { leadId: 'L-1', tankIds: ['T-1'], askPrice: 1000 })],
+  })
+  setQuoteReserved('Q-1', ['T-1', 'T-9'], true)
+  assert.equal(db().tanks[0]!.status, 'reserviert')
+  assert.equal(db().tanks[1]!.status, 'verfuegbar', 'T-9 steht in keinem Angebot')
+})
+
+test('B27 · ein geschrumpftes Paket sagt, wie viel fehlt', () => {
+  // Etikett und Fließtext sind von Hand geschrieben („Raumspar-Keller, 8.000 l")
+  // und ziehen nicht nach. Ohne diese Zahl stand die alte Behauptung über einem
+  // Paket, das nur noch vier Positionen umfasste.
+  const stock = new Map([
+    ['T-1', { id: 'T-1', category: 'tank', vb: 1000 }],
+    ['T-2', { id: 'T-2', category: 'tank', vb: 1000 }],
+  ])
+  const b = resolveBundle(
+    { id: 'B-1', label: 'Vier Tanks, 4.000 l', blurb: 'Vier Stück.', ids: ['T-1', 'T-2', 'T-3', 'T-4'], giftIds: [], discount: 0.2, minItems: 2, active: true },
+    stock,
+  )
+  assert.ok(b)
+  assert.equal(b.short, 2, 'zwei der vier sind weg')
+  assert.deepEqual(b.ids, ['T-1', 'T-2'])
 })

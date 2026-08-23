@@ -644,6 +644,86 @@ export function setQuoteLinePrice(quoteId: string, tankId: string, price: number
   )
 }
 
+/**
+ * Positionen eines Angebots reservieren — oder die Reservierung wieder lösen.
+ *
+ * Reservieren war bisher eine Einbahnstraße: gesetzt wurde es nur über den
+ * KI-Vorgang oder von Hand in der Bestandsliste, und kein Angebotsvorgang löste
+ * es je wieder auf. Wer eine Position aus dem Angebot nahm, das Angebot löschte
+ * oder es ablehnte, ließ sie reserviert zurück — für Käufer sichtbar vergeben,
+ * ohne dass noch ein Beleg existierte, der erklärt hätte, für wen.
+ *
+ * Drei Regeln, jede aus einem Weg, auf dem es schiefging:
+ *
+ * - Verkauftes bleibt verkauft. Ein Rückschritt auf „reserviert" würde die
+ *   Position über `isOpen` wieder in den öffentlichen Katalog heben.
+ * - Was einem ANDEREN zugesagt ist, wird nicht umgehängt — dieselbe Regel wie
+ *   in `setQuoteTanks`, hier aber benannt statt stillschweigend übersprungen.
+ * - Reserviert wird MIT Namen. Der bestehende KI-Weg setzt nur den Status; eine
+ *   so reservierte Position ist für niemanden reserviert, und genau deshalb
+ *   greift die Schutzsperre bei ihr nicht.
+ *
+ * Ein einziger `store.mutate` für den ganzen Schwung: der KI-Weg schreibt je
+ * Position einzeln und erzeugt bei 31 Fässern 31 Speichervorgänge und 31
+ * Verlaufszeilen.
+ */
+export function setQuoteReserved(quoteId: string, tankIds: string[], on: boolean) {
+  const wanted = new Set(tankIds)
+  store.mutate(
+    (db) => {
+      const q = db.quotes.find((x) => x.id === quoteId)
+      if (!q) return
+      const treffer: Tank[] = []
+      for (const id of q.tankIds) {
+        if (!wanted.has(id)) continue
+        const t = db.tanks.find((x) => x.id === id)
+        if (!t || t.status === 'verkauft') continue
+        if (on) {
+          if (t.status === 'reserviert' && t.leadId && t.leadId !== q.leadId) continue
+          t.status = 'reserviert'
+          t.leadId = q.leadId ?? t.leadId
+        } else {
+          if (t.status !== 'reserviert') continue
+          if (t.leadId && t.leadId !== q.leadId) continue
+          /*
+           * Freigeben heißt: zurück auf den Stand vor der Zusage.
+           *
+           * Hält ein Angebot die Position noch — dieses oder ein anderes —,
+           * bleibt sie „im Kontakt"; sonst wird sie ganz frei. Der Handweg über
+           * die Bestandsliste patcht nur den Status und lässt `leadId` stehen;
+           * die Position gilt danach für `buildPlan` weiter als belegt.
+           */
+          const gehalten = heldByQuote(db, id) || db.leads.some((l) => l.tankIds.includes(id))
+          t.status = gehalten ? 'kontakt' : 'verfuegbar'
+          t.leadId = gehalten ? t.leadId : null
+        }
+        t.updatedAt = now()
+        treffer.push(t)
+      }
+      if (treffer.length === 0) return
+      q.updatedAt = now()
+      /*
+       * Die Phase des Interessenten zieht mit — in beide Richtungen.
+       *
+       * Sie auf „reserviert" zu setzen und nie zurückzunehmen war der Grund,
+       * warum Interessenten dauerhaft auf dieser Phase standen, ohne dass eine
+       * einzige Position noch reserviert war.
+       */
+      const l = q.leadId ? db.leads.find((x) => x.id === q.leadId) : null
+      if (l) {
+        const nochWas = db.tanks.some((t) => t.leadId === l.id && t.status === 'reserviert')
+        if (on && nochWas) l.stage = 'reserviert'
+        if (!on && !nochWas && l.stage === 'reserviert') l.stage = 'angebot'
+        l.updatedAt = now()
+      }
+    },
+    {
+      kind: 'deal',
+      text: `${on ? 'Reserviert' : 'Reservierung gelöst'}: ${collapseIds(tankIds)}`,
+    },
+  )
+}
+
 export function setQuoteTanks(quoteId: string, tankIds: string[]) {
   store.mutate(
     (db) => {

@@ -490,7 +490,7 @@ export function checkProposals(raw: RawProposal[], text: string, db: DB): { prop
  * Eine reservierte Position fällt aus den Paketen; bei einem Zweierpaket
  * verschwindet damit das ganze Angebot von der Käuferseite.
  */
-function publicEffect(db: DB, tanks: Tank[]): string {
+export function publicEffect(db: DB, tanks: Tank[]): string {
   const ids = new Set(tanks.map((t) => t.id))
   const hit = db.settings.bundles.filter((b) => b.active && [...b.ids, ...b.giftIds].some((id) => ids.has(id)))
   const parts = ['Käufer sehen „reserviert“. Sichtbar in etwa einer Minute.']
