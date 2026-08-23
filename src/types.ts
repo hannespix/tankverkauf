@@ -358,6 +358,16 @@ export interface CatalogBundle {
   full: number
   /** Preis des Pakets. */
   price: number
+  /**
+   * Wie viele der ursprünglich geschnürten Positionen fehlen — verkauft oder
+   * reserviert.
+   *
+   * Etikett und Fließtext eines Pakets sind von Hand geschrieben („Raumspar-
+   * Keller, 8.000 l", „Sechs eckige Tanks …") und ziehen nicht nach, wenn
+   * Positionen herausfallen. Ohne diese Zahl stand die alte Behauptung über
+   * einem Paket, das nur noch vier Positionen und 4.700 l umfasste.
+   */
+  short?: number
 }
 
 export interface Catalog {

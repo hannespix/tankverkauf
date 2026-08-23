@@ -50,7 +50,11 @@ export function resolveBundle(bundle: Bundle, stock: Map<string, Priced>): Catal
   // auffrisst.
   if (price >= paidSum + giftSum) return null
 
-  return { id: bundle.id, label: bundle.label, blurb: bundle.blurb, ids: paid, giftIds: gifts, full: paidSum + giftSum, price }
+  // Etikett und Fließtext sind von Hand geschrieben und ziehen nicht nach. Die
+  // Zahl der fehlenden Positionen reist deshalb mit, damit die Käuferseite die
+  // alte Behauptung geraderücken kann.
+  const short = bundle.ids.length + bundle.giftIds.length - (paid.length + gifts.length)
+  return { id: bundle.id, label: bundle.label, blurb: bundle.blurb, ids: paid, giftIds: gifts, full: paidSum + giftSum, price, short }
 }
 
 /** Die Staffelstufe, die bei dieser Stückzahl greift — die höchste erreichte. */

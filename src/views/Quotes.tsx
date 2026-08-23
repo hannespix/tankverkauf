@@ -2,13 +2,14 @@ import { useState } from 'react'
 import { PriceLadder } from '../components/charts'
 import { LeadPicker } from '../components/LeadPicker'
 import { Button, Card, EmptyState, Field, Input, Pill, SectionTitle, Select, Stat, Textarea, cx, type Tone } from '../components/ui'
-import { IconHandshake, IconPlus, IconTrash } from '../components/icons'
-import { patchQuote, quoteToDeal, removeQuote, setQuoteLinePrice, setQuoteTanks } from '../lib/actions'
+import { IconHandshake, IconLock, IconPlus, IconTrash } from '../components/icons'
+import { patchQuote, quoteToDeal, removeQuote, setQuoteLinePrice, setQuoteReserved, setQuoteTanks } from '../lib/actions'
 import { itemLabel, centsPerLitre, dateDE, eur, num, todayISO } from '../lib/format'
+import { collapseIds, publicEffect } from '../lib/inbox'
 import { Verlauf } from '../components/Verlauf'
 import { useStore } from '../lib/store'
 import { VERDICT_LABEL, linePrice, quoteMetrics } from '../lib/stats'
-import { QUOTE_STATUS_LABEL, type Quote, type QuoteStatus } from '../types'
+import { QUOTE_STATUS_LABEL, type Quote, type QuoteStatus, type Tank } from '../types'
 
 const STATUSES: QuoteStatus[] = ['entwurf', 'gesendet', 'verhandlung', 'angenommen', 'abgelehnt']
 const STATUS_TONE: Record<QuoteStatus, Tone> = {
@@ -97,6 +98,34 @@ function QuoteCard({ quote }: { quote: Quote }) {
   const addable = matching.slice(0, 20)
   const closed = quote.status === 'angenommen' || quote.status === 'abgelehnt'
 
+  /*
+   * Wer im Angebot steht, in welchem Zustand.
+   *
+   * `fremd` sind Positionen, die inzwischen jemand anderem zugesagt wurden —
+   * sie verschwanden bisher beim nächsten Positionswechsel stillschweigend aus
+   * dem Angebot. Jetzt stehen sie benannt da, statt zu verschwinden.
+   */
+  const positionen = quote.tankIds.map((id) => db.tanks.find((t) => t.id === id)).filter((t): t is Tank => !!t)
+  const fremd = positionen.filter((t) => t.status === 'reserviert' && t.leadId && t.leadId !== quote.leadId)
+  const offene = positionen.filter((t) => t.status !== 'verkauft' && !fremd.includes(t))
+  const reserviert = offene.filter((t) => t.status === 'reserviert').map((t) => t.id)
+  const reservierbar = offene.filter((t) => t.status !== 'reserviert').map((t) => t.id)
+
+  /**
+   * Reservieren wirkt nach außen, deshalb wird gefragt — und die Frage nennt,
+   * was der Käufer danach sieht. Bei 31 baugleichen Dekofässern ist die Anzahl
+   * allein keine Auskunft; `publicEffect` rechnet aus, welches Paket dadurch
+   * kleiner wird oder ganz von der Käuferseite verschwindet.
+   */
+  function reservieren(ids: string[], on: boolean) {
+    const betroffen = positionen.filter((t) => ids.includes(t.id))
+    const wer = lead ? ` für ${lead.name}` : ''
+    const frage = on
+      ? `${ids.length} ${ids.length === 1 ? 'Position' : 'Positionen'} (${collapseIds(ids)})${wer} reservieren?\n\n${publicEffect(db, betroffen)}`
+      : `Reservierung für ${collapseIds(ids)} lösen? Die ${ids.length === 1 ? 'Position steht' : 'Positionen stehen'} danach wieder frei im Katalog.`
+    if (confirm(frage)) setQuoteReserved(quote.id, ids, on)
+  }
+
   return (
     <Card className={cx(closed && 'opacity-70')}>
       <SectionTitle
@@ -184,15 +213,31 @@ function QuoteCard({ quote }: { quote: Quote }) {
             const preis = linePrice(quote, t)
             return (
               <li key={id}>
-                <Pill tone={t.status === 'verkauft' ? 'neutral' : preis < t.floor ? 'rose' : 'sky'}>
+                <Pill tone={t.status === 'verkauft' ? 'neutral' : t.status === 'reserviert' ? 'amber' : preis < t.floor ? 'rose' : 'sky'}>
                   <span className="tnum">{t.id}</span> {itemLabel(t)}
                   {preis !== t.vb && <span className="tnum ml-1 opacity-80">· {eur(preis)}</span>}
+                  {/* Reserviert war in dieser Liste bisher nicht zu sehen — die
+                      Marke hatte denselben Ton wie eine freie Position. */}
+                  {t.status === 'reserviert' && <span className="ml-1 opacity-80">· reserviert</span>}
                 </Pill>
               </li>
             )
           })}
           {quote.tankIds.length === 0 && <li className="text-[13px] text-amber">Keine Position im Angebot.</li>}
         </ul>
+      )}
+
+      {/*
+        Angeboten, abgelehnt — und die Ware hängt weiter fest.
+        Aufgelöst wird das NICHT von selbst: eine falsch zugeordnete Absage gäbe
+        sonst reservierte Ware wieder öffentlich frei. Angeboten wird es, damit
+        es niemandem entgeht.
+      */}
+      {quote.status === 'abgelehnt' && reserviert.length > 0 && (
+        <p className="mt-2 rounded-lg bg-amber-soft px-3 py-2 text-[13px] text-amber">
+          Das Angebot ist abgelehnt, {collapseIds(reserviert)} {reserviert.length === 1 ? 'steht' : 'stehen'} aber
+          weiter reserviert — für Käufer sichtbar vergeben. Unten lösen.
+        </p>
       )}
 
       {/*
@@ -213,7 +258,27 @@ function QuoteCard({ quote }: { quote: Quote }) {
       )}
 
       {!open ? (
-        <div className="mt-3 flex flex-wrap justify-end gap-2 border-t border-line pt-3">
+        <div className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-line pt-3">
+          {/*
+            Der Griff steht hier und nicht im Bearbeiten-Block: gebraucht wird
+            er, wenn am Telefon zugesagt wurde — dann darf man nicht erst
+            aufklappen müssen. Ohne Interessenten bleibt er gesperrt, sonst wäre
+            die Ware öffentlich weg und intern niemandem zugeordnet.
+          */}
+          {reservierbar.length > 0 && !closed && (
+            <Button
+              disabled={!quote.leadId}
+              title={quote.leadId ? undefined : 'Erst einen Interessenten zuordnen'}
+              onClick={() => reservieren(reservierbar, true)}
+            >
+              <IconLock />{reservierbar.length === offene.length ? 'Reservieren' : `${reservierbar.length} noch reservieren`}
+            </Button>
+          )}
+          {reserviert.length > 0 && (
+            <Button variant="ghost" onClick={() => reservieren(reserviert, false)}>
+              Reservierung lösen{reservierbar.length > 0 ? ` (${reserviert.length})` : ''}
+            </Button>
+          )}
           <Button onClick={() => setOpen(true)}>Bearbeiten</Button>
           {!closed && (
             <Button variant="primary" onClick={() => { if (confirm(`„${quote.label}“ zu ${eur(m.decisive)} als Verkauf buchen?`)) quoteToDeal(quote.id) }}>
@@ -248,6 +313,26 @@ function QuoteCard({ quote }: { quote: Quote }) {
                     const drunter = preis < t.floor
                     return (
                       <li key={id} className="flex items-center gap-2 text-[13px]">
+                        {/*
+                          Einzeln umschalten, ohne Rückfrage: eine Position ist
+                          eine überschaubare Folge, und der Zustand steht in
+                          derselben Zeile. Gefragt wird beim Knopf in der
+                          Fußzeile — der trifft im Zweifel 31 Fässer auf einmal.
+                        */}
+                        <input
+                          type="checkbox"
+                          aria-label={`${t.id}, ${itemLabel(t)} reservieren`}
+                          checked={t.status === 'reserviert'}
+                          disabled={t.status === 'verkauft' || !quote.leadId || fremd.includes(t)}
+                          title={
+                            t.status === 'verkauft' ? 'Verkauft'
+                              : fremd.includes(t) ? 'Für jemand anderen reserviert — erst dort lösen'
+                                : quote.leadId ? 'Für diesen Interessenten reservieren'
+                                  : 'Erst einen Interessenten zuordnen'
+                          }
+                          onChange={(e) => setQuoteReserved(quote.id, [t.id], e.target.checked)}
+                          className="h-4 w-4 shrink-0 accent-[var(--amber)] disabled:opacity-30"
+                        />
                         <span className="tnum w-12 shrink-0 font-semibold">{t.id}</span>
                         <span className="truncate">{itemLabel(t)}</span>
                         <span className="ml-auto flex shrink-0 items-center gap-1.5">
@@ -305,6 +390,13 @@ function QuoteCard({ quote }: { quote: Quote }) {
                 {m.underFloor.length > 0 && (
                   <p className="text-[13px] text-rose">
                     Unter der eigenen Untergrenze: {m.underFloor.join(', ')}.
+                  </p>
+                )}
+                {/* Bisher verschwanden diese Positionen beim nächsten
+                    Positionswechsel stillschweigend aus dem Angebot. */}
+                {fremd.length > 0 && (
+                  <p className="text-[13px] text-amber">
+                    Inzwischen anderweitig reserviert: {collapseIds(fremd.map((t) => t.id))} — erst dort lösen.
                   </p>
                 )}
                 {quote.tankIds.length === 1 && (
