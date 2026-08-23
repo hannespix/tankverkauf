@@ -24,11 +24,12 @@ const mem = new Map<string, string>()
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { store } from './store'
-import { applyProposal, createDeal, createQuote, detachTanks, noteOnLead, releaseQuoteTanks, removeLead, removeQuote, saveReply, setQuoteLinePrice, setQuoteReserved, setQuoteTanks } from './actions'
+import { applyProposal, createAd, createDeal, createQuote, detachTanks, noteOnLead, refreshAd, releaseQuoteTanks, removeLead, removeQuote, saveReply, setQuoteLinePrice, setQuoteReserved, setQuoteTanks } from './actions'
 import { quoteMail } from './mail'
 import { resolveBundle } from './bundles'
+import { adDrift, generateAd } from './ads'
 import { openQuotesOf, quoteMetrics, quoteRelation } from './stats'
-import type { DB, Deal, Lead, Quote, Tank } from '../types'
+import type { AdScope, DB, Deal, Lead, Quote, Tank } from '../types'
 
 const at = (n: number) => `2026-0${n}-01T00:00:00.000Z`
 const db = () => store.getSnapshot().db
@@ -584,4 +585,129 @@ test('B34 · ein gelöschtes Angebot lässt keinen unsichtbar belegten Bestand z
   const t = db().tanks[0]!
   assert.equal(t.status, 'verfuegbar')
   assert.equal(t.leadId, null)
+})
+
+/*
+ * B35 bis B39 — Anzeigentexte ziehen nach.
+ *
+ * Eine Reservierung löste bisher gar nichts aus: der Fingerabdruck kannte den
+ * Zustand nicht, `adDrift` meldete nichts, und weil beide Aktualisieren-Knöpfe
+ * hinter dieser Meldung lagen, war der Text danach überhaupt nicht mehr zu
+ * erneuern. Die Anzeige bewarb weiter, was schon jemandem zugesagt war.
+ */
+
+// Immer den FRISCHEN Stand lesen: store.mutate ersetzt den Schnappschuss, ein
+// vorher gegriffenes `db` zeigt danach auf die alte Fassung.
+function adOf(scope: AdScope) {
+  const d = store.getSnapshot().db
+  return generateAd(d, scope, d.settings.portals[0]!)
+}
+
+test('B35 · reserviert steht als eigene Zeile, gekennzeichnet', () => {
+  store.mutate((x) => {
+    x.tanks = [
+      tank('T-1', { maker: 'Speidel', type: 'Koffertank', litres: 1650, vb: 1050 }),
+      tank('T-2', { maker: 'Speidel', type: 'Koffertank', litres: 1650, vb: 1050 }),
+      tank('T-3', { maker: 'Speidel', type: 'Koffertank', litres: 1650, vb: 1050, status: 'reserviert', leadId: 'L-1' }),
+    ]
+    x.ads = []
+  })
+  const text = adOf({ kind: 'kategorie', category: 'tank' }).body
+  assert.match(text, /2× Speidel Koffertank/, 'zwei sind lieferbar')
+  assert.match(text, /1× Speidel Koffertank.*RESERVIERT/, 'das dritte steht getrennt und benannt')
+})
+
+test('B36 · eine Reservierung ändert den Fingerabdruck', () => {
+  // Ohne das meldet adDrift nichts — und ohne Meldung gab es keinen Knopf.
+  store.mutate((x) => { x.tanks = [tank('T-1', { vb: 1000 })]; x.ads = [] })
+  const vorher = adOf({ kind: 'kategorie', category: 'tank' }).stamp
+  store.mutate((x) => { x.tanks[0]!.status = 'reserviert' })
+  assert.notEqual(adOf({ kind: 'kategorie', category: 'tank' }).stamp, vorher)
+})
+
+test('B37 · gezählt und bepreist wird, was lieferbar ist', () => {
+  store.mutate((x) => {
+    x.tanks = [
+      tank('T-1', { vb: 1000, litres: 1000 }),
+      tank('T-2', { vb: 1000, litres: 1000, status: 'reserviert', leadId: 'L-1' }),
+    ]
+    x.ads = []
+  })
+  const text = adOf({ kind: 'kategorie', category: 'tank' }).body
+  // Die Summe darf die zugesagte Position nicht mitrechnen.
+  assert.ok(!text.includes('2.000'), 'keine Summe über Ware, die niemand bekommen kann')
+})
+
+test('B38 · ein ausverkaufter Zuschnitt wirbt nicht weiter', () => {
+  // Vorher entstand "0× Maschinen …" samt Zustandsblock und Preis.
+  store.mutate((x) => {
+    x.tanks = [tank('T-1', { status: 'verkauft', dealId: 'D-1' })]
+    x.ads = []
+  })
+  const a = adOf({ kind: 'kategorie', category: 'tank' })
+  assert.match(a.title, /alles verkauft/)
+  assert.equal(a.price, 0)
+  assert.ok(!a.body.includes('•'), 'keine Aufzählung über nichts')
+})
+
+test('B39 · abweichende Maße einer Gruppe werden nicht behauptet', () => {
+  /*
+   * Die Maße kamen vom ERSTEN Stück und wurden nie nachgeprüft. Verkauften sich
+   * die ersten beiden einer Dreiergruppe, trug die Zeile plötzlich die Maße des
+   * dritten — für die vorher beworbenen galten sie nie.
+   */
+  store.mutate((x) => {
+    x.tanks = [
+      tank('T-1', { vb: 900, dims: { w: 100, d: 100, h: 100 } }),
+      tank('T-2', { vb: 900, dims: { w: 200, d: 200, h: 200 } }),
+    ]
+    x.ads = []
+  })
+  const text = adOf({ kind: 'kategorie', category: 'tank' }).body
+  assert.ok(!text.includes('B 100') && !text.includes('B 200'), 'lieber keine Maße als die des falschen Stücks')
+})
+
+
+test('B40 · der Hinweis nennt die Reservierung, nicht nur Verkäufe', () => {
+  /*
+   * „Seit dem letzten Erzeugen geändert:" stand über einer LEEREN Aufzählung,
+   * sobald der Grund eine Reservierung war: die Liste kannte nur Verkäufe,
+   * Anzahl und Preis. Bei einer Kategorieanzeige ändert eine Reservierung
+   * keines der drei — der Nutzer sah eine Warnung ohne Grund.
+   */
+  store.mutate((x) => { x.tanks = [tank('T-1', { vb: 1000 }), tank('T-2', { vb: 1000 })]; x.ads = [] })
+  const adId = createAd(db(), { kind: 'kategorie', category: 'tank' }, db().settings.portals[0]!.id)
+  store.mutate((x) => { x.tanks[0]!.status = 'reserviert'; x.tanks[0]!.leadId = 'L-1' })
+
+  const d = adDrift(db(), db().ads.find((a) => a.id === adId)!)
+  assert.equal(d.stale, true, 'der Text ist nicht mehr aktuell')
+  assert.deepEqual(d.reservedSince.map((t) => t.id), ['T-1'], 'die vorgemerkte Position wird benannt')
+  assert.equal(d.otherOnly, false, 'ein Grund steht ja fest — kein Sammelposten nötig')
+})
+
+test('B41 · nach dem Aktualisieren ist Ruhe, und der Vermerk steht im Text', () => {
+  store.mutate((x) => { x.tanks = [tank('T-1', { vb: 1000 }), tank('T-2', { vb: 1000 })]; x.ads = [] })
+  const adId = createAd(db(), { kind: 'kategorie', category: 'tank' }, db().settings.portals[0]!.id)
+  store.mutate((x) => { x.tanks[0]!.status = 'reserviert'; x.tanks[0]!.leadId = 'L-1' })
+  refreshAd(adId)
+
+  const a = db().ads.find((x) => x.id === adId)!
+  assert.equal(adDrift(db(), a).stale, false, 'der Hinweis verschwindet, sonst bliebe er für immer stehen')
+  assert.match(a.body, /RESERVIERT/, 'im neuen Text ist die Vormerkung gekennzeichnet')
+  assert.equal(a.edited, false, 'der Text kommt wieder aus der Maschine')
+})
+
+test('B42 · geänderte Angaben im Text bekommen einen eigenen Grund', () => {
+  /*
+   * Der Fingerabdruck deckt den ganzen Text ab. Wird ein Hersteller umbenannt,
+   * ändert sich weder Anzahl noch Preis noch der Zustand einer Position — die
+   * Aufzählung der Gründe bliebe leer. `otherOnly` fängt genau diesen Fall.
+   */
+  store.mutate((x) => { x.tanks = [tank('T-1', { vb: 1000, type: 'Edelstahltank' })]; x.ads = [] })
+  const adId = createAd(db(), { kind: 'kategorie', category: 'tank' }, db().settings.portals[0]!.id)
+  store.mutate((x) => { x.tanks[0]!.type = 'Immervolltank' })
+
+  const d = adDrift(db(), db().ads.find((a) => a.id === adId)!)
+  assert.equal(d.stale, true)
+  assert.equal(d.otherOnly, true, 'ohne diesen Grund stünde die Überschrift über nichts')
 })

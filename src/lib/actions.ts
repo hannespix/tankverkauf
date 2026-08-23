@@ -1204,23 +1204,40 @@ export function createAd(db: DB, scope: AdScope, portalId: string): string {
 }
 
 export function patchAd(id: string, patch: Partial<Ad>, label?: string) {
+  /*
+   * Handarbeit merken.
+   *
+   * Der Stempel läuft über den ERZEUGTEN Text, nicht über den gespeicherten —
+   * eine Handänderung war für das Werkzeug unsichtbar und wurde beim nächsten
+   * „Text neu erzeugen" kommentarlos überschrieben. Ohne Rückfrage, ohne Zurück.
+   */
+  const vonHand = 'title' in patch || 'body' in patch
   store.mutate(
     (db) => {
       const a = db.ads.find((x) => x.id === id)
       if (!a) return
       Object.assign(a, patch, { updatedAt: now() })
+      if (vonHand) a.edited = true
     },
     label ? { kind: 'ad', text: label } : undefined,
   )
 }
 
 /** Pull the ad's text back in line with the current inventory. */
+/**
+ * Den Anzeigentext aus dem aktuellen Bestand neu erzeugen.
+ *
+ * Überschreibt Titel, Text, Preis und Positionsliste — auch das, was von Hand
+ * hineingeschrieben wurde. Ein Merker dafür sagt der Oberfläche, dass sie vorher
+ * fragen muss; hier wird ausgeführt, was der Nutzer entschieden hat.
+ */
 export function refreshAd(id: string) {
   store.mutate(
     (db) => {
       const a = db.ads.find((x) => x.id === id)
       if (!a) return
       const gen = generateAd(db, a.scope, portalOf(db, a.portalId))
+      a.edited = false
       a.title = gen.title
       a.body = gen.body
       a.price = gen.price

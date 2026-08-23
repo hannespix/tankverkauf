@@ -212,6 +212,14 @@ export interface Ad {
   views: number | null
   /** Fingerprint of the inventory the published text was generated from. */
   stamp: string
+  /**
+   * Am Text wurde von Hand gearbeitet.
+   *
+   * Der Stempel läuft über den ERZEUGTEN Text; eine Handänderung war damit für
+   * das Werkzeug unsichtbar und wurde beim nächsten „Text neu erzeugen"
+   * kommentarlos überschrieben — ohne Rückfrage und ohne Weg zurück.
+   */
+  edited?: boolean
   note: string
   createdAt: string
   updatedAt: string

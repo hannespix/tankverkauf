@@ -188,6 +188,22 @@ function CatalogLink() {
   )
 }
 
+/** „Möschle 1.650 l" bzw. „Schneider Weinpumpe" — so kurz, wie es eindeutig bleibt. */
+const kurzName = (t: Tank) => (t.litres > 0 ? `${t.maker} ${num(t.litres)} l` : `${t.maker} ${t.type}`)
+
+/**
+ * Neu erzeugen — und vorher fragen, wenn Handarbeit darin steckt.
+ *
+ * `refreshAd` überschreibt Titel, Text und Preis ersatzlos. Es gibt kein Zurück:
+ * im ganzen Werkzeug existiert keine Rücknahme. Wer nach einer Reservierung von
+ * Hand „T-17 und T-18 sind vergeben" hineingeschrieben hat, verlor genau diesen
+ * Satz beim nächsten Klick, ohne gefragt zu werden.
+ */
+function neuErzeugen(ad: Ad) {
+  if (ad.edited && !confirm('Am Text wurde von Hand gearbeitet. Neu erzeugen überschreibt ihn — zurück geht es nicht. Fortfahren?')) return
+  refreshAd(ad.id)
+}
+
 function AdCard({ ad, portal, onOpen }: { ad: Ad; portal: Portal | null; onOpen: () => void }) {
   const { db } = useStore()
   const drift = adDrift(db, ad)
@@ -233,12 +249,18 @@ function AdCard({ ad, portal, onOpen }: { ad: Ad; portal: Portal | null; onOpen:
           <ul className="mt-1 list-inside list-disc space-y-0.5 text-muted">
             {drift.soldSince.length > 0 && (
               <li>{drift.soldSince.length} beworbene{drift.soldSince.length === 1 ? ' Position ist' : ' Positionen sind'} inzwischen verkauft
-                {' '}({drift.soldSince.map((t) => (t.litres > 0 ? `${t.maker} ${num(t.litres)} l` : `${t.maker} ${t.type}`)).join(', ')})</li>
+                {' '}({drift.soldSince.map(kurzName).join(', ')})</li>
+            )}
+            {drift.reservedSince.length > 0 && (
+              <li>{drift.reservedSince.length} beworbene{drift.reservedSince.length === 1 ? ' Position ist' : ' Positionen sind'} reserviert
+                {' '}({drift.reservedSince.map(kurzName).join(', ')}) — im neuen Text als reserviert gekennzeichnet</li>
             )}
             {drift.countThen !== drift.countNow && <li>Anzahl im Angebot: {drift.countThen} → {drift.countNow}</li>}
             {drift.priceChanged && <li>Preis: {eur(drift.priceChanged.from)} → {eur(drift.priceChanged.to)}</li>}
+            {/* Ohne diese Zeile stünde die Überschrift über einer leeren Liste. */}
+            {drift.otherOnly && <li>Angaben im Text — etwa Bezeichnung, Maße, Merkmale oder Standort</li>}
           </ul>
-          <Button size="sm" variant="primary" className="mt-2.5" onClick={() => refreshAd(ad.id)}>
+          <Button size="sm" variant="primary" className="mt-2.5" onClick={() => neuErzeugen(ad)}>
             <IconRefresh />Text neu erzeugen{portal ? ` für ${portal.name}` : ''}
           </Button>
         </div>
@@ -575,12 +597,33 @@ function AdModal({ id, onClose }: { id: string; onClose: () => void }) {
   return (
     <Modal open onClose={onClose} title={`Anzeigentext · ${portal?.name ?? 'Ohne Portal'}`} wide>
       <div className="space-y-4">
-        {drift.stale && (
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber/50 bg-amber-soft/50 p-3 text-sm">
-            <span><strong>Der Bestand hat sich geändert.</strong> Text neu erzeugen?</span>
-            <Button size="sm" variant="primary" onClick={() => refreshAd(ad.id)}><IconRefresh />Aktualisieren</Button>
-          </div>
-        )}
+        {/*
+          * Der Knopf steht auch dann da, wenn nichts erkannt wurde.
+          *
+          * Der Abgleich vergleicht Fingerabdrücke — er merkt nichts davon, wenn
+          * sich der Text aus einem Grund ändern müsste, der nicht im
+          * Fingerabdruck steckt. Vorher gab es dann überhaupt keinen Weg, den
+          * Text nachzuziehen: der einzige Knopf hing hinter genau dieser Meldung.
+          */}
+        <div className={`flex flex-wrap items-center justify-between gap-2 rounded-xl border p-3 text-sm ${
+          drift.stale ? 'border-amber/50 bg-amber-soft/50' : 'border-line bg-surface-2'
+        }`}>
+          <span>
+            {drift.stale ? (
+              <>
+                <strong>Der Bestand hat sich geändert.</strong>{' '}
+                {drift.reservedSince.length > 0 && `${drift.reservedSince.length} Position${drift.reservedSince.length === 1 ? ' ist' : 'en sind'} reserviert. `}
+                {drift.soldSince.length > 0 && `${drift.soldSince.length} Position${drift.soldSince.length === 1 ? ' ist' : 'en sind'} verkauft. `}
+                Text neu erzeugen?
+              </>
+            ) : (
+              <>Text ist auf dem Stand des Bestands. Neu erzeugen geht trotzdem — Verkäufe, Reservierungen, Preise und Maße kommen dabei frisch hinein.</>
+            )}
+          </span>
+          <Button size="sm" variant={drift.stale ? 'primary' : undefined} onClick={() => neuErzeugen(ad)}>
+            <IconRefresh />Aktualisieren
+          </Button>
+        </div>
 
         <div>
           <div className="mb-1 flex items-end justify-between">
