@@ -11,7 +11,7 @@ import {
   pendingPaths as pendingPhotoPaths,
   remove as removePending,
 } from './photoQueue'
-import { buildCatalog, catalogPageUrl, catalogStamp, photoStamp, stampOf } from './catalog'
+import { buildCatalog, catalogPageUrl, catalogPhotos, catalogStamp, photoStamp, stampOf } from './catalog'
 import {
   ConflictError,
   GitHubError,
@@ -536,11 +536,13 @@ class TankStore {
     // copied next to the published file. Only the ones not there yet — republishing
     // stays cheap once the pictures are across.
     const dir = c.path.replace(/\/[^/]+$/, '')
-    const wanted = [...new Set(catalog.items.flatMap((i) => i.photos))]
+    // Beides aus derselben Quelle — siehe `catalogPhotos`. Getrennt gerechnet
+    // liefen die Mengen auseinander, sobald Verkauftes Bilder trägt.
+    const wanted = catalogPhotos(catalog)
     // Hat sich an den Bildern nichts geändert, kostet ein Veröffentlichen nur noch
     // einen einzigen Schreibvorgang statt einer Abfrage je Bild. Das ist der
     // Unterschied, der das automatische Veröffentlichen überhaupt vertretbar macht.
-    const stamp = photoStamp(this.snapshot.db)
+    const stamp = photoStamp(catalog)
     const skipPhotos = stamp !== '' && stamp === this.snapshot.db.settings.publishedPhotos
     let moved = 0
     let lost = 0

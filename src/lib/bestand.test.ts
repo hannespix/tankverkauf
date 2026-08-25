@@ -28,7 +28,7 @@ import { applyProposal, createAd, createDeal, createQuote, detachTanks, noteOnLe
 import { quoteMail } from './mail'
 import { resolveBundle } from './bundles'
 import { adDrift, generateAd } from './ads'
-import { buildCatalog, catalogStamp, photoStamp } from './catalog'
+import { buildCatalog, catalogPhotos, catalogStamp, photoStamp } from './catalog'
 import { openQuotesOf, quoteMetrics, quoteRelation } from './stats'
 import type { AdScope, DB, Deal, Lead, Quote, Tank } from '../types'
 
@@ -742,7 +742,7 @@ test('B43 · Verkauftes steht neben der Liste, nicht darin', () => {
   assert.deepEqual((c.soldItems ?? []).map((i) => i.id), ['T-2'], 'Verkauftes steht daneben')
 })
 
-test('B44 · von verkaufter Ware geht weder Preis noch Foto hinaus', () => {
+test('B44 · von verkaufter Ware geht das Bild hinaus, der Preis nicht', () => {
   const c = katalogVon({
     tanks: [tank('T-1', {
       status: 'verkauft', dealId: 'D-1', leadId: 'L-9', vb: 1234, photos: ['fotos/a.jpg'],
@@ -758,15 +758,20 @@ test('B44 · von verkaufter Ware geht weder Preis noch Foto hinaus', () => {
    * `note` oder `dealId` mit hinausgäbe — also genau dann, wenn es darauf
    * ankommt. Eine Weißliste prüft man gegen die ganze Liste.
    */
-  assert.deepEqual(Object.keys(v).sort(), ['category', 'categoryLabel', 'dims', 'id', 'litres', 'maker', 'tags', 'type'])
+  assert.deepEqual(Object.keys(v).sort(), ['category', 'categoryLabel', 'dims', 'id', 'litres', 'maker', 'photos', 'tags', 'type'])
+  assert.deepEqual(v.photos, ['fotos/a.jpg'], 'das Bild ist der Beleg und geht mit')
   assert.equal(v.maker, 'Speidel', 'benannt wird die Position trotzdem')
 })
 
-test('B45 · der Fingerabdruck der Bilder deckt genau das ab, was übertragen wird', () => {
+test('B45 · übertragen und gestempelt wird dieselbe Bildmenge', () => {
   /*
-   * Liefen die beiden auseinander, hinge ein Foto an einer Position, die nie
-   * kopiert wird: der Katalog-Fingerabdruck ändert sich, veröffentlicht wird,
-   * der Bilddurchlauf wird übersprungen — und die Liste zeigt dauerhaft ein
+   * Der Fallstrick, an dem die Bilder verkaufter Ware eine Weile gefehlt haben.
+   *
+   * `writeCatalog` überträgt `catalogPhotos(catalog)`, und derselbe Ausdruck
+   * trägt den Fingerabdruck. Liefen die beiden auseinander — und getrennt
+   * gerechnet taten sie das, sobald Verkauftes Bilder trägt —, dann änderte ein
+   * Foto an einer verkauften Position den Stempel NICHT: der Bilddurchlauf wird
+   * übersprungen, die Datei nie kopiert, und die Liste zeigt dauerhaft ein
    * totes Bild, während das Werkzeug „aktuell" meldet.
    */
   setDb({
@@ -775,11 +780,15 @@ test('B45 · der Fingerabdruck der Bilder deckt genau das ab, was übertragen wi
       tank('T-2', { status: 'verkauft', dealId: 'D-1', photos: ['fotos/weg.jpg'] }),
     ],
   })
-  const db = store.getSnapshot().db
-  const c = buildCatalog(db)
-  const ausListe = [...new Set(c.items.flatMap((i) => i.photos))].sort().join('|')
-  assert.equal(ausListe, 'fotos/frei.jpg', 'das Bild der verkauften Position wird nicht angefordert')
-  assert.equal(photoStamp(db), hashOf(ausListe))
+  const c = buildCatalog(store.getSnapshot().db)
+  assert.deepEqual(catalogPhotos(c), ['fotos/frei.jpg', 'fotos/weg.jpg'], 'auch das Bild der verkauften Position')
+  assert.equal(photoStamp(c), hashOf(catalogPhotos(c).join('|')), 'der Stempel deckt genau diese Menge')
+
+  // Und die Probe aufs Exempel: ein Foto an der VERKAUFTEN Position muss den
+  // Stempel bewegen. Genau das tat es vorher nicht.
+  const vorher = photoStamp(c)
+  store.mutate((x) => { x.tanks[1]!.photos = ['fotos/weg.jpg', 'fotos/zweite.jpg'] })
+  assert.notEqual(photoStamp(buildCatalog(store.getSnapshot().db)), vorher)
 })
 
 // Derselbe Fingerabdruck wie in catalog.ts — hier nachgebaut, damit der Prüffall

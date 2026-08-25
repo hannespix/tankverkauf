@@ -170,14 +170,17 @@ function App() {
   }, [])
 
   /*
-   * Verkauftes bekommt einen Preis von 0 und keine Fotos — beides steht in der
-   * veröffentlichten Datei gar nicht erst drin. Der Preis wird an einer
-   * verkauften Zeile nie gedruckt; die 0 dient nur dem Los-Schlüssel, damit
-   * verkaufte Stücke desselben Typs zu EINEM Los zusammenfallen, auch wenn ihre
-   * VB zu Lebzeiten verschieden war.
+   * Verkauftes bekommt einen Preis von 0 — die veröffentlichte Datei führt für
+   * verkaufte Ware gar keinen. Gedruckt wird er an einer verkauften Zeile nie;
+   * die 0 dient allein dem Los-Schlüssel, damit verkaufte Stücke desselben Typs
+   * zu EINEM Los zusammenfallen, auch wenn ihre VB zu Lebzeiten verschieden war.
+   *
+   * Die Fotos kommen mit: sie sind der Beleg, um den es bei der ganzen Sache
+   * geht. `?? []` deckt eine ältere Datei ab, die für Verkauftes noch keine
+   * führt — sonst wirft der Zugriff mitten im Zeichnen und die Seite bleibt weiß.
    */
   const verkauft = useMemo<Zeile[]>(
-    () => (catalog?.soldItems ?? []).map((i) => ({ ...i, vb: 0, photos: [], reserved: false, sold: true })),
+    () => (catalog?.soldItems ?? []).map((i) => ({ ...i, vb: 0, photos: i.photos ?? [], reserved: false, sold: true })),
     [catalog],
   )
 
@@ -666,11 +669,7 @@ function idRanges(ids: string[]): string {
                 >
                   {/* Immer ein Bildplatz, auch ohne Bild — sonst verschiebt sich alles
                       dahinter um 64 px, sobald ein Foto fehlt. */}
-                  {lot.sold ? (
-                    // Von verkaufter Ware geht kein Foto hinaus. Der Platz bleibt
-                    // trotzdem stehen, sonst verschiebt sich die ganze Zeile.
-                    <span className="block h-14 w-14 rounded-xl bg-surface-3 ring-1 ring-line sm:h-16 sm:w-16" />
-                  ) : lot.photos.length > 0 ? (
+                  {lot.photos.length > 0 ? (
                     // Kein target="_blank" mehr: das öffnete die nackte JPEG-Datei in
                     // einem neuen Tab, und zurück kam man nur über die Tableiste.
                     <button

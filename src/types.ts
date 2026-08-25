@@ -360,16 +360,20 @@ export interface CatalogItem {
  * böte es zum Ankreuzen an, rechnete es in den Paketpreis und schriebe es in
  * die Anfrage-Mail. Ein unbekanntes Feld überliest er dagegen folgenlos.
  *
- * Ohne Preis und ohne Foto, beides mit Absicht:
+ * Ohne Preis, aber MIT Bild.
  *
  * Der Preis wäre die Verhandlungsbasis, nicht der erzielte — und er ankert nur
  * dort etwas, wo es noch Vergleichbares gibt; dessen Preis steht dann eine
  * Zeile darüber. Er ist also entweder überflüssig oder ankert ins Leere.
  *
- * Ohne Fotos bleibt die Bildmenge genau die der lieferbaren Ware. Sonst müsste
- * `photoStamp` dieselbe erweiterte Menge sehen wie `writeCatalog`, und liefen
- * die beiden auseinander, zeigte die Liste dauerhaft ein totes Bild, während
- * das Werkzeug „aktuell" meldet.
+ * Das Bild dagegen ist der Beleg selbst: eine graue Zeile mit Namen behauptet,
+ * dass hier gekauft wird, ein Foto zeigt es. Und wer die verkaufte Bauart
+ * sieht, erkennt an der freien Zeile darüber, dass es dieselbe ist.
+ *
+ * Es stand hier eine Weile kein Foto, aus Sorge um zwei Fingerabdrücke, die
+ * auseinanderlaufen konnten. Die Sorge war berechtigt, die Antwort falsch:
+ * `catalogPhotos` in `catalog.ts` ist jetzt die EINE Quelle für das, was
+ * übertragen wird, und für das, was gestempelt wird.
  */
 export interface SoldItem {
   id: string
@@ -380,6 +384,8 @@ export interface SoldItem {
   litres: number
   dims: Dims | null
   tags: string[]
+  /** Wie bei lieferbarer Ware — Pfade relativ zur veröffentlichten Datei. */
+  photos: string[]
 }
 
 /**

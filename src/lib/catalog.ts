@@ -68,6 +68,7 @@ export function buildCatalog(db: DB): Catalog {
       litres: t.litres,
       dims: t.dims,
       tags: t.tags,
+      photos: t.photos,
     })),
     // Nur Gruppen, in denen wirklich etwas steht — eine leere Überschrift mit
     // Werbetext darunter wäre ein Angebot für nichts. Der Werbetext gehört zu
@@ -154,8 +155,29 @@ export function catalogStamp(db: DB): string {
   return stampOf(buildCatalog(db))
 }
 
-/** Nur die Bilder. Stimmen sie noch, muss beim Veröffentlichen keine Datei angefasst werden. */
-export function photoStamp(db: DB): string {
-  const all = db.tanks.filter(isOpen).flatMap((t) => t.photos)
-  return hash([...new Set(all)].sort().join('|'))
+/**
+ * Jedes Bild, das die veröffentlichte Liste anfordert — Lieferbares wie
+ * Verkauftes, ohne Dubletten und in fester Reihenfolge.
+ *
+ * EINE Quelle für zwei Dinge, und das ist der ganze Zweck: `writeCatalog`
+ * überträgt genau diese Menge, und der Fingerabdruck darüber entscheidet, ob
+ * überhaupt übertragen werden muss.
+ *
+ * Vorher waren es zwei Ausdrücke über zwei verschiedene Datenquellen — die
+ * Bilder aus `catalog.items` einerseits, `db.tanks.filter(isOpen)`
+ * andererseits. Solange nur Lieferbares hinausging, waren sie zufällig gleich.
+ * Mit Verkauftem in der Liste liefen sie auseinander, und die Folge wäre
+ * dauerhaft gewesen: ein Foto an einer verkauften Position ändert den
+ * Fingerabdruck nicht, der Bilddurchlauf wird übersprungen, die Datei nie
+ * kopiert — und die Liste zeigt ein totes Bild, während das Werkzeug „aktuell"
+ * meldet.
+ */
+export function catalogPhotos(catalog: Catalog): string[] {
+  const all = [...catalog.items, ...(catalog.soldItems ?? [])].flatMap((i) => i.photos)
+  return [...new Set(all)].sort()
+}
+
+/** Stimmen die Bilder noch, muss beim Veröffentlichen keine Datei angefasst werden. */
+export function photoStamp(catalog: Catalog): string {
+  return hash(catalogPhotos(catalog).join('|'))
 }
