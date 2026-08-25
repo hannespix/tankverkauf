@@ -65,9 +65,9 @@ const lotKey = (i: Zeile) => `${i.maker}|${i.type}|${i.litres}|${i.vb}|${zustand
 /**
  * Eine Zeile der Liste — lieferbar, vorgemerkt oder verkauft.
  *
- * Verkauftes kommt aus `catalog.soldItems` und trägt weder Preis noch Fotos
- * (siehe `SoldItem`). Beides wird hier auf einen unschädlichen Wert gesetzt,
- * damit die Liste EINEN Typ verarbeitet statt zweier.
+ * Verkauftes kommt aus `catalog.soldItems` und trägt keinen Preis (siehe
+ * `SoldItem`). Der wird hier auf einen unschädlichen Wert gesetzt, damit die
+ * Liste EINEN Typ verarbeitet statt zweier. Die Bilder kommen mit.
  */
 type Zeile = CatalogItem & { sold?: boolean }
 
@@ -690,6 +690,12 @@ function idRanges(ids: string[]): string {
                         </span>
                       )}
                     </button>
+                  ) : lot.sold ? (
+                    // „kein Bild" an verkaufter Ware wäre eine Falschaussage: es
+                    // gibt eines, nur führt eine ältere veröffentlichte Datei für
+                    // Verkauftes noch keine. Bis zum nächsten Veröffentlichen ist
+                    // das der Normalfall — ein wortloser Platz sagt hier mehr.
+                    <span className="block h-14 w-14 rounded-xl bg-surface-2 ring-1 ring-line sm:h-16 sm:w-16" />
                   ) : (
                     <span className="flex h-14 w-14 items-center justify-center rounded-xl bg-surface-2 text-[11px] text-muted ring-1 ring-line sm:h-16 sm:w-16">
                       kein Bild
@@ -699,12 +705,16 @@ function idRanges(ids: string[]): string {
                   <span className="min-w-0">
                     {/*
                       Zurückgenommen gehört auch der Name.
-                      Foto und Preis waren weg, der Titel stand weiter in voller
-                      Tinte — gemessen 17,4:1, Wort für Wort so laut wie an
-                      lieferbarer Ware. Bei 40 von 58 verkauft war das letzte
-                      Bild vor dem Fuß eine Wand aus elf fetten Namen, die alle
-                      nicht zu haben sind. `text-muted` bleibt mit 5,34:1 gut
-                      lesbar — es soll leiser sein, nicht unlesbar.
+                      Er stand in voller Tinte — gemessen 17,4:1, Wort für Wort
+                      so laut wie an lieferbarer Ware. Bei 40 von 58 verkauft war
+                      das letzte Bild vor dem Fuß eine Wand aus elf fetten Namen,
+                      die alle nicht zu haben sind. `text-muted` bleibt mit
+                      5,34:1 gut lesbar — es soll leiser sein, nicht unlesbar.
+
+                      Das Foto bleibt dagegen in voller Farbe, und das ist kein
+                      Widerspruch: der Name ist die Werbung, das Bild ist der
+                      Beleg. Wer sehen soll, dass diese Bauart wirklich weggeht,
+                      muss sie sehen können.
                     */}
                     <span className={cx('block font-semibold', lot.sold && 'text-muted')}>
                       {lot.maker === 'Sonstige' ? lot.type : `${lot.maker} ${lot.type}`}
@@ -755,9 +765,9 @@ function idRanges(ids: string[]): string {
                       Kein Satz an der Zeile.
                       Er stand hier — und bei 40 Verkauften achtzehnmal wörtlich
                       auf derselben Seite, obwohl der Kopf denselben Sachverhalt
-                      schon einmal erklärt. Die Zeile sagt es auch ohne ihn: keine
-                      Fläche zum Anfassen, kein Foto, kein Preis, und rechts das
-                      Wort, wo sonst der Preis steht.
+                      schon einmal erklärt. Die Zeile sagt es auch ohne ihn:
+                      zurückgenommene Fläche, kein Preis, nichts zum Anfassen,
+                      und rechts das Wort, wo sonst der Preis steht.
                     */}
                     {lot.reserved && (
                       <span className="mt-1 block">

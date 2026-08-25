@@ -384,8 +384,16 @@ export interface SoldItem {
   litres: number
   dims: Dims | null
   tags: string[]
-  /** Wie bei lieferbarer Ware — Pfade relativ zur veröffentlichten Datei. */
-  photos: string[]
+  /**
+   * Wie bei lieferbarer Ware — Pfade relativ zur veröffentlichten Datei.
+   *
+   * Optional, und das ist keine Formsache: die Fassung davor gab für Verkauftes
+   * gar keine Bilder heraus. Genau so eine Datei liegt bis zum nächsten
+   * Veröffentlichen draußen, und die Käuferseite sichert sich mit `?? []` ab.
+   * Als Pflichtfeld sähen diese Absicherungen wie entfernbarer Ballast aus —
+   * entfernt bliebe die Seite an einer älteren Datei weiß.
+   */
+  photos?: string[]
 }
 
 /**

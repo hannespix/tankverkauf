@@ -28,7 +28,7 @@ import { applyProposal, createAd, createDeal, createQuote, detachTanks, noteOnLe
 import { quoteMail } from './mail'
 import { resolveBundle } from './bundles'
 import { adDrift, generateAd } from './ads'
-import { buildCatalog, catalogPhotos, catalogStamp, photoStamp } from './catalog'
+import { buildCatalog, catalogPhotos, catalogStamp, photoStamp, photoStampOf } from './catalog'
 import { openQuotesOf, quoteMetrics, quoteRelation } from './stats'
 import type { AdScope, DB, Deal, Lead, Quote, Tank } from '../types'
 
@@ -782,13 +782,40 @@ test('B45 · übertragen und gestempelt wird dieselbe Bildmenge', () => {
   })
   const c = buildCatalog(store.getSnapshot().db)
   assert.deepEqual(catalogPhotos(c), ['fotos/frei.jpg', 'fotos/weg.jpg'], 'auch das Bild der verkauften Position')
-  assert.equal(photoStamp(c), hashOf(catalogPhotos(c).join('|')), 'der Stempel deckt genau diese Menge')
 
-  // Und die Probe aufs Exempel: ein Foto an der VERKAUFTEN Position muss den
-  // Stempel bewegen. Genau das tat es vorher nicht.
+  /*
+   * Der Kern: `writeCatalog` überträgt `catalogPhotos(catalog)` und stempelt mit
+   * `photoStampOf` über GENAU DIESES Array. Hier dieselbe Kette nachgebaut —
+   * würde die Übertragung wieder auf eine eigene Rechnung umgestellt, fiele
+   * dieser Fall.
+   */
+  const wanted = catalogPhotos(c)
+  assert.equal(photoStampOf(wanted), photoStamp(c), 'gestempelt wird, was übertragen wird')
+  assert.equal(photoStampOf(wanted), hashOf(wanted.join('|')), 'und zwar nachrechenbar')
+
+  /*
+   * Die Probe aufs Exempel: ein Foto an der VERKAUFTEN Position muss den Stempel
+   * bewegen. Genau das tat es vorher nicht.
+   *
+   * Gesucht wird über den Zustand, nicht über den Index — `x.tanks[1]` wäre auch
+   * dann grün geblieben, wenn es auf die freie Position zeigte, und damit hätte
+   * der Fall seine eigene Behauptung nicht mehr festgenagelt.
+   */
   const vorher = photoStamp(c)
-  store.mutate((x) => { x.tanks[1]!.photos = ['fotos/weg.jpg', 'fotos/zweite.jpg'] })
-  assert.notEqual(photoStamp(buildCatalog(store.getSnapshot().db)), vorher)
+  store.mutate((x) => { x.tanks.find((t) => t.status === 'verkauft')!.photos = ['fotos/weg.jpg', 'fotos/zweite.jpg'] })
+  const danach = buildCatalog(store.getSnapshot().db)
+  assert.deepEqual(catalogPhotos(danach), ['fotos/frei.jpg', 'fotos/weg.jpg', 'fotos/zweite.jpg'])
+  assert.notEqual(photoStamp(danach), vorher)
+})
+
+test('B50 · eine ältere Datei ohne Bilder an Verkauftem bricht nichts', () => {
+  /*
+   * Bis zum nächsten Veröffentlichen liegt genau so eine Datei draußen: die
+   * Fassung davor gab für Verkauftes gar keine Bilder heraus. Ohne die
+   * Absicherung wirft `catalogPhotos` an `undefined.flatMap`.
+   */
+  const alt = { items: [], soldItems: [{ id: 'T-1', category: 'tank', categoryLabel: 'Tanks', maker: 'Speidel', type: 'Tank', litres: 0, dims: null, tags: [] }] }
+  assert.deepEqual(catalogPhotos(alt as unknown as Parameters<typeof catalogPhotos>[0]), [])
 })
 
 // Derselbe Fingerabdruck wie in catalog.ts — hier nachgebaut, damit der Prüffall

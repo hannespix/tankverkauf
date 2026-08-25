@@ -58,7 +58,7 @@ export function buildCatalog(db: DB): Catalog {
       // Hiding this loses the second buyer entirely; showing it turns them into a backup.
       reserved: t.status === 'reserviert',
     })),
-    // Ohne Preis und ohne Fotos — die Begründung steht am Typ `SoldItem`.
+    // Mit Bild, ohne Preis — die Begründung steht am Typ `SoldItem`.
     soldItems: sold.map((t): SoldItem => ({
       id: t.id,
       category: t.category,
@@ -173,11 +173,25 @@ export function catalogStamp(db: DB): string {
  * meldet.
  */
 export function catalogPhotos(catalog: Catalog): string[] {
-  const all = [...catalog.items, ...(catalog.soldItems ?? [])].flatMap((i) => i.photos)
+  // `?? []` je Position: eine ältere veröffentlichte Datei führt für Verkauftes
+  // noch gar keine Bilder.
+  const all = [...catalog.items, ...(catalog.soldItems ?? [])].flatMap((i) => i.photos ?? [])
   return [...new Set(all)].sort()
+}
+
+/**
+ * Der Fingerabdruck ÜBER EINE BILDLISTE — nicht über einen Katalog.
+ *
+ * `writeCatalog` übergibt hier dasselbe Array, das es überträgt. Damit ist die
+ * Gleichheit von „was geht raus" und „was wird gestempelt" nicht mehr behauptet,
+ * sondern gezeigt: es ist ein Wert, keine zweite Rechnung, die man gleich halten
+ * müsste.
+ */
+export function photoStampOf(photos: string[]): string {
+  return hash(photos.join('|'))
 }
 
 /** Stimmen die Bilder noch, muss beim Veröffentlichen keine Datei angefasst werden. */
 export function photoStamp(catalog: Catalog): string {
-  return hash(catalogPhotos(catalog).join('|'))
+  return photoStampOf(catalogPhotos(catalog))
 }

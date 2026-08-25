@@ -11,7 +11,7 @@ import {
   pendingPaths as pendingPhotoPaths,
   remove as removePending,
 } from './photoQueue'
-import { buildCatalog, catalogPageUrl, catalogPhotos, catalogStamp, photoStamp, stampOf } from './catalog'
+import { buildCatalog, catalogPageUrl, catalogPhotos, catalogStamp, photoStampOf, stampOf } from './catalog'
 import {
   ConflictError,
   GitHubError,
@@ -542,8 +542,13 @@ class TankStore {
     // Hat sich an den Bildern nichts geändert, kostet ein Veröffentlichen nur noch
     // einen einzigen Schreibvorgang statt einer Abfrage je Bild. Das ist der
     // Unterschied, der das automatische Veröffentlichen überhaupt vertretbar macht.
-    const stamp = photoStamp(catalog)
-    const skipPhotos = stamp !== '' && stamp === this.snapshot.db.settings.publishedPhotos
+    // Über GENAU DAS Array, das gleich übertragen wird. Nicht über eine zweite
+    // Rechnung, die dasselbe ergeben soll — die beiden liefen schon einmal
+    // auseinander, und das kostete ein totes Bild bei grüner Anzeige.
+    const stamp = photoStampOf(wanted)
+    // `stamp !== ''` stand hier als Sicherheitsnetz und war keines: hash('')
+    // gibt den FNV-Startwert zurück, nie eine leere Zeichenkette.
+    const skipPhotos = stamp === this.snapshot.db.settings.publishedPhotos
     let moved = 0
     let lost = 0
     onProgress?.(0, skipPhotos ? 0 : wanted.length)
@@ -568,10 +573,13 @@ class TankStore {
     // A photo taken off a position must disappear from the public copy too —
     // otherwise removing it here would leave it reachable at its old address.
     const photoDir = dir ? `${dir}/fotos` : 'fotos'
-    const keep = new Set(wanted.map((w) => w.replace(/^.*\//, '')))
+    // Voller Pfad, nicht nur der Dateiname. Der Vergleich über den Basisnamen
+    // ließ ein Bild AUSSERHALB von `fotos/` unbemerkt liegen — und schützte dazu
+    // noch zufällig eine gleichnamige Datei darin vor dem Aufräumen.
+    const keep = new Set(wanted)
     let removed = 0
     for (const name of skipPhotos ? [] : await listDir(this.token, cfg, photoDir).catch(() => [])) {
-      if (keep.has(name)) continue
+      if (keep.has(`fotos/${name}`)) continue
       await deleteBinary(this.token, { ...cfg, path: `${photoDir}/${name}` }, `${photoDir}/${name}`, `Foto nicht mehr im Katalog: ${name}`)
       removed += 1
     }
