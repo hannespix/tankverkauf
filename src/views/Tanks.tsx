@@ -6,21 +6,36 @@ import { TagEditor } from '../components/TagEditor'
 import { Button, Card, EmptyState, Field, Input, Modal, Pill, Select, Textarea, cx, type Tone } from '../components/ui'
 import { IconCamera, IconCheck, IconFilter, IconPlus, IconSearch, IconTrash } from '../components/icons'
 import { addTank, createDeal, createQuote, patchTank, removeTank, retypeMany, setTankOffer, setTankStatus, tagMany } from '../lib/actions'
-import { itemLabel, centsPerLitre, dims as fmtDims, eur, num, todayISO } from '../lib/format'
+import { itemLabel, centsPerLitre, dateDE, dims as fmtDims, eur, num, todayISO } from '../lib/format'
 import { prepareImage } from '../lib/photos'
 import { store, useStore } from '../lib/store'
 import { VERDICT_LABEL, judgeBundle, judgeOffer, totals } from '../lib/stats'
 import { STATUS_LABEL, type Category, type Maker, type Tank, type TankStatus } from '../types'
 import type { ViewProps } from '../App'
 
-const STATUSES: TankStatus[] = ['verfuegbar', 'kontakt', 'reserviert', 'verkauft']
+const STATUSES: TankStatus[] = ['vorbereitung', 'verfuegbar', 'kontakt', 'reserviert', 'verkauft']
 
-const STATUS_TONE: Record<TankStatus, Tone> = { verfuegbar: 'green', kontakt: 'amber', reserviert: 'sky', verkauft: 'neutral' }
+const STATUS_TONE: Record<TankStatus, Tone> = { verfuegbar: 'green', kontakt: 'amber', reserviert: 'sky', verkauft: 'neutral', vorbereitung: 'neutral' }
 
 type SortKey = 'id' | 'maker' | 'type' | 'litres' | 'vb' | 'ctl' | 'status' | 'offer' | 'lead'
 
 export default function Tanks({ focus }: ViewProps) {
   const { db } = useStore()
+  // Wer wartet auf welche Position? Einmal gerechnet, an Zeile, Karte und
+  // Dialog gezeigt — im Moment des Umschaltens auf „Verfügbar" ist das die
+  // Information, die zählt.
+  const wartende = useMemo(() => {
+    const m = new Map<string, { name: string; leadId: string; at: string }[]>()
+    for (const l of db.leads) {
+      for (const w of l.watch ?? []) {
+        const list = m.get(w.tankId) ?? []
+        list.push({ name: l.name, leadId: l.id, at: w.at })
+        m.set(w.tankId, list)
+      }
+    }
+    for (const list of m.values()) list.sort((a, b) => a.at.localeCompare(b.at))
+    return m
+  }, [db.leads])
   // Demo edits live only in memory, so nothing needs locking down — the banner says so.
   const readOnly = false
 
@@ -277,6 +292,15 @@ export default function Tanks({ focus }: ViewProps) {
                           <Select value={t.status} disabled={readOnly} onChange={(e) => setTankStatus(t, e.target.value as TankStatus)} className="min-w-[124px] py-1.5 text-[13px]">
                             {STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
                           </Select>
+                          {/* Im Moment des Umschaltens sichtbar, nicht erst im Dialog:
+                              wer hier auf „Verfügbar" stellt, soll den Wartenden sehen. */}
+                          {(wartende.get(t.id)?.length ?? 0) > 0 && (
+                            <button type="button" onClick={() => setDetail(t.id)}
+                              className="mt-1 block text-[11px] font-semibold text-amber hover:underline"
+                              title={wartende.get(t.id)!.map((w) => w.name).join(', ')}>
+                              wartet: {wartende.get(t.id)!.map((w) => w.name.split(' ')[0]).join(', ')}
+                            </button>
+                          )}
                         </td>
                         <td className="px-2.5 py-1.5 text-[13px]">
                           {lead ? <button type="button" onClick={() => setDetail(t.id)} className="font-medium hover:underline">{lead.name}</button> : <span className="text-faint">–</span>}
@@ -322,6 +346,9 @@ export default function Tanks({ focus }: ViewProps) {
                         <span className="h-1.5 w-1.5 rounded-full" style={{ background: STATUS_FILL[t.status] }} />
                         {STATUS_LABEL[t.status]}
                       </Pill>
+                      {(wartende.get(t.id)?.length ?? 0) > 0 && (
+                        <Pill tone="amber">{wartende.get(t.id)!.length} wartet</Pill>
+                      )}
                       {t.status !== 'verkauft' && (
                         <input type="checkbox" checked={picked.has(t.id)}
                           onChange={(e) => setPicked((p) => { const n = new Set(p); e.target.checked ? n.add(t.id) : n.delete(t.id); return n })}
@@ -391,6 +418,11 @@ function TankDetail({ id, onClose, readOnly }: { id: string | null; onClose: () 
   const verdict = judgeOffer(t, t.offer)
   const lead = db.leads.find((l) => l.id === t.leadId)
   const deal = db.deals.find((d) => d.id === t.dealId)
+  // Wer wollte Bescheid, sobald diese Position in den Verkauf geht — der
+  // Reihe nach, wer zuerst gefragt hat.
+  const wartend = db.leads
+    .flatMap((l) => (l.watch ?? []).filter((w) => w.tankId === t.id).map((w) => ({ lead: l, at: w.at })))
+    .sort((a, b) => a.at.localeCompare(b.at))
 
   return (
     <Modal open onClose={onClose} title={`${t.maker === 'Sonstige' ? t.type : `${t.maker} ${t.type}`}${t.litres > 0 ? ` · ${num(t.litres)} l` : ''}`}>
@@ -425,6 +457,23 @@ function TankDetail({ id, onClose, readOnly }: { id: string | null; onClose: () 
           <Field label="Abholung"><Input type="date" disabled={readOnly} value={t.pickup ?? ''} onChange={(e) => patchTank(t.id, { pickup: e.target.value || null })} /></Field>
         </div>
 
+        {wartend.length > 0 && (
+          <div className="rounded-xl border border-amber/40 bg-amber-soft/40 p-3 text-[13px]">
+            <strong>{wartend.length === 1 ? 'Wartet auf Bescheid' : `${wartend.length} warten auf Bescheid`}, sobald die Position im Verkauf ist:</strong>
+            <ul className="mt-1 space-y-0.5 text-muted">
+              {wartend.map((w) => (
+                <li key={w.lead.id} className="flex items-baseline justify-between gap-3">
+                  <span className="font-medium text-ink">{w.lead.name}</span>
+                  <span className="tnum text-[12px]">{dateDE(w.at)}</span>
+                </li>
+              ))}
+            </ul>
+            {t.status === 'vorbereitung'
+              ? <p className="mt-1.5 text-muted">Gepflegt wird die Liste im jeweiligen Interessenten.</p>
+              : <p className="mt-1.5 text-muted">Die Position ist nicht mehr in Vorbereitung — die Übersicht führt das als offene Aufgabe.</p>}
+          </div>
+        )}
+
         <TagEditor tags={t.tags} category={t.category} onChange={(tags) => patchTank(t.id, { tags })} />
 
         <PhotoStrip tank={t} />
@@ -449,9 +498,21 @@ function TankDetail({ id, onClose, readOnly }: { id: string | null; onClose: () 
 }
 
 function DealModal({ open, onClose, tanks }: { open: boolean; onClose: () => void; tanks: Tank[] }) {
+  const { db } = useStore()
   const t = totals(tanks)
   const [price, setPrice] = useState('')
-  const [leadId, setLeadId] = useState('')
+  /*
+   * Wer auf eine der Positionen wartet, ist der wahrscheinlichste Käufer — als
+   * Vorschlag, nicht als Zwang. Ohne Käufer gebucht bliebe sein Bescheid-Wunsch
+   * stehen und die Karte behauptete „für eine Absage", obwohl er gekauft hat.
+   */
+  const [leadId, setLeadId] = useState(() => {
+    const ids = new Set(tanks.map((x) => x.id))
+    const w = db.leads
+      .flatMap((l) => (l.watch ?? []).filter((x) => ids.has(x.tankId)).map((x) => ({ leadId: l.id, at: x.at })))
+      .sort((a, b) => a.at.localeCompare(b.at))[0]
+    return w?.leadId ?? ''
+  })
   const [date, setDate] = useState(todayISO())
   const [note, setNote] = useState('')
 
@@ -505,6 +566,7 @@ function AddTankModal({ open, onClose }: { open: boolean; onClose: () => void })
   const [litres, setLitres] = useState('')
   const [vb, setVb] = useState('')
   const [count, setCount] = useState('1')
+  const [vorbereiten, setVorbereiten] = useState(false)
 
   if (!open) return null
   const cat = db.settings.categories.find((c) => c.id === category)
@@ -516,10 +578,10 @@ function AddTankModal({ open, onClose }: { open: boolean; onClose: () => void })
   function submit() {
     // Several identical items at once — 12 Gitterboxen should not need 12 rounds.
     for (let i = 0; i < n; i += 1) {
-      addTank({ category, maker: maker.trim() || 'Sonstige', type: type.trim() || (cat?.one ?? 'Position'), litres: l, vb: p })
+      addTank({ category, maker: maker.trim() || 'Sonstige', type: type.trim() || (cat?.one ?? 'Position'), litres: l, vb: p, status: vorbereiten ? 'vorbereitung' : 'verfuegbar' })
     }
     onClose()
-    setLitres(''); setVb(''); setType(''); setMaker(''); setCount('1')
+    setLitres(''); setVb(''); setType(''); setMaker(''); setCount('1'); setVorbereiten(false)
   }
 
   return (
@@ -546,6 +608,21 @@ function AddTankModal({ open, onClose }: { open: boolean; onClose: () => void })
             <Input type="number" min={1} max={200} value={count} onChange={(e) => setCount(e.target.value)} className="tnum" />
           </Field>
         </div>
+        {/*
+          Ohne diesen Schalter führte der einzige Anlege-Weg durch „verfügbar" —
+          und zwanzig Sekunden später stünde die Zukunftsmaschine über den
+          Autopiloten im öffentlichen Katalog, bevor der erste Bescheid-Wunsch
+          erfasst ist.
+        */}
+        <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-line bg-surface-2 p-3">
+          <input type="checkbox" checked={vorbereiten} onChange={(e) => setVorbereiten(e.target.checked)}
+            className="mt-0.5 h-4 w-4 accent-[var(--primary)]" />
+          <span className="text-[13px] leading-relaxed">
+            <strong>Noch nicht in den Verkauf</strong> — die Position bleibt „In Vorbereitung": nicht im Katalog,
+            in keiner Anzeige, in keinem Paket. Interessenten lassen sich schon dafür eintragen
+            („Bescheid geben, sobald im Verkauf").
+          </span>
+        </label>
         <p className="text-[13px] text-muted">Zielpreis und Untergrenze werden automatisch geschätzt (86 % bzw. 72 % der VB) und lassen sich danach anpassen.</p>
         <div className="flex justify-end gap-2 border-t border-line pt-4">
           <Button onClick={onClose}>Abbrechen</Button>

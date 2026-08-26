@@ -1,4 +1,4 @@
-import type { DB, Quote, Tank } from '../types'
+import type { DB, Lead, Quote, Tank } from '../types'
 import { isOpen, linePrice } from './stats'
 import { dims as fmtDims } from './format'
 
@@ -710,8 +710,18 @@ export async function draftReply(
   apiKey: string,
   model: string,
   quote?: Quote | null,
+  lead?: Lead | null,
 ): Promise<string> {
   const s = db.settings
+  /*
+   * Wartet dieser Mensch auf Positionen in Vorbereitung, muss der Entwurf das
+   * wissen — sonst antwortet er auf „Wann kommt die Presse?" mit dem freien
+   * Bestand oder mit Ahnungslosigkeit. Ausdrücklich OHNE Preis: der ist noch
+   * nicht beschlossen, und die Regel oben verbietet erfundene Zahlen.
+   */
+  const wartet = (lead?.watch ?? [])
+    .map((w) => db.tanks.find((t) => t.id === w.tankId))
+    .filter((t): t is Tank => Boolean(t) && t!.status === 'vorbereitung')
   const picked = db.tanks.filter((t) => tankIds.includes(t.id))
   /*
    * Der Entwurf muss dieselben Preise nennen wie das Angebot.
@@ -788,6 +798,10 @@ export async function draftReply(
     // beantwortet der Entwurf jede Frage nach dem Paketpreis mit Schweigen.
     ...(quote && picked.length > 1
       ? ['', `UNSER ANGEBOTSPREIS FÜR ALLE ${picked.length} ZUSAMMEN: ${quote.askPrice} EUR`]
+      : []),
+    ...(wartet.length
+      ? ['', 'ER WARTET AUF BESCHEID ZU (noch nicht im Verkauf — keinen Preis nennen, keinen Termin zusagen, nur: wir melden uns, sobald es so weit ist):',
+         ...wartet.map((t) => `- ${t.maker === 'Sonstige' ? t.type : `${t.maker} ${t.type}`}${t.litres > 0 ? `, ${t.litres} l` : ''}`)]
       : []),
     '',
     'ANFRAGE:',

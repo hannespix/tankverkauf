@@ -8,6 +8,7 @@ export const STATUS_FILL: Record<TankStatus, string> = {
   kontakt: 'var(--c-kontakt)',
   reserviert: 'var(--c-reserviert)',
   verkauft: 'var(--c-verkauft)',
+  vorbereitung: 'var(--c-vorbereitung)',
 }
 
 interface Tip {

@@ -1,4 +1,4 @@
-import type { DB, Deal, Maker, Quote, Tank, TankStatus } from '../types'
+import type { DB, Deal, Lead, Maker, Quote, Tank, TankStatus } from '../types'
 
 export interface Totals {
   count: number
@@ -22,7 +22,14 @@ export function totals(tanks: Tank[]): Totals {
 }
 
 export const isSold = (t: Tank) => t.status === 'verkauft'
-export const isOpen = (t: Tank) => t.status !== 'verkauft'
+/**
+ * Im Verkauf und noch zu haben. „In Vorbereitung" ist ausdrücklich NICHT offen:
+ * die Position existiert nur im Bestand — Katalog, Anzeigen, Pakete und alle
+ * Kennzahlen des laufenden Verkaufs sehen sie nicht. Achtung bei Negationen:
+ * `!isOpen` heißt seit diesem Status „verkauft ODER in Vorbereitung" — wer
+ * Verkauftes meint, nimmt `isSold`.
+ */
+export const isOpen = (t: Tank) => t.status !== 'verkauft' && t.status !== 'vorbereitung'
 
 /**
  * Revenue actually booked. A tank that belongs to a deal contributes through the
@@ -50,7 +57,7 @@ export function pipelineValue(db: DB): number {
 }
 
 export function byStatus(tanks: Tank[]): Record<TankStatus, Tank[]> {
-  const out: Record<TankStatus, Tank[]> = { verfuegbar: [], kontakt: [], reserviert: [], verkauft: [] }
+  const out: Record<TankStatus, Tank[]> = { verfuegbar: [], kontakt: [], reserviert: [], verkauft: [], vorbereitung: [] }
   for (const t of tanks) out[t.status].push(t)
   return out
 }
@@ -86,7 +93,10 @@ export function dealOf(db: DB, tank: Tank): Deal | null {
 
 /** Progress of the whole liquidation, by value and by volume. */
 export function progress(db: DB) {
-  const all = totals(db.tanks)
+  // Gemessen wird der VERKAUF: verkauft plus noch zu haben. Was in Vorbereitung
+  // steht, gehört noch nicht dazu — sonst gälte all ≠ sold + open, und die
+  // Übersicht wie der Excel-Export ließen eine Restmenge unerklärt.
+  const all = totals(db.tanks.filter((t) => t.status !== 'vorbereitung'))
   const sold = totals(db.tanks.filter(isSold))
   const open = totals(db.tanks.filter(isOpen))
   return {
@@ -215,4 +225,36 @@ export function quoteRelation(quoteIds: string[], pickedIds: string[]): string {
     onlyQuote.length ? `${onlyQuote.length} nur im Angebot` : '',
     onlyPicked.length ? `${onlyPicked.length} nur in der Auswahl` : '',
   ].filter(Boolean).join(', ')
+}
+
+// ------------------------------------------------------- Bescheid geben
+
+export interface DueWatch {
+  lead: Lead
+  tank: Tank
+  /** Verkauft an jemand anderen — dann ist die Aufgabe eine Absage, kein Zuruf. */
+  sold: boolean
+}
+
+/**
+ * Fällige Bescheid-Wünsche: der Mensch wollte informiert werden, sobald die
+ * Position in den Verkauf geht — und sie ist nicht mehr in Vorbereitung.
+ *
+ * Berechnet, nicht gespeichert: es gibt kein Ereignis, das man verpassen, und
+ * keinen Merker, der beim Abgleich zweier Geräte streiten könnte. Die Karte
+ * verschwindet, wenn der Eintrag gelöscht wird — von Hand oder von selbst,
+ * sobald ein Angebot oder Verkauf dieses Menschen die Position enthält.
+ * Einträge auf gelöschte Positionen räumt removeTank ab; falls doch einer
+ * durchrutscht, fällt er hier still heraus statt eine Geisterkarte zu tragen.
+ */
+export function dueWatches(db: DB): DueWatch[] {
+  const out: DueWatch[] = []
+  for (const lead of db.leads) {
+    for (const w of lead.watch ?? []) {
+      const tank = db.tanks.find((t) => t.id === w.tankId)
+      if (!tank || tank.status === 'vorbereitung') continue
+      out.push({ lead, tank, sold: tank.status === 'verkauft' })
+    }
+  }
+  return out
 }

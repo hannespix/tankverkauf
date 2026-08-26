@@ -61,6 +61,9 @@
   --c-kontakt: #c2410c;
   --c-reserviert: #1d4ed8;
   --c-verkauft: #9aa8a1;
+  /* Noch nicht im Verkauf — bewusst zwischen „verkauft"-Grau und den aktiven
+     Farben: gedeckt, aber von Verkauft unterscheidbar. */
+  --c-vorbereitung: #64748b;
   --c-series: #047857;
   --c-track: #e7ede9;
 }
@@ -92,6 +95,7 @@
   --c-kontakt: #c98209;
   --c-reserviert: #1f8fce;
   --c-verkauft: #55665d;
+  --c-vorbereitung: #7d8ea3;
   --c-series: #0d9c6e;
   --c-track: #1d2823;
 }

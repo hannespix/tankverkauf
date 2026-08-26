@@ -55,7 +55,7 @@ export function Verlauf({ lead, quote, readOnly }: { lead: Lead; quote?: Quote |
     try {
       const letzte = messages.find((m) => m.dir !== 'aus')
       const ids = quote?.tankIds.length ? quote.tankIds : live.tankIds
-      const entwurf = await draftReply(letzte?.text ?? live.note, db, ids, key, db.settings.ai.model, quote)
+      const entwurf = await draftReply(letzte?.text ?? live.note, db, ids, key, db.settings.ai.model, quote, live)
       setText(entwurf)
       setSubject((s) => s || (quote ? `Angebot ${quote.id}` : 'Ihre Anfrage'))
       setOffen(true)

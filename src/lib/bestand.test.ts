@@ -24,12 +24,12 @@ const mem = new Map<string, string>()
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { store } from './store'
-import { applyProposal, createAd, createDeal, createQuote, detachTanks, noteOnLead, refreshAd, releaseQuoteTanks, removeLead, removeQuote, saveReply, setQuoteLinePrice, setQuoteReserved, setQuoteTanks } from './actions'
+import { addTank, applyProposal, createAd, createDeal, createQuote, detachTanks, noteOnLead, refreshAd, releaseQuoteTanks, removeLead, removeQuote, removeTank, saveReply, setLeadWatch, setQuoteLinePrice, setQuoteReserved, setQuoteTanks } from './actions'
 import { quoteMail } from './mail'
 import { resolveBundle } from './bundles'
 import { adDrift, generateAd } from './ads'
 import { buildCatalog, catalogPhotos, catalogStamp, photoStamp, photoStampOf } from './catalog'
-import { openQuotesOf, quoteMetrics, quoteRelation } from './stats'
+import { dueWatches, openQuotesOf, pipelineValue, progress, quoteMetrics, quoteRelation } from './stats'
 import type { AdScope, DB, Deal, Lead, Quote, Tank } from '../types'
 
 const at = (n: number) => `2026-0${n}-01T00:00:00.000Z`
@@ -864,4 +864,114 @@ test('B49 · reservierte Ware bleibt lieferbar und in der Liste', () => {
   assert.deepEqual(c.items.map((i) => i.id), ['T-1'])
   assert.equal(c.items[0]!.reserved, true)
   assert.deepEqual(c.soldItems ?? [], [], 'sie ist nicht verkauft')
+})
+
+
+/*
+ * B51 bis B58 — „In Vorbereitung" und „Bescheid geben".
+ *
+ * Eine Position kann existieren, ohne im Verkauf zu sein; Interessenten können
+ * sich für ihren Verkaufsstart eintragen. Jeder Fall hier ist ein Weg, auf dem
+ * stille Ware ungefragt öffentlich geworden wäre — oder eine Zusage an einen
+ * Menschen still verloren gegangen wäre.
+ */
+
+test('B51 · In Vorbereitung ist nirgends im Verkauf — aber auch nicht „verkauft"', () => {
+  setDb({ tanks: [tank('T-1'), tank('T-2', { status: 'vorbereitung' })] })
+  const d = db()
+  const c = buildCatalog(d)
+  assert.deepEqual(c.items.map((i) => i.id), ['T-1'], 'nicht im Katalog')
+  assert.deepEqual((c.soldItems ?? []).map((i) => i.id), [], 'und erst recht nicht als verkauft — !isOpen hieße genau das')
+  const ad = generateAd(d, { kind: 'kategorie', category: 'tank' }, d.settings.portals[0]!)
+  assert.ok(!ad.body.includes('T-2') && !ad.tankIds.includes('T-2'), 'nicht in Anzeigen')
+  assert.equal(pipelineValue(d), 0, 'kein Gebot in Vorbereitung zählt in die Pipeline')
+})
+
+test('B52 · der Verkaufsfortschritt rechnet ohne Vorbereitung — und geht auf', () => {
+  setDb({
+    tanks: [
+      tank('T-1', { vb: 1000 }),
+      tank('T-2', { vb: 1000, status: 'verkauft', dealId: 'D-1' }),
+      tank('T-3', { vb: 1000, status: 'vorbereitung' }),
+    ],
+  })
+  const p = progress(db())
+  assert.equal(p.all.count, 2, 'gemessen wird der Verkauf, nicht der Schuppen')
+  assert.equal(p.all.count, p.sold.count + p.open.count, 'nichts bleibt unerklärt')
+})
+
+test('B53 · addTank nimmt den Status an — vorher wurde er still verworfen', () => {
+  setDb({})
+  addTank({ category: 'maschine', maker: 'Willmes', type: 'Bandpresse', vb: 3000, status: 'vorbereitung' })
+  const t = db().tanks[0]!
+  assert.equal(t.status, 'vorbereitung', 'sonst stünde die Zukunftsmaschine 20 Sekunden später im Katalog')
+  assert.equal(buildCatalog(db()).items.length, 0)
+})
+
+test('B54 · ein abgelehntes Angebot hebt Vorbereitung nicht in den Katalog', () => {
+  /*
+   * releaseQuoteTanks setzte alles, was nicht verkauft oder frei war, auf
+   * „verfügbar". Für eine Vorbereitungs-Position wäre das die Einbahnstraße in
+   * den öffentlichen Katalog — dabei hat createQuote ihren Status nie angefasst.
+   */
+  setDb({
+    tanks: [tank('T-1', { status: 'vorbereitung' })],
+    leads: [lead('L-1')],
+  })
+  const qid = createQuote({ label: 'Früh', leadId: 'L-1', portalId: null, tankIds: ['T-1'], askPrice: 900, note: '' })
+  assert.equal(db().tanks[0]!.status, 'vorbereitung', 'das Angebot lässt den Status in Ruhe')
+  releaseQuoteTanks(qid)
+  assert.equal(db().tanks[0]!.status, 'vorbereitung', 'und die Freigabe auch')
+})
+
+test('B55 · Bescheid-Wunsch: eintragen, fällig werden, austragen', () => {
+  setDb({ tanks: [tank('T-1', { status: 'vorbereitung' })], leads: [lead('L-1', { name: 'Alexander' })] })
+  setLeadWatch('L-1', 'T-1', true)
+  assert.equal(dueWatches(db()).length, 0, 'in Vorbereitung ist nichts fällig')
+
+  store.mutate((x) => { x.tanks[0]!.status = 'verfuegbar' })
+  const due = dueWatches(db())
+  assert.equal(due.length, 1, 'im Verkauf → fällig')
+  assert.equal(due[0]!.lead.name, 'Alexander')
+  assert.equal(due[0]!.sold, false)
+
+  store.mutate((x) => { x.tanks[0]!.status = 'verkauft'; x.tanks[0]!.dealId = 'D-9' })
+  assert.equal(dueWatches(db())[0]!.sold, true, 'verkauft heißt: die Aufgabe ist eine Absage')
+
+  setLeadWatch('L-1', 'T-1', false)
+  assert.equal(dueWatches(db()).length, 0)
+  assert.equal(db().leads[0]!.watch, undefined, 'leere Liste bleibt nicht als Leiche stehen')
+})
+
+test('B56 · ein Angebot mit der Position erledigt den Bescheid-Wunsch — ein fremdes nicht', () => {
+  setDb({
+    tanks: [tank('T-1', { status: 'vorbereitung' }), tank('T-2', { status: 'vorbereitung' })],
+    leads: [lead('L-1'), lead('L-2')],
+  })
+  setLeadWatch('L-1', 'T-1', true)
+  setLeadWatch('L-2', 'T-1', true)
+  createQuote({ label: 'A', leadId: 'L-1', portalId: null, tankIds: ['T-1'], askPrice: 500, note: '' })
+  assert.equal(db().leads.find((l) => l.id === 'L-1')!.watch, undefined, 'der Vorgang hat den Wunsch überholt')
+  assert.equal((db().leads.find((l) => l.id === 'L-2')!.watch ?? []).length, 1, 'der andere wartet weiter')
+})
+
+test('B57 · ein Verkauf an den Wartenden erledigt den Wunsch — gekauft ist besser als benachrichtigt', () => {
+  setDb({ tanks: [tank('T-1', { status: 'vorbereitung' })], leads: [lead('L-1')] })
+  setLeadWatch('L-1', 'T-1', true)
+  createDeal({ label: 'Früh', tankIds: ['T-1'], price: 800, leadId: 'L-1', date: '2026-08-25', note: '' })
+  assert.equal(db().leads[0]!.watch, undefined)
+  assert.equal(db().tanks[0]!.status, 'verkauft')
+})
+
+test('B58 · eine gelöschte Position hinterlässt keine Geisterkarte', () => {
+  /*
+   * Ein Eintrag auf eine gelöschte Position wäre nach der Regel „fällig, sobald
+   * nicht mehr in Vorbereitung" sofort und für immer fällig — und eine später
+   * unter derselben Nummer angelegte Position erbte fremde Zusagen.
+   */
+  setDb({ tanks: [tank('T-1', { status: 'vorbereitung' })], leads: [lead('L-1')] })
+  setLeadWatch('L-1', 'T-1', true)
+  removeTank(db().tanks[0]!)
+  assert.equal(db().leads[0]!.watch, undefined, 'removeTank räumt die Zusage mit ab')
+  assert.equal(dueWatches(db()).length, 0)
 })

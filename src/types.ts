@@ -1,6 +1,12 @@
 /** Domain model for the Tankverkauf dashboard. Everything is stored brutto (incl. VAT). */
 
-export type TankStatus = 'verfuegbar' | 'kontakt' | 'reserviert' | 'verkauft'
+/**
+ * 'vorbereitung' = existiert im Bestand, steht aber noch nicht im Verkauf:
+ * kein Katalog, keine Anzeige, kein Paket, keine Verkaufskennzahl. Der Weg in
+ * den Verkauf ist der Statuswechsel auf 'verfuegbar' — und genau an dem hängen
+ * die Bescheid-Erinnerungen (Lead.watch).
+ */
+export type TankStatus = 'verfuegbar' | 'kontakt' | 'reserviert' | 'verkauft' | 'vorbereitung'
 
 /** Category id. The list itself is configurable, see Settings.categories. */
 export type Category = string
@@ -90,8 +96,26 @@ export interface Lead {
    * verwerfen — ein Feld an Lead reist unverändert mit, auch durch replaceAll().
    */
   messages?: LeadMessage[]
+  /**
+   * „Bescheid geben, sobald im Verkauf": Positionen (meist in Vorbereitung),
+   * über deren Verkaufsstart dieser Mensch informiert werden will.
+   *
+   * Bewusst NUR hier, nicht auch am Tank — die Doppelspur tankIds/leadId kostet
+   * Reparaturcode in der halben actions.ts, und eine zweite braucht niemand.
+   * `at` hält fest, wer zuerst gefragt hat: bei zwei Wartenden auf dieselbe
+   * Maschine ist das die entscheidende Information, und der Verlauf ist auf
+   * 300 Einträge gekappt. Als Feld am Lead reist es unverändert durch
+   * migrate() und replaceAll() — dasselbe Muster wie `messages`.
+   */
+  watch?: LeadWatch[]
   createdAt: string
   updatedAt: string
+}
+
+export interface LeadWatch {
+  tankId: string
+  /** Wann der Wunsch geäußert wurde — entscheidet „wer zuerst". */
+  at: string
 }
 
 export interface LeadMessage {
@@ -471,6 +495,7 @@ export const STATUS_LABEL: Record<TankStatus, string> = {
   kontakt: 'Im Kontakt',
   reserviert: 'Reserviert',
   verkauft: 'Verkauft',
+  vorbereitung: 'In Vorbereitung',
 }
 
 export const QUOTE_STATUS_LABEL: Record<QuoteStatus, string> = {

@@ -560,7 +560,7 @@ function AdPhotos({ ad }: { ad: Ad }) {
       </p>
       {gone > 0 && (
         <p className="mt-1.5 text-[13px] font-semibold text-amber">
-          {gone} beworbene {gone === 1 ? 'Position ist' : 'Positionen sind'} inzwischen verkauft und {gone === 1 ? 'bleibt' : 'bleiben'} aus
+          {gone} beworbene {gone === 1 ? 'Position ist' : 'Positionen sind'} nicht mehr im Verkauf und {gone === 1 ? 'bleibt' : 'bleiben'} aus
           den Übersichtsbildern draußen. Den Anzeigentext dazu neu erzeugen.
         </p>
       )}

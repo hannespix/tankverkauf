@@ -8,7 +8,13 @@ import { newId, store } from './store'
 import { lineSum, openQuotesOf } from './stats'
 
 const now = () => new Date().toISOString()
-const tankName = (t: Tank) => `${t.maker === 'Sonstige' ? t.type : t.maker} ${t.litres} l`
+// „Willmes 0 l" stand im Verlauf, sobald die erste Maschine ohne Volumen einen
+// Statuswechsel bekam — die Literzahl gehört nur an Positionen, die eine haben;
+// ohne sie trägt die Bezeichnung den Namen.
+const tankName = (t: Tank) =>
+  t.litres > 0
+    ? `${t.maker === 'Sonstige' ? t.type : t.maker} ${t.litres} l`
+    : t.maker === 'Sonstige' ? t.type : `${t.maker} ${t.type}`
 
 // -------------------------------------------------------------------- tanks
 
@@ -53,7 +59,14 @@ export function addTank(partial: Partial<Tank>) {
         vb,
         target: partial.target ?? Math.round(vb * 0.86),
         floor: partial.floor ?? Math.round(vb * 0.72),
-        status: 'verfuegbar',
+        /*
+         * Der Status darf mitkommen — vorher wurde er stillschweigend verworfen.
+         * Das war die eine Lücke, durch die „In Vorbereitung" nie erreichbar
+         * gewesen wäre: wer die Zukunftsmaschine anlegt, um sie auf eine
+         * Bescheid-Liste zu setzen, hätte sie über den Autopiloten zwanzig
+         * Sekunden später im öffentlichen Katalog gehabt.
+         */
+        status: partial.status ?? 'verfuegbar',
         leadId: null,
         dealId: null,
         offer: null,
@@ -64,7 +77,7 @@ export function addTank(partial: Partial<Tank>) {
         updatedAt: now(),
       })
     },
-    { kind: 'tank', text: `Position angelegt: ${partial.maker ?? ''} ${partial.type ?? ''}`.replace(/\s+/g, ' ').trim() },
+    { kind: 'tank', text: `Position angelegt${partial.status === 'vorbereitung' ? ' (in Vorbereitung)' : ''}: ${partial.maker ?? ''} ${partial.type ?? ''}`.replace(/\s+/g, ' ').trim() },
   )
 }
 
@@ -124,6 +137,14 @@ export function removeTank(tank: Tank) {
       })
       db.leads.forEach((l) => {
         l.tankIds = l.tankIds.filter((id) => id !== tank.id)
+        // Auch die Bescheid-Wünsche: ein Eintrag auf eine gelöschte Position
+        // wäre nach der Regel „fällig, sobald nicht mehr in Vorbereitung"
+        // sofort und für immer fällig — eine Geisterkarte. Und eine später
+        // unter derselben Nummer angelegte Position erbte fremde Zusagen.
+        if (l.watch) {
+          l.watch = l.watch.filter((w) => w.tankId !== tank.id)
+          if (l.watch.length === 0) delete l.watch
+        }
       })
       db.quotes.forEach((q) => {
         q.tankIds = q.tankIds.filter((id) => id !== tank.id)
@@ -571,6 +592,52 @@ export function applyProposal(p: Proposal, leadId: string | null, message: strin
   }
 }
 
+// ----------------------------------------------------- Bescheid geben
+
+/**
+ * „Bescheid geben, sobald im Verkauf" an- oder abhaken.
+ *
+ * Eine EIGENE Aktion, kein Umweg über attachTanks: die stellt verfügbare
+ * Positionen nebenbei auf „Im Kontakt" — für einen bloßen Zukunftswunsch wäre
+ * das die falsche Nebenwirkung. Hier ändert sich am Bestand nichts.
+ */
+export function setLeadWatch(leadId: string, tankId: string, on: boolean) {
+  store.mutate(
+    (db) => {
+      const l = db.leads.find((x) => x.id === leadId)
+      if (!l) return
+      const rest = (l.watch ?? []).filter((w) => w.tankId !== tankId)
+      if (on) rest.push({ tankId, at: now() })
+      if (rest.length > 0) l.watch = rest
+      else delete l.watch
+      l.updatedAt = now()
+    },
+    (() => {
+      const d = store.getSnapshot().db
+      const t = d.tanks.find((x) => x.id === tankId)
+      const l = d.leads.find((x) => x.id === leadId)
+      return { kind: 'lead' as const, text: `${l?.name ?? 'Interessent'} ${on ? 'wartet auf' : 'wartet nicht mehr auf'}: ${t ? tankName(t) : tankId}` }
+    })(),
+  )
+}
+
+/**
+ * Bescheid-Wünsche gelten als erledigt, sobald der Vorgang sie überholt hat:
+ * ein Angebot oder Verkauf DIESES Menschen enthält die Position. Echtes
+ * Löschen, keine Unterdrückung — ein nur verstecktes Fällig käme nach dem
+ * Ablehnen des Angebots Monate später ohne erkennbaren Anlass zurück.
+ *
+ * Läuft im selben store.mutate wie die Angebots-/Verkaufsänderung, damit kein
+ * zweiter Speichervorgang und keine zweite Verlaufszeile entsteht.
+ */
+function clearWatches(db: DB, leadId: string | null, tankIds: string[]) {
+  if (!leadId || tankIds.length === 0) return
+  const l = db.leads.find((x) => x.id === leadId)
+  if (!l?.watch) return
+  l.watch = l.watch.filter((w) => !tankIds.includes(w.tankId))
+  if (l.watch.length === 0) delete l.watch
+}
+
 // ------------------------------------------------------------------- quotes
 
 /**
@@ -745,7 +812,10 @@ export function releaseQuoteTanks(quoteId: string) {
       const frei: string[] = []
       for (const tid of q.tankIds) {
         const t = db.tanks.find((x) => x.id === tid)
-        if (!t || t.status === 'verkauft' || t.status === 'verfuegbar') continue
+        // 'vorbereitung' bleibt, was sie ist: createQuote fasst ihren Status
+        // nie an, also gibt es hier nichts freizugeben — ein pauschales
+        // „verfügbar" höbe stille Ware ungefragt in den öffentlichen Katalog.
+        if (!t || t.status === 'verkauft' || t.status === 'verfuegbar' || t.status === 'vorbereitung') continue
         if (heldByQuote(db, tid, quoteId)) continue
         if (db.leads.some((l) => l.tankIds.includes(tid))) continue
         t.status = 'verfuegbar'
@@ -797,6 +867,7 @@ export function setQuoteTanks(quoteId: string, tankIds: string[]) {
       const auto = askFor(db, before)
       const zeilenVorher = sumLines(db, q, before)
       q.tankIds = wanted
+      clearWatches(db, q.leadId, wanted)
       // Preiszeilen weggefallener Positionen mitnehmen. Bliebe der Eintrag
       // liegen, tauchte beim Wiederhinzufügen still ein Preis auf, den in
       // dieser Runde niemand gesetzt hat.
@@ -861,6 +932,9 @@ export function createQuote(input: {
         if (!t || t.status === 'verkauft') return false
         return !(t.status === 'reserviert' && t.leadId && t.leadId !== input.leadId)
       })
+      // Ein Angebot mit der Position überholt den Bescheid-Wunsch desselben
+      // Menschen — der Vorgang läuft jetzt regulär.
+      clearWatches(db, input.leadId, tankIds)
       db.quotes.unshift({
         id,
         label: input.label || 'Angebot',
@@ -975,6 +1049,9 @@ export function createDeal(input: { label: string; tankIds: string[]; price: num
         t.leadId = input.leadId ?? t.leadId
         t.updatedAt = now()
       }
+      // Gekauft ist besser als benachrichtigt: der Bescheid-Wunsch des Käufers
+      // auf diese Positionen ist damit erledigt.
+      clearWatches(db, input.leadId, input.tankIds)
       /*
        * Ein Verkauf schließt die Angebote, die er erledigt.
        *
@@ -1031,6 +1108,9 @@ export function assignDealLead(dealId: string, leadId: string | null) {
       if (previousId === leadId) return
 
       deal.leadId = leadId
+      // Erst hier entsteht ggf. die Paarung „diese Position + dieser Mensch" —
+      // ein nachträglich zugeordneter Käufer wartet auf nichts mehr davon.
+      clearWatches(db, leadId, deal.tankIds)
       for (const tid of deal.tankIds) {
         const t = db.tanks.find((x) => x.id === tid)
         if (t) {

@@ -6,9 +6,9 @@ import { adDrift } from '../lib/ads'
 import { missingFromSeed, patchSettings } from '../lib/actions'
 import { centsPerLitre, eur, num, relativeDE } from '../lib/format'
 import { useStore } from '../lib/store'
-import { byMaker, isOpen, judgeOffer, progress, totals } from '../lib/stats'
+import { byMaker, dueWatches, isOpen, judgeOffer, progress, totals } from '../lib/stats'
 import { STATUS_LABEL, type TankStatus } from '../types'
-import type { View, ViewProps } from '../App'
+import type { Focus, View, ViewProps } from '../App'
 
 export default function Overview({ go }: ViewProps) {
   const { db } = useStore()
@@ -21,12 +21,15 @@ export default function Overview({ go }: ViewProps) {
     .map((c) => ({ cat: c, items: open.filter((t) => t.category === c.id) }))
     .filter((g) => g.items.length > 0)
 
-  const statusSegments: Segment[] = (['verfuegbar', 'kontakt', 'reserviert', 'verkauft'] as TankStatus[]).map((s) => ({
+  // 'vorbereitung' steht mit im Balken — unsichtbar im Verkauf, aber nicht in
+  // der Arithmetik: sonst summierten die Segmente unter der Gesamtzahl.
+  const statusSegments: Segment[] = (['verfuegbar', 'kontakt', 'reserviert', 'verkauft', 'vorbereitung'] as TankStatus[]).map((s) => ({
     key: s,
     label: STATUS_LABEL[s],
     value: db.tanks.filter((t) => t.status === s).length,
     fill: STATUS_FILL[s],
   }))
+  const inVorbereitung = db.tanks.filter((t) => t.status === 'vorbereitung').length
 
   const makerRows: BarRow[] = byMaker(openTanks).map((g) => {
     const t = totals(g.tanks)
@@ -47,14 +50,27 @@ export default function Overview({ go }: ViewProps) {
   const pkgPerL = pkg.litres ? centsPerLitre(s.packagePrice, pkg.litres) : '–'
   const saving = pkg.vb - s.packagePrice
 
+  /*
+   * Fällige Bescheid-Wünsche, je Mensch gebündelt: zehn Karten für einen
+   * Interessenten mit zehn Maschinen wären Rauschen. Der Klick springt direkt
+   * in seinen Vorgang — abhaken oder Angebot erstellen erledigt den Eintrag.
+   */
+  const due = dueWatches(db)
+  const dueByLead = [...new Map(due.map((d) => [d.lead.id, d.lead])).values()].map((lead) => {
+    const mine = due.filter((d) => d.lead.id === lead.id)
+    const namen = mine.map((d) => `${d.tank.maker === 'Sonstige' ? d.tank.type : `${d.tank.maker} ${d.tank.type}`}${d.sold ? ' (verkauft — absagen?)' : ''}`)
+    return { lead, text: `${lead.name} wollte Bescheid: ${namen.join(', ')} — jetzt im Verkauf` }
+  })
+
   const missing = missingFromSeed(db)
   const todos = [
     missing.length > 0 && { icon: <IconWarn />, tone: 'amber' as const, text: `${missing.length} Positionen aus dem Ausgangsbestand fehlen im Bestand`, go: 'settings' as View },
     dueFollowUps.length > 0 && { icon: <IconClock />, tone: 'amber' as const, text: `${dueFollowUps.length} Wiedervorlage${dueFollowUps.length > 1 ? 'n' : ''} fällig`, go: 'leads' as View },
+    ...dueByLead.map((d) => ({ icon: <IconClock />, tone: 'amber' as const, text: d.text, go: 'leads' as View, focus: { leadId: d.lead.id } })),
     belowFloor.length > 0 && { icon: <IconWarn />, tone: 'rose' as const, text: `${belowFloor.length} Gebot${belowFloor.length > 1 ? 'e' : ''} unter Untergrenze`, go: 'tanks' as View },
     staleAds.length > 0 && { icon: <IconMegaphone />, tone: 'amber' as const, text: `${staleAds.length} Anzeige${staleAds.length > 1 ? 'n' : ''} nicht mehr aktuell`, go: 'ads' as View },
     bumpDue.length > 0 && { icon: <IconClock />, tone: 'sky' as const, text: `${bumpDue.length} Anzeige${bumpDue.length > 1 ? 'n' : ''} zum Hochholen`, go: 'ads' as View },
-  ].filter(Boolean) as { icon: React.ReactNode; tone: 'amber' | 'rose' | 'sky'; text: string; go: View }[]
+  ].filter(Boolean) as { icon: React.ReactNode; tone: 'amber' | 'rose' | 'sky'; text: string; go: View; focus?: Focus }[]
 
   return (
     <div className="space-y-4">
@@ -63,7 +79,7 @@ export default function Overview({ go }: ViewProps) {
           <ul className="divide-y divide-line">
             {todos.map((t) => (
               <li key={t.text}>
-                <button type="button" onClick={() => go(t.go)} className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold transition hover:bg-surface-3">
+                <button type="button" onClick={() => go(t.go, t.focus)} className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold transition hover:bg-surface-3">
                   <span className={cx(t.tone === 'rose' ? 'text-rose' : t.tone === 'sky' ? 'text-sky' : 'text-amber')}>{t.icon}</span>
                   {t.text}
                   <span className="ml-auto text-muted">›</span>
@@ -75,7 +91,7 @@ export default function Overview({ go }: ViewProps) {
       )}
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-6">
-        <Stat label="Noch da" value={p.open.count} sub={byCat.map((g) => `${g.items.length} ${g.cat.label}`).join(' · ') || 'alles verkauft'} />
+        <Stat label="Noch da" value={p.open.count} sub={[byCat.map((g) => `${g.items.length} ${g.cat.label}`).join(' · ') || 'alles verkauft', inVorbereitung > 0 ? `+ ${inVorbereitung} in Vorbereitung` : ''].filter(Boolean).join(' · ')} />
         <Stat label="Im Kontakt" value={db.tanks.filter((t) => t.status === 'kontakt').length} sub="laufende Gespräche" />
         <Stat label="Reserviert" value={db.tanks.filter((t) => t.status === 'reserviert').length} sub="fest vorgemerkt" />
         <Stat label="Verkauft" value={p.sold.count} sub={`${num(p.sold.litres)} l abgegeben`} />
