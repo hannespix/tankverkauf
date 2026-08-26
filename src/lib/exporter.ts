@@ -114,7 +114,7 @@ function leadRows(db: DB) {
     'Wartet auf': (l.watch ?? [])
       .map((w) => db.tanks.find((t) => t.id === w.tankId))
       .filter(Boolean)
-      .map((t) => `${t!.maker} ${t!.type}`)
+      .map((t) => (t!.maker === 'Sonstige' ? t!.type : `${t!.maker} ${t!.type}`))
       .join(', '),
     Budget: l.budget ?? '',
     'Letzter Kontakt': l.lastContact ?? '',

@@ -744,7 +744,16 @@ export function setQuoteReserved(quoteId: string, tankIds: string[], on: boolean
       for (const id of q.tankIds) {
         if (!wanted.has(id)) continue
         const t = db.tanks.find((x) => x.id === id)
-        if (!t || t.status === 'verkauft') continue
+        /*
+         * „In Vorbereitung" lässt sich nicht reservieren: reserviert heißt für
+         * den Käufer sichtbar zugesagt — die Position stünde binnen zwanzig
+         * Sekunden im öffentlichen Katalog, und beim Lösen käme sie als
+         * „kontakt" oder „verfügbar" zurück, nie als Vorbereitung. Wer dem
+         * Wartenden die Maschine fest zusagen will, stellt sie erst in den
+         * Verkauf — ein sichtbarer Schritt statt einer stillen Einbahnstraße.
+         * Frühverkauf (Angebot, Verkauf buchen) bleibt davon unberührt.
+         */
+        if (!t || t.status === 'verkauft' || t.status === 'vorbereitung') continue
         if (on) {
           if (t.status === 'reserviert' && t.leadId && t.leadId !== q.leadId) continue
           t.status = 'reserviert'
@@ -974,6 +983,10 @@ export function patchQuote(id: string, patch: Partial<Quote>, label?: string) {
       const q = db.quotes.find((x) => x.id === id)
       if (!q) return
       Object.assign(q, patch, { updatedAt: now() })
+      // Wird ein Angebot nachträglich einem Menschen zugeordnet, hat der
+      // Vorgang dessen Bescheid-Wünsche auf diese Positionen überholt — genau
+      // wie beim Anlegen (createQuote) und beim Verkauf (assignDealLead).
+      if (patch.leadId) clearWatches(db, patch.leadId, q.tankIds)
     },
     label ? { kind: 'deal', text: label } : undefined,
   )
@@ -1166,6 +1179,10 @@ export function removeDeal(dealId: string) {
       for (const tid of deal.tankIds) {
         const t = db.tanks.find((x) => x.id === tid)
         if (!t) continue
+        // Bewusste Vereinfachung: auch eine FRÜH verkaufte Position (aus der
+        // Vorbereitung heraus) kommt nach der Rücknahme als „verfügbar" zurück
+        // — den Vorzustand speichert niemand. Wer sie noch nicht anbieten
+        // wollte, stellt sie im Bestand wieder auf „In Vorbereitung".
         // Führt ein ANDERER Verkauf dieselbe Position, bleibt sie verkauft.
         // `t.dealId` zeigt nur auf den zuletzt gebuchten; ohne diese Prüfung kam
         // sie als frei zurück, während der ältere Verkauf sie noch führte — und

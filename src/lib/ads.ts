@@ -284,6 +284,27 @@ function buildAd(db: DB, scope: AdScope, portal: Portal | null): GeneratedAd {
     if (!tank) {
       return { title: '', body: 'Position nicht gefunden.', price: 0, priceType: 'VB', tankIds: [], stamp: '' }
     }
+    /*
+     * Der Einzel-Zuschnitt holt seine Position OHNE isOpen — sonst verlöre eine
+     * bestehende Anzeige nach dem Verkauf ihren Bezug. Aber „Text neu erzeugen"
+     * baute damit auch für Verkauftes und für „In Vorbereitung" den vollen
+     * Verkaufstext samt Preis — und der Veraltet-Hinweis empfahl genau diesen
+     * Klick. Für beide Zustände entsteht jetzt der ehrliche Kurztext.
+     */
+    if (tank.status === 'verkauft' || tank.status === 'vorbereitung') {
+      const n = tank.maker === 'Sonstige' ? tank.type : `${tank.maker} ${tank.type}`
+      const weg = tank.status === 'verkauft'
+      return {
+        title: trim(`${n} — ${weg ? 'verkauft' : 'derzeit nicht im Angebot'}`, lim.title),
+        body: weg
+          ? `Diese Position ist verkauft. Vielen Dank für das Interesse.`
+          : `Diese Position ist derzeit nicht im Angebot.`,
+        price: 0,
+        priceType: 'VB',
+        tankIds: [],
+        stamp: stampOf([tank], 0),
+      }
+    }
     const name = tank.maker === 'Sonstige' ? tank.type : `${tank.maker} ${tank.type}`
     // Without a maker's plate the shape is the name, so the word buyers actually
     // search for has to come from the title instead.

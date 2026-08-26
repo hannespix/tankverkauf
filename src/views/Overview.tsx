@@ -59,26 +59,31 @@ export default function Overview({ go }: ViewProps) {
   const dueByLead = [...new Map(due.map((d) => [d.lead.id, d.lead])).values()].map((lead) => {
     const mine = due.filter((d) => d.lead.id === lead.id)
     const namen = mine.map((d) => `${d.tank.maker === 'Sonstige' ? d.tank.type : `${d.tank.maker} ${d.tank.type}`}${d.sold ? ' (verkauft — absagen?)' : ''}`)
-    return { lead, text: `${lead.name} wollte Bescheid: ${namen.join(', ')} — jetzt im Verkauf` }
+    // „— jetzt im Verkauf" nur, wenn davon auch etwas stimmt: ist alles
+    // Genannte verkauft, ist die Aufgabe eine Absage, kein Zuruf.
+    const schluss = mine.every((d) => d.sold) ? 'inzwischen verkauft' : 'jetzt im Verkauf'
+    return { lead, text: `${lead.name} wollte Bescheid: ${namen.join(', ')} — ${schluss}` }
   })
 
   const missing = missingFromSeed(db)
   const todos = [
     missing.length > 0 && { icon: <IconWarn />, tone: 'amber' as const, text: `${missing.length} Positionen aus dem Ausgangsbestand fehlen im Bestand`, go: 'settings' as View },
     dueFollowUps.length > 0 && { icon: <IconClock />, tone: 'amber' as const, text: `${dueFollowUps.length} Wiedervorlage${dueFollowUps.length > 1 ? 'n' : ''} fällig`, go: 'leads' as View },
-    ...dueByLead.map((d) => ({ icon: <IconClock />, tone: 'amber' as const, text: d.text, go: 'leads' as View, focus: { leadId: d.lead.id } })),
+    ...dueByLead.map((d) => ({ icon: <IconClock />, tone: 'amber' as const, text: d.text, go: 'leads' as View, focus: { leadId: d.lead.id }, key: `bescheid-${d.lead.id}` })),
     belowFloor.length > 0 && { icon: <IconWarn />, tone: 'rose' as const, text: `${belowFloor.length} Gebot${belowFloor.length > 1 ? 'e' : ''} unter Untergrenze`, go: 'tanks' as View },
     staleAds.length > 0 && { icon: <IconMegaphone />, tone: 'amber' as const, text: `${staleAds.length} Anzeige${staleAds.length > 1 ? 'n' : ''} nicht mehr aktuell`, go: 'ads' as View },
     bumpDue.length > 0 && { icon: <IconClock />, tone: 'sky' as const, text: `${bumpDue.length} Anzeige${bumpDue.length > 1 ? 'n' : ''} zum Hochholen`, go: 'ads' as View },
-  ].filter(Boolean) as { icon: React.ReactNode; tone: 'amber' | 'rose' | 'sky'; text: string; go: View; focus?: Focus }[]
+  ].filter(Boolean) as { icon: React.ReactNode; tone: 'amber' | 'rose' | 'sky'; text: string; go: View; focus?: Focus; key?: string }[]
 
   return (
     <div className="space-y-4">
       {todos.length > 0 && (
         <Card className="border-amber/40 bg-amber-soft/40" pad={false}>
           <ul className="divide-y divide-line">
+            {/* Zwei gleichnamige Wartende ergäben denselben Text — der Key
+                braucht die Identität, nicht die Beschriftung. */}
             {todos.map((t) => (
-              <li key={t.text}>
+              <li key={t.key ?? t.text}>
                 <button type="button" onClick={() => go(t.go, t.focus)} className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold transition hover:bg-surface-3">
                   <span className={cx(t.tone === 'rose' ? 'text-rose' : t.tone === 'sky' ? 'text-sky' : 'text-amber')}>{t.icon}</span>
                   {t.text}
@@ -101,8 +106,13 @@ export default function Overview({ go }: ViewProps) {
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
-          <SectionTitle title="Bestand nach Status" hint={`${p.all.count} Positionen insgesamt${p.all.litres > 0 ? ` · ${num(p.all.litres)} l` : ''}`} />
-          <ShareBar segments={statusSegments} total={p.all.count} unit="" />
+          {/*
+            Über ALLES, nicht über den Verkauf: die Segmente führen auch die
+            Vorbereitung, `progress` rechnet ohne sie — mit p.all summierten
+            die Balkenanteile über 100 % und die Legende widersprach dem Hint.
+          */}
+          <SectionTitle title="Bestand nach Status" hint={`${db.tanks.length} Positionen insgesamt${totals(db.tanks).litres > 0 ? ` · ${num(totals(db.tanks).litres)} l` : ''}`} />
+          <ShareBar segments={statusSegments} total={db.tanks.length} unit="" />
 
           <div className="mt-6 border-t border-line pt-5">
             <SectionTitle title="Offener Warenwert nach Hersteller" hint="Summe der Einzel-VB, nur noch verfügbare Positionen" />

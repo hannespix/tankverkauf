@@ -376,7 +376,15 @@ export default function Tanks({ focus }: ViewProps) {
       )}
 
       <TankDetail id={detail} onClose={() => setDetail(null)} readOnly={readOnly} />
-      <DealModal open={dealOpen} onClose={() => { setDealOpen(false); setPicked(new Set()) }} tanks={pickedTanks} />
+      {/*
+        Erst beim Öffnen mounten. Dauerhaft gemountet lief der Zustands-
+        Initialisierer genau einmal — beim Laden der Ansicht, mit leerer
+        Auswahl: der Käufer-Vorschlag aus der Bescheid-Liste konnte nie greifen,
+        und eine einmal gewählte Käuferin klebte über Folgeverkäufe hinweg im
+        Feld. Frisch gemountet sieht er die tatsächliche Auswahl, und jedes
+        Buchen beginnt mit leeren Feldern.
+      */}
+      {dealOpen && <DealModal open onClose={() => { setDealOpen(false); setPicked(new Set()) }} tanks={pickedTanks} />}
       <QuoteModal open={quoteOpen} onClose={() => { setQuoteOpen(false); setPicked(new Set()) }} tanks={pickedTanks} />
       <BulkTagModal open={tagOpen} onClose={() => setTagOpen(false)} tanks={pickedTanks} />
       <BulkPhotoModal open={photoOpen} onClose={() => setPhotoOpen(false)} tanks={pickedTanks} />

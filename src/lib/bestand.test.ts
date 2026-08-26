@@ -24,7 +24,7 @@ const mem = new Map<string, string>()
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { store } from './store'
-import { addTank, applyProposal, createAd, createDeal, createQuote, detachTanks, noteOnLead, refreshAd, releaseQuoteTanks, removeLead, removeQuote, removeTank, saveReply, setLeadWatch, setQuoteLinePrice, setQuoteReserved, setQuoteTanks } from './actions'
+import { addTank, applyProposal, createAd, createDeal, createQuote, detachTanks, noteOnLead, patchQuote, refreshAd, releaseQuoteTanks, removeLead, removeQuote, removeTank, saveReply, setLeadWatch, setQuoteLinePrice, setQuoteReserved, setQuoteTanks } from './actions'
 import { quoteMail } from './mail'
 import { resolveBundle } from './bundles'
 import { adDrift, generateAd } from './ads'
@@ -877,14 +877,16 @@ test('B49 · reservierte Ware bleibt lieferbar und in der Liste', () => {
  */
 
 test('B51 · In Vorbereitung ist nirgends im Verkauf — aber auch nicht „verkauft"', () => {
-  setDb({ tanks: [tank('T-1'), tank('T-2', { status: 'vorbereitung' })] })
+  // Das Gebot MUSS gesetzt sein, sonst prüft die Pipeline-Behauptung nichts —
+  // ohne Gebot wäre sie auch mit dem alten isOpen grün gewesen.
+  setDb({ tanks: [tank('T-1'), tank('T-2', { status: 'vorbereitung', offer: 900 })] })
   const d = db()
   const c = buildCatalog(d)
   assert.deepEqual(c.items.map((i) => i.id), ['T-1'], 'nicht im Katalog')
   assert.deepEqual((c.soldItems ?? []).map((i) => i.id), [], 'und erst recht nicht als verkauft — !isOpen hieße genau das')
   const ad = generateAd(d, { kind: 'kategorie', category: 'tank' }, d.settings.portals[0]!)
-  assert.ok(!ad.body.includes('T-2') && !ad.tankIds.includes('T-2'), 'nicht in Anzeigen')
-  assert.equal(pipelineValue(d), 0, 'kein Gebot in Vorbereitung zählt in die Pipeline')
+  assert.ok(!ad.tankIds.includes('T-2'), 'nicht in Anzeigen')
+  assert.equal(pipelineValue(d), 0, 'das Gebot auf stiller Ware zählt nicht in die Pipeline')
 })
 
 test('B52 · der Verkaufsfortschritt rechnet ohne Vorbereitung — und geht auf', () => {
@@ -974,4 +976,62 @@ test('B58 · eine gelöschte Position hinterlässt keine Geisterkarte', () => {
   removeTank(db().tanks[0]!)
   assert.equal(db().leads[0]!.watch, undefined, 'removeTank räumt die Zusage mit ab')
   assert.equal(dueWatches(db()).length, 0)
+})
+
+
+test('B59 · Reservieren fasst Vorbereitung nicht an — der Rückweg wäre öffentlich', () => {
+  /*
+   * Reserviert heißt: für den Käufer sichtbar zugesagt. Eine Vorbereitungs-
+   * Position stünde damit binnen Sekunden im Katalog, und beim Lösen käme sie
+   * als „kontakt" oder „verfügbar" zurück — nie als Vorbereitung.
+   */
+  setDb({
+    tanks: [tank('T-1', { status: 'vorbereitung' }), tank('T-2', { status: 'kontakt', leadId: 'L-1' })],
+    leads: [lead('L-1', { tankIds: ['T-2'] })],
+    quotes: [quote('Q-1', { leadId: 'L-1', tankIds: ['T-1', 'T-2'], askPrice: 2000 })],
+  })
+  setQuoteReserved('Q-1', ['T-1', 'T-2'], true)
+  assert.equal(db().tanks[0]!.status, 'vorbereitung', 'die stille Position bleibt still')
+  assert.equal(db().tanks[1]!.status, 'reserviert', 'die verkäufliche wird zugesagt')
+})
+
+test('B60 · ein nachträglich zugeordnetes Angebot erledigt den Bescheid-Wunsch', () => {
+  // Der einzige Weg, einem bestehenden Angebot einen Menschen zu geben, ist
+  // patchQuote — ohne den Haken bliebe der Wunsch stehen und die Übersicht
+  // trüge eine Karte über einen Vorgang, der längst läuft.
+  setDb({ tanks: [tank('T-1', { status: 'vorbereitung' })], leads: [lead('L-1')] })
+  setLeadWatch('L-1', 'T-1', true)
+  const qid = createQuote({ label: 'ohne Mensch', leadId: null, portalId: null, tankIds: ['T-1'], askPrice: 700, note: '' })
+  assert.equal((db().leads[0]!.watch ?? []).length, 1, 'ohne Zuordnung bleibt der Wunsch')
+  patchQuote(qid, { leadId: 'L-1' })
+  assert.equal(db().leads[0]!.watch, undefined, 'mit der Zuordnung ist er überholt')
+})
+
+test('B61 · setQuoteTanks erledigt Hinzugefügtes — und NICHT das gerade Entfernte', () => {
+  setDb({
+    tanks: [tank('T-1', { status: 'vorbereitung' }), tank('T-2', { status: 'vorbereitung' })],
+    leads: [lead('L-1')],
+  })
+  setLeadWatch('L-1', 'T-1', true)
+  setLeadWatch('L-1', 'T-2', true)
+  const qid = createQuote({ label: 'A', leadId: 'L-1', portalId: null, tankIds: [], askPrice: 0, note: '' })
+  setQuoteTanks(qid, ['T-1'])
+  const rest = (db().leads[0]!.watch ?? []).map((w) => w.tankId)
+  assert.deepEqual(rest, ['T-2'], 'T-1 ist im Angebot und erledigt; T-2 wartet weiter')
+})
+
+test('B62 · die Einzelanzeige einer stillen Position wirbt nicht', () => {
+  /*
+   * Der Einzel-Zuschnitt holt seine Position ohne isOpen — „Text neu erzeugen"
+   * baute deshalb auch für „In Vorbereitung" den vollen Verkaufstext samt
+   * Preis, und der Veraltet-Hinweis empfahl genau diesen Klick.
+   */
+  setDb({ tanks: [tank('T-1', { status: 'vorbereitung', vb: 900 })] })
+  const a = generateAd(db(), { kind: 'tank', tankId: 'T-1' }, db().settings.portals[0]!)
+  assert.ok(!a.body.includes('900'), 'kein Preis für Ware, die nicht angeboten ist')
+  assert.match(a.body, /nicht im Angebot/)
+  assert.equal(a.price, 0)
+
+  store.mutate((x) => { x.tanks[0]!.status = 'verkauft'; x.tanks[0]!.dealId = 'D-1' })
+  assert.match(generateAd(db(), { kind: 'tank', tankId: 'T-1' }, db().settings.portals[0]!).body, /verkauft/)
 })

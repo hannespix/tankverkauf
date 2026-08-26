@@ -356,7 +356,11 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
     setBusy(true)
     try {
       const ids = proposals.flatMap((p) => p.tankIds)
-      setReply(await draftReply(message, db, ids, key, db.settings.ai.model))
+      // Mit Angebot und Interessent: sonst kennt der Entwurf weder die
+      // ausgehandelten Preise noch die Bescheid-Wünsche — und antwortet auf
+      // „Wann kommt die Presse?" mit dem freien Bestand.
+      const lead = leadId ? db.leads.find((l) => l.id === leadId) ?? null : null
+      setReply(await draftReply(message, db, ids, key, db.settings.ai.model, quote, lead))
     } catch (err) {
       setError(err instanceof AiError ? err.message : 'Der Antwortentwurf hat nicht geklappt.')
     } finally {

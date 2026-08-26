@@ -112,7 +112,9 @@ function QuoteCard({ quote, go, startOpen }: { quote: Quote; go: Go; startOpen: 
    */
   const positionen = quote.tankIds.map((id) => db.tanks.find((t) => t.id === id)).filter((t): t is Tank => !!t)
   const fremd = positionen.filter((t) => t.status === 'reserviert' && t.leadId && t.leadId !== quote.leadId)
-  const offene = positionen.filter((t) => t.status !== 'verkauft' && !fremd.includes(t))
+  // Ohne Vorbereitung: die Aktion überspringt sie (siehe setQuoteReserved),
+  // also darf die Rückfrage sie auch nicht versprechen.
+  const offene = positionen.filter((t) => t.status !== 'verkauft' && t.status !== 'vorbereitung' && !fremd.includes(t))
   const reserviert = offene.filter((t) => t.status === 'reserviert').map((t) => t.id)
   const reservierbar = offene.filter((t) => t.status !== 'reserviert').map((t) => t.id)
   // Was dieses Angebot noch bindet, und ob überhaupt noch etwas zu verkaufen ist.

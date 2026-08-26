@@ -294,7 +294,12 @@ function LeadModal({ lead, onClose, readOnly, go }: { lead: Lead | null; onClose
             )}
             {reserviertHier.length > 0 && <Pill tone="amber">{reserviertHier.length} reserviert</Pill>}
             {(live?.watch ?? []).length > 0 && (
-              <Pill tone={(live?.watch ?? []).some((w) => db.tanks.find((t) => t.id === w.tankId)?.status !== 'vorbereitung') ? 'amber' : 'neutral'}>
+              <Pill tone={(live?.watch ?? []).some((w) => {
+                // Ein Eintrag auf eine gelöschte Position ist nicht „fällig" —
+                // `undefined !== 'vorbereitung'` wäre sonst wahr.
+                const st = db.tanks.find((t) => t.id === w.tankId)?.status
+                return st !== undefined && st !== 'vorbereitung'
+              }) ? 'amber' : 'neutral'}>
                 wartet auf {(live?.watch ?? []).length === 1 ? '1 Position' : `${(live?.watch ?? []).length} Positionen`}
               </Pill>
             )}
