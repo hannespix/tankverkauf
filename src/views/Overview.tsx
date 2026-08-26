@@ -58,10 +58,11 @@ export default function Overview({ go }: ViewProps) {
   const due = dueWatches(db)
   const dueByLead = [...new Map(due.map((d) => [d.lead.id, d.lead])).values()].map((lead) => {
     const mine = due.filter((d) => d.lead.id === lead.id)
-    const namen = mine.map((d) => `${d.tank.maker === 'Sonstige' ? d.tank.type : `${d.tank.maker} ${d.tank.type}`}${d.sold ? ' (verkauft — absagen?)' : ''}`)
-    // „— jetzt im Verkauf" nur, wenn davon auch etwas stimmt: ist alles
-    // Genannte verkauft, ist die Aufgabe eine Absage, kein Zuruf.
-    const schluss = mine.every((d) => d.sold) ? 'inzwischen verkauft' : 'jetzt im Verkauf'
+    // Ist ALLES Genannte verkauft, trägt der Schluss die Aussage — die
+    // Einzelmarke entfällt, sonst stünde „verkauft" zweimal im selben Satz.
+    const alleWeg = mine.every((d) => d.sold)
+    const namen = mine.map((d) => `${d.tank.maker === 'Sonstige' ? d.tank.type : `${d.tank.maker} ${d.tank.type}`}${d.sold && !alleWeg ? ' (verkauft — absagen?)' : ''}`)
+    const schluss = alleWeg ? 'inzwischen verkauft, Absage fällig' : 'jetzt im Verkauf'
     return { lead, text: `${lead.name} wollte Bescheid: ${namen.join(', ')} — ${schluss}` }
   })
 

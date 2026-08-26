@@ -289,7 +289,7 @@ export default function Tanks({ focus }: ViewProps) {
                         <td className="tnum px-2.5 py-1.5 text-right">{eur(t.vb)}</td>
                         <td className="tnum px-2.5 py-1.5 text-right text-xs whitespace-nowrap text-muted">{t.litres > 0 ? centsPerLitre(t.vb, t.litres) : <span className="text-faint">–</span>}</td>
                         <td className="px-2.5 py-1.5">
-                          <Select value={t.status} disabled={readOnly} onChange={(e) => setTankStatus(t, e.target.value as TankStatus)} className="min-w-[124px] py-1.5 text-[13px]">
+                          <Select value={t.status} disabled={readOnly} onChange={(e) => setTankStatus(t, e.target.value as TankStatus)} className="min-w-[148px] py-1.5 text-[13px]">
                             {STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
                           </Select>
                           {/* Im Moment des Umschaltens sichtbar, nicht erst im Dialog:
@@ -347,7 +347,7 @@ export default function Tanks({ focus }: ViewProps) {
                         {STATUS_LABEL[t.status]}
                       </Pill>
                       {(wartende.get(t.id)?.length ?? 0) > 0 && (
-                        <Pill tone="amber">{wartende.get(t.id)!.length} wartet</Pill>
+                        <Pill tone="amber">{wartende.get(t.id)!.length === 1 ? '1 wartet' : `${wartende.get(t.id)!.length} warten`}</Pill>
                       )}
                       {t.status !== 'verkauft' && (
                         <input type="checkbox" checked={picked.has(t.id)}
@@ -455,7 +455,7 @@ function TankDetail({ id, onClose, readOnly }: { id: string | null; onClose: () 
         <DimsFields tank={t} readOnly={readOnly} />
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Preisvorstellung (VB)"><Input type="number" disabled={readOnly} value={t.vb} onChange={(e) => patchTank(t.id, { vb: Number(e.target.value) || 0 }, `VB geändert: ${t.maker} ${t.litres} l`)} className="tnum" /></Field>
+          <Field label="Preisvorstellung (VB)"><Input type="number" disabled={readOnly} value={t.vb} onChange={(e) => patchTank(t.id, { vb: Number(e.target.value) || 0 }, `VB geändert: ${itemLabel(t)}`)} className="tnum" /></Field>
           <Field label="Aktuelles Gebot"><Input type="number" disabled={readOnly} value={t.offer ?? ''} onChange={(e) => setTankOffer(t, e.target.value === '' ? null : Number(e.target.value))} className="tnum" /></Field>
           <Field label="Zielpreis"><Input type="number" disabled={readOnly} value={t.target} onChange={(e) => patchTank(t.id, { target: Number(e.target.value) || 0 })} className="tnum" /></Field>
           <Field label="Untergrenze"><Input type="number" disabled={readOnly} value={t.floor} onChange={(e) => patchTank(t.id, { floor: Number(e.target.value) || 0 })} className="tnum" /></Field>
@@ -526,8 +526,10 @@ function DealModal({ open, onClose, tanks }: { open: boolean; onClose: () => voi
 
   if (!open) return null
   const value = Number(price) || 0
+  // itemLabel statt „Hersteller + Liter": eine Maschine ohne Volumen hieß
+  // sonst „Willmes 0 l" — als gespeichertes Verkaufsetikett und im Verlauf.
   const label = tanks.length === 1
-    ? `${tanks[0].maker} ${tanks[0].litres} l`
+    ? itemLabel(tanks[0])
     : `Paket ${tanks.length} Positionen${t.litres > 0 ? ` (${num(t.litres)} l)` : ''}`
 
   return (
@@ -558,7 +560,7 @@ function DealModal({ open, onClose, tanks }: { open: boolean; onClose: () => voi
           <Button onClick={onClose}>Abbrechen</Button>
           <Button variant="primary" disabled={value <= 0}
             onClick={() => { createDeal({ label, tankIds: tanks.map((x) => x.id), price: value, leadId: leadId || null, date, note }); onClose() }}>
-            {tanks.length} Tank{tanks.length > 1 ? 's' : ''} als verkauft buchen
+            {tanks.length === 1 ? '1 Position' : `${tanks.length} Positionen`} als verkauft buchen
           </Button>
         </div>
       </div>

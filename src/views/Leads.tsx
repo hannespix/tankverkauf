@@ -436,14 +436,16 @@ function LeadModal({ lead, onClose, readOnly, go }: { lead: Lead | null; onClose
                       <input type="checkbox" checked={Boolean(eintrag)}
                         onChange={(e) => setLeadWatch(live.id, t.id, e.target.checked)}
                         className="h-4 w-4 accent-[var(--primary)]" />
-                      <span className="tnum text-xs text-faint">{t.id}</span>
+                      <span className="tnum text-xs text-muted">{t.id}</span>
                       <span className="min-w-0 flex-1 truncate text-[13px]">{itemLabel(t)}</span>
                       {t.status === 'vorbereitung'
                         ? <Pill tone="neutral">in Vorbereitung</Pill>
                         : t.status === 'verkauft'
                           ? <Pill tone="neutral">verkauft — absagen?</Pill>
                           : <Pill tone="amber">jetzt im Verkauf</Pill>}
-                      {eintrag && <span className="tnum text-[11px] text-faint">{dateDE(eintrag.at)}</span>}
+                      {/* Am Handy weicht das Datum: Pill und Datum zusammen
+                          quetschten den Positionsnamen auf „Willme…". */}
+                      {eintrag && <span className="tnum hidden text-[11px] text-muted sm:inline">{dateDE(eintrag.at)}</span>}
                     </label>
                   )
                 })}

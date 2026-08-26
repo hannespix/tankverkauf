@@ -476,7 +476,7 @@ export function attachTanks(leadId: string, tankIds: string[]) {
         }
       }
     },
-    { kind: 'lead', text: `${tankIds.length} Positionen angehängt` },
+    { kind: 'lead', text: `${tankIds.length === 1 ? '1 Position' : `${tankIds.length} Positionen`} angehängt` },
   )
 }
 
