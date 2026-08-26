@@ -117,7 +117,7 @@ export function BundleEditor() {
                         {resolved
                           ? `${resolved.ids.length + resolved.giftIds.length} Positionen · ${eur(resolved.full)} einzeln · Ziel ${eur(target)} · Limit ${eur(floor)}`
                           : `${b.ids.length} Positionen — zu wenige davon noch frei (mindestens ${b.minItems})`}
-                        {gone > 0 && ` · ${gone} verkauft oder reserviert`}
+                        {gone > 0 && ` · ${gone} nicht (mehr) im freien Verkauf`}
                         {giftValue > 0 && ` · Zugabe im Listenwert von ${eur(giftValue)}`}
                       </div>
                     </div>

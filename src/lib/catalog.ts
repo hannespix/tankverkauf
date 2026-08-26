@@ -1,6 +1,6 @@
 import type { Catalog, CatalogBundle, DB, SoldItem } from '../types'
 import { resolveBundle } from './bundles'
-import { isOpen } from './stats'
+import { isOpen, isSold } from './stats'
 
 /**
  * The public catalogue is built by whitelist, never by deletion: only the fields
@@ -22,7 +22,10 @@ export function buildCatalog(db: DB): Catalog {
    * Mengenpreis, im Kopfzähler und in der Anfrage-Mail, und eine ältere
    * Fassung der Käuferseite böte es zum Ankreuzen an.
    */
-  const sold = db.tanks.filter((t) => !isOpen(t))
+  // Ausdrücklich VERKAUFT, nicht „alles außer offen": seit es „In Vorbereitung"
+  // gibt, hieße `!isOpen` auch „noch nie angeboten" — und die stünde hier als
+  // verkauft im öffentlichen Katalog.
+  const sold = db.tanks.filter(isSold)
   // Reservierte Positionen bleiben in der Liste — ein zweiter Interessent ist Gold
   // wert, wenn die Reservierung platzt. In einem Paket haben sie nichts verloren:
   // ein Paketpreis ist ein festes Angebot, und was schon jemandem zugesagt ist,

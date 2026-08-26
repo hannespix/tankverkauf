@@ -110,6 +110,12 @@ function leadRows(db: DB) {
       .filter(Boolean)
       .map((t) => `${t!.maker} ${t!.litres} l`)
       .join(', '),
+    // Die Zusagen an Menschen existieren sonst außerhalb von db.json nirgends.
+    'Wartet auf': (l.watch ?? [])
+      .map((w) => db.tanks.find((t) => t.id === w.tankId))
+      .filter(Boolean)
+      .map((t) => (t!.maker === 'Sonstige' ? t!.type : `${t!.maker} ${t!.type}`))
+      .join(', '),
     Budget: l.budget ?? '',
     'Letzter Kontakt': l.lastContact ?? '',
     Wiedervorlage: l.nextFollowUp ?? '',

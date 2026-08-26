@@ -89,9 +89,11 @@ function QuoteCard({ quote, go, startOpen }: { quote: Quote; go: Go; startOpen: 
   // bearbeiten — nicht erst suchen und dann aufklappen.
   const [open, setOpen] = useState(startOpen)
   const [pick, setPick] = useState('')
-  // Nur freie Positionen, und nur solche, die nicht schon drin sind.
+  // Freie Positionen — und die in Vorbereitung: ein Frühverkauf an den
+  // Wartenden ist ausdrücklich erlaubt, createQuote lässt sie ohnehin durch.
+  // Nur was schon drin ist, fehlt.
   const matching = db.tanks
-    .filter((t) => t.status === 'verfuegbar' && !quote.tankIds.includes(t.id))
+    .filter((t) => (t.status === 'verfuegbar' || t.status === 'vorbereitung') && !quote.tankIds.includes(t.id))
     .filter((t) => {
       const q = pick.trim().toLowerCase()
       return !q || [t.id, t.maker, t.type, String(t.litres)].some((v) => v.toLowerCase().includes(q))
@@ -110,7 +112,9 @@ function QuoteCard({ quote, go, startOpen }: { quote: Quote; go: Go; startOpen: 
    */
   const positionen = quote.tankIds.map((id) => db.tanks.find((t) => t.id === id)).filter((t): t is Tank => !!t)
   const fremd = positionen.filter((t) => t.status === 'reserviert' && t.leadId && t.leadId !== quote.leadId)
-  const offene = positionen.filter((t) => t.status !== 'verkauft' && !fremd.includes(t))
+  // Ohne Vorbereitung: die Aktion überspringt sie (siehe setQuoteReserved),
+  // also darf die Rückfrage sie auch nicht versprechen.
+  const offene = positionen.filter((t) => t.status !== 'verkauft' && t.status !== 'vorbereitung' && !fremd.includes(t))
   const reserviert = offene.filter((t) => t.status === 'reserviert').map((t) => t.id)
   const reservierbar = offene.filter((t) => t.status !== 'reserviert').map((t) => t.id)
   // Was dieses Angebot noch bindet, und ob überhaupt noch etwas zu verkaufen ist.

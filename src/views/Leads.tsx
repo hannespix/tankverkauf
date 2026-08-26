@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Button, Card, EmptyState, Field, Input, Modal, Pill, SectionTitle, Select, Textarea, cx, type Tone } from '../components/ui'
 import { IconCheck, IconPlus, IconSpark, IconTrash } from '../components/icons'
-import { addLead, attachTanks, createQuote, detachTanks, noteOnLead, patchLead, patchQuote, removeLead, setQuoteTanks } from '../lib/actions'
+import { addLead, attachTanks, createQuote, detachTanks, noteOnLead, patchLead, patchQuote, removeLead, setLeadWatch, setQuoteTanks } from '../lib/actions'
 import { parseMessage } from '../lib/ads'
 import { AiError, readMessage, type AiResult } from '../lib/ai'
 import { itemLabel, dateDE, eur, num, relativeDE, todayISO } from '../lib/format'
@@ -216,8 +216,11 @@ function LeadModal({ lead, onClose, readOnly, go }: { lead: Lead | null; onClose
 
   // `openTanks` entstand bei jedem Render neu, deshalb griff der Memo darunter
   // nie — bei 58 Positionen und einem Filterfeld ist das jede Taste.
+  // „In Vorbereitung" gehört NICHT in diese Liste: dafür gibt es die
+  // Bescheid-Liste darunter. Stünde beides hier, gäbe es „will diese Maschine"
+  // in zwei Listen mit verschiedener Bedeutung, einen Klick auseinander.
   const openTanks = useMemo(
-    () => db.tanks.filter((t) => t.status !== 'verkauft' || picked.includes(t.id)),
+    () => db.tanks.filter((t) => (t.status !== 'verkauft' && t.status !== 'vorbereitung') || picked.includes(t.id)),
     [db.tanks, picked],
   )
   const shown = useMemo(() => {
@@ -281,7 +284,7 @@ function LeadModal({ lead, onClose, readOnly, go }: { lead: Lead | null; onClose
           58 Zeilen vorbeiscrollen. Und der Verkauf fehlte im Dialog ganz,
           obwohl die Kachel darüber ihn zeigt.
         */}
-        {lead && (alleAngebote.length > 0 || verkaeufe.length > 0 || reserviertHier.length > 0) && (
+        {lead && (alleAngebote.length > 0 || verkaeufe.length > 0 || reserviertHier.length > 0 || (live?.watch ?? []).length > 0) && (
           <div className="flex flex-wrap items-center gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[13px]">
             <span className="font-semibold text-muted">Stand:</span>
             {alleAngebote.length > 0 && (
@@ -290,6 +293,16 @@ function LeadModal({ lead, onClose, readOnly, go }: { lead: Lead | null; onClose
               </Pill>
             )}
             {reserviertHier.length > 0 && <Pill tone="amber">{reserviertHier.length} reserviert</Pill>}
+            {(live?.watch ?? []).length > 0 && (
+              <Pill tone={(live?.watch ?? []).some((w) => {
+                // Ein Eintrag auf eine gelöschte Position ist nicht „fällig" —
+                // `undefined !== 'vorbereitung'` wäre sonst wahr.
+                const st = db.tanks.find((t) => t.id === w.tankId)?.status
+                return st !== undefined && st !== 'vorbereitung'
+              }) ? 'amber' : 'neutral'}>
+                wartet auf {(live?.watch ?? []).length === 1 ? '1 Position' : `${(live?.watch ?? []).length} Positionen`}
+              </Pill>
+            )}
             {verkaeufe.length > 0 && (
               <Pill tone="green">
                 {verkaeufe.length === 1 ? 'verkauft' : `${verkaeufe.length} Verkäufe`} · {eur(verkaeufe.reduce((a, d) => a + d.price, 0))}
@@ -400,6 +413,45 @@ function LeadModal({ lead, onClose, readOnly, go }: { lead: Lead | null; onClose
             </p>
           </div>
         </Field>
+
+        {/*
+          „Bescheid geben, sobald im Verkauf" — der Zukunftswunsch, getrennt vom
+          Interesse am laufenden Verkauf.
+
+          Zur Auswahl steht nur, was in Vorbereitung ist: für Verkäufliches gibt
+          es „Interesse an" und das Angebot, ein Bescheid-Wunsch darauf wäre
+          dasselbe in grün und sofort „fällig". Bereits eingetragene Wünsche
+          bleiben sichtbar, auch wenn die Position inzwischen im Verkauf oder
+          verkauft ist — das Abhaken IST das Erledigen.
+        */}
+        {live && (db.tanks.some((t) => t.status === 'vorbereitung') || (live.watch ?? []).length > 0) && (
+          <Field as="div" label="Bescheid geben, sobald im Verkauf" hint="für Positionen, die noch in Vorbereitung sind">
+            <div className="max-h-44 space-y-0.5 overflow-y-auto rounded-xl border border-line p-1.5">
+              {db.tanks
+                .filter((t) => t.status === 'vorbereitung' || (live.watch ?? []).some((w) => w.tankId === t.id))
+                .map((t) => {
+                  const eintrag = (live.watch ?? []).find((w) => w.tankId === t.id)
+                  return (
+                    <label key={t.id} className="flex min-h-9 cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1 hover:bg-surface-2">
+                      <input type="checkbox" checked={Boolean(eintrag)}
+                        onChange={(e) => setLeadWatch(live.id, t.id, e.target.checked)}
+                        className="h-4 w-4 accent-[var(--primary)]" />
+                      <span className="tnum text-xs text-muted">{t.id}</span>
+                      <span className="min-w-0 flex-1 truncate text-[13px]">{itemLabel(t)}</span>
+                      {t.status === 'vorbereitung'
+                        ? <Pill tone="neutral">in Vorbereitung</Pill>
+                        : t.status === 'verkauft'
+                          ? <Pill tone="neutral">verkauft — absagen?</Pill>
+                          : <Pill tone="amber">jetzt im Verkauf</Pill>}
+                      {/* Am Handy weicht das Datum: Pill und Datum zusammen
+                          quetschten den Positionsnamen auf „Willme…". */}
+                      {eintrag && <span className="tnum hidden text-[11px] text-muted sm:inline">{dateDE(eintrag.at)}</span>}
+                    </label>
+                  )
+                })}
+            </div>
+          </Field>
+        )}
 
         {/*
           Angebot und Interesse sind zwei Fragen: worüber redet der Mensch, und
@@ -530,7 +582,12 @@ function LeadModal({ lead, onClose, readOnly, go }: { lead: Lead | null; onClose
         {!readOnly && (
           <div className="flex justify-between border-t border-line pt-4">
             {lead ? (
-              <Button variant="danger" onClick={() => { if (confirm(`${lead.name} löschen?`)) { removeLead(lead); onClose() } }}><IconTrash />Löschen</Button>
+              <Button variant="danger" onClick={() => {
+                // Wer einen scheinbar toten Kontakt löscht, löscht sonst still
+                // eine Zusage („wir geben Bescheid").
+                const zusagen = (live?.watch ?? []).length
+                if (confirm(`${lead.name} löschen?${zusagen ? `\n\nAchtung: ${zusagen === 1 ? 'eine Bescheid-Zusage' : `${zusagen} Bescheid-Zusagen`} für kommende Positionen ${zusagen === 1 ? 'geht' : 'gehen'} mit verloren.` : ''}`)) { removeLead(lead); onClose() }
+              }}><IconTrash />Löschen</Button>
             ) : <span />}
             <div className="flex gap-2">
               <Button onClick={onClose}>Abbrechen</Button>

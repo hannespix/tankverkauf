@@ -698,7 +698,11 @@ export function buildPlan(proposals: Proposal[], parsed: ParsedMessage, db: DB, 
   const freeFor = (t: Tank) => t.status === 'verfuegbar' && !t.leadId
 
   const warum = (t: Tank) =>
-    t.status === 'verkauft' ? 'verkauft' : t.status === 'reserviert' ? 'reserviert' : 'schon bei jemand anderem'
+    t.status === 'verkauft' ? 'verkauft'
+      : t.status === 'reserviert' ? 'reserviert'
+      // „schon bei jemand anderem" wäre für stille Ware schlicht falsch.
+      : t.status === 'vorbereitung' ? 'noch nicht im Verkauf'
+      : 'schon bei jemand anderem'
 
   // Positionen. Wörtlich genannte Nummern kommen vollständig in den Zug.
   if (!has('positionen') && parsed.exact && parsed.matchedTankIds.length > 0) {
