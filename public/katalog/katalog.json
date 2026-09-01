@@ -7,100 +7,8 @@
   "imprintUrl": "https://www.weingut-pix.de/impressum/",
   "privacy": "Verantwortlich für diese Seite: Weingut Pix, 79241 Ihringen, info@weingut-pix.de. Vollständige Anschrift im Impressum.\n\nDiese Seite wird von GitHub Inc. (GitHub Pages) ausgeliefert. Beim Aufruf überträgt Ihr Browser technisch bedingt Ihre IP-Adresse an GitHub; GitHub speichert sie in Server-Protokollen. Rechtsgrundlage ist Art. 6 Abs. 1 lit. f DSGVO — ohne diese Übertragung lässt sich keine Seite ausliefern.\n\nDie Seite setzt keine Cookies, misst kein Nutzungsverhalten und bindet keine fremden Inhalte ein. Schrift und Bilder werden von derselben Adresse geladen wie die Seite selbst.\n\nIhre Auswahl bleibt in Ihrem Browser und wird nirgends gespeichert. Klicken Sie auf „Anfrage senden“, öffnet sich Ihr eigenes E-Mail-Programm mit einem vorbereiteten Text. Abgeschickt wird die Nachricht erst von Ihnen. Was Sie uns dabei schreiben — Name, Adresse, Telefonnummer — verarbeiten wir ausschließlich, um Ihre Anfrage zu beantworten und ein Geschäft abzuwickeln (Art. 6 Abs. 1 lit. b DSGVO), und löschen es, sobald die gesetzlichen Aufbewahrungsfristen abgelaufen sind.\n\nSie haben das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung der Verarbeitung, Datenübertragbarkeit und Widerspruch sowie das Recht, sich bei einer Aufsichtsbehörde zu beschweren.",
   "vatRate": 0.19,
-  "updatedAt": "2026-09-01T11:45:16.569Z",
+  "updatedAt": "2026-09-01T11:49:00.303Z",
   "items": [
-    {
-      "id": "T-03",
-      "category": "tank",
-      "categoryLabel": "Edelstahltanks",
-      "maker": "Speidel",
-      "type": "Edelstahltank",
-      "litres": 525,
-      "vb": 650,
-      "dims": {
-        "dia": 85,
-        "h": 138
-      },
-      "photos": [
-        "fotos/T-03-xetnot.jpg"
-      ],
-      "tags": [],
-      "reserved": false
-    },
-    {
-      "id": "T-04",
-      "category": "tank",
-      "categoryLabel": "Edelstahltanks",
-      "maker": "Speidel",
-      "type": "Edelstahltank",
-      "litres": 625,
-      "vb": 700,
-      "dims": {
-        "dia": 85,
-        "h": 158
-      },
-      "photos": [
-        "fotos/T-04-matews.jpg"
-      ],
-      "tags": [],
-      "reserved": false
-    },
-    {
-      "id": "T-05",
-      "category": "tank",
-      "categoryLabel": "Edelstahltanks",
-      "maker": "Speidel",
-      "type": "Edelstahltank",
-      "litres": 625,
-      "vb": 700,
-      "dims": {
-        "dia": 85,
-        "h": 158
-      },
-      "photos": [
-        "fotos/T-05-zbk7qv.jpg"
-      ],
-      "tags": [
-        "Mannloch"
-      ],
-      "reserved": false
-    },
-    {
-      "id": "T-07",
-      "category": "tank",
-      "categoryLabel": "Edelstahltanks",
-      "maker": "Speidel",
-      "type": "Edelstahltank",
-      "litres": 1250,
-      "vb": 900,
-      "dims": {
-        "dia": 135,
-        "h": 120
-      },
-      "photos": [
-        "fotos/gruppe-mf53iy.jpg"
-      ],
-      "tags": [],
-      "reserved": false
-    },
-    {
-      "id": "T-08",
-      "category": "tank",
-      "categoryLabel": "Edelstahltanks",
-      "maker": "Speidel",
-      "type": "Edelstahltank",
-      "litres": 1250,
-      "vb": 900,
-      "dims": {
-        "dia": 135,
-        "h": 120
-      },
-      "photos": [
-        "fotos/gruppe-mf53iy.jpg"
-      ],
-      "tags": [],
-      "reserved": false
-    },
     {
       "id": "T-11",
       "category": "tank",
@@ -979,6 +887,56 @@
       ]
     },
     {
+      "id": "T-03",
+      "category": "tank",
+      "categoryLabel": "Edelstahltanks",
+      "maker": "Speidel",
+      "type": "Edelstahltank",
+      "litres": 525,
+      "dims": {
+        "dia": 85,
+        "h": 138
+      },
+      "tags": [],
+      "photos": [
+        "fotos/T-03-xetnot.jpg"
+      ]
+    },
+    {
+      "id": "T-04",
+      "category": "tank",
+      "categoryLabel": "Edelstahltanks",
+      "maker": "Speidel",
+      "type": "Edelstahltank",
+      "litres": 625,
+      "dims": {
+        "dia": 85,
+        "h": 158
+      },
+      "tags": [],
+      "photos": [
+        "fotos/T-04-matews.jpg"
+      ]
+    },
+    {
+      "id": "T-05",
+      "category": "tank",
+      "categoryLabel": "Edelstahltanks",
+      "maker": "Speidel",
+      "type": "Edelstahltank",
+      "litres": 625,
+      "dims": {
+        "dia": 85,
+        "h": 158
+      },
+      "tags": [
+        "Mannloch"
+      ],
+      "photos": [
+        "fotos/T-05-zbk7qv.jpg"
+      ]
+    },
+    {
       "id": "T-06",
       "category": "tank",
       "categoryLabel": "Edelstahltanks",
@@ -989,6 +947,38 @@
       "tags": [],
       "photos": [
         "fotos/T-06-kdcexg.jpg"
+      ]
+    },
+    {
+      "id": "T-07",
+      "category": "tank",
+      "categoryLabel": "Edelstahltanks",
+      "maker": "Speidel",
+      "type": "Edelstahltank",
+      "litres": 1250,
+      "dims": {
+        "dia": 135,
+        "h": 120
+      },
+      "tags": [],
+      "photos": [
+        "fotos/gruppe-mf53iy.jpg"
+      ]
+    },
+    {
+      "id": "T-08",
+      "category": "tank",
+      "categoryLabel": "Edelstahltanks",
+      "maker": "Speidel",
+      "type": "Edelstahltank",
+      "litres": 1250,
+      "dims": {
+        "dia": 135,
+        "h": 120
+      },
+      "tags": [],
+      "photos": [
+        "fotos/gruppe-mf53iy.jpg"
       ]
     },
     {
@@ -1127,21 +1117,6 @@
   ],
   "bundles": [
     {
-      "id": "startkeller",
-      "label": "Startkeller für den ersten Jahrgang",
-      "blurb": "Drei kleine Speidel-Tanks für getrennte Kleinstpartien, ein 1.000-l-Behälter zum Holen und Umlagern, dazu die fahrbare Impellerpumpe. Der Schichtenfilter kommt ohne Aufpreis mit. Zusammen 2.775 l — passt auf einen Autoanhänger.",
-      "ids": [
-        "T-03",
-        "T-04",
-        "T-05",
-        "M-02"
-      ],
-      "giftIds": [],
-      "full": 3050,
-      "price": 2850,
-      "short": 3
-    },
-    {
       "id": "raumspar",
       "label": "Raumspar-Keller, 8.000 l",
       "blurb": "Sechs eckige Tanks von 800 bis 1.650 l, die sich Wand an Wand stellen lassen und keinen Zwickel Platz verschenken. Für einen engen Altbaukeller die dichteste Art, 8.000 l unterzubringen.",
@@ -1184,19 +1159,6 @@
       "giftIds": [],
       "full": 2500,
       "price": 2200,
-      "short": 0
-    },
-    {
-      "id": "stapelpaar",
-      "label": "Zwei Speidel 1.250 l, stapelbar",
-      "blurb": "Zwei baugleiche 1.250er, übereinandergestapelt nur 218 cm hoch. 2.500 l auf gut anderthalb Quadratmetern Stellfläche — die Lösung für niedrige Decken.",
-      "ids": [
-        "T-07",
-        "T-08"
-      ],
-      "giftIds": [],
-      "full": 1800,
-      "price": 1600,
       "short": 0
     },
     {
