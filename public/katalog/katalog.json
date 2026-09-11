@@ -7,7 +7,7 @@
   "imprintUrl": "https://www.weingut-pix.de/impressum/",
   "privacy": "Verantwortlich für diese Seite: Weingut Pix, 79241 Ihringen, info@weingut-pix.de. Vollständige Anschrift im Impressum.\n\nDiese Seite wird von GitHub Inc. (GitHub Pages) ausgeliefert. Beim Aufruf überträgt Ihr Browser technisch bedingt Ihre IP-Adresse an GitHub; GitHub speichert sie in Server-Protokollen. Rechtsgrundlage ist Art. 6 Abs. 1 lit. f DSGVO — ohne diese Übertragung lässt sich keine Seite ausliefern.\n\nDie Seite setzt keine Cookies, misst kein Nutzungsverhalten und bindet keine fremden Inhalte ein. Schrift und Bilder werden von derselben Adresse geladen wie die Seite selbst.\n\nIhre Auswahl bleibt in Ihrem Browser und wird nirgends gespeichert. Klicken Sie auf „Anfrage senden“, öffnet sich Ihr eigenes E-Mail-Programm mit einem vorbereiteten Text. Abgeschickt wird die Nachricht erst von Ihnen. Was Sie uns dabei schreiben — Name, Adresse, Telefonnummer — verarbeiten wir ausschließlich, um Ihre Anfrage zu beantworten und ein Geschäft abzuwickeln (Art. 6 Abs. 1 lit. b DSGVO), und löschen es, sobald die gesetzlichen Aufbewahrungsfristen abgelaufen sind.\n\nSie haben das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung der Verarbeitung, Datenübertragbarkeit und Widerspruch sowie das Recht, sich bei einer Aufsichtsbehörde zu beschweren.",
   "vatRate": 0.19,
-  "updatedAt": "2026-09-07T11:01:13.302Z",
+  "updatedAt": "2026-09-11T05:28:33.235Z",
   "items": [
     {
       "id": "T-11",
@@ -61,25 +61,6 @@
       "photos": [
         "fotos/gruppe-pb7t6y.jpg",
         "fotos/gruppe-09h2c9.jpg"
-      ],
-      "tags": [],
-      "reserved": false
-    },
-    {
-      "id": "T-14",
-      "category": "tank",
-      "categoryLabel": "Edelstahltanks",
-      "maker": "Sonstige",
-      "type": "Edelstahltank",
-      "litres": 800,
-      "vb": 650,
-      "dims": {
-        "w": 95,
-        "d": 132,
-        "h": 85
-      },
-      "photos": [
-        "fotos/T-14-atxo7w.jpg"
       ],
       "tags": [],
       "reserved": false
@@ -994,6 +975,23 @@
       ]
     },
     {
+      "id": "T-14",
+      "category": "tank",
+      "categoryLabel": "Edelstahltanks",
+      "maker": "Sonstige",
+      "type": "Edelstahltank",
+      "litres": 800,
+      "dims": {
+        "w": 95,
+        "d": 132,
+        "h": 85
+      },
+      "tags": [],
+      "photos": [
+        "fotos/T-14-atxo7w.jpg"
+      ]
+    },
+    {
       "id": "T-23",
       "category": "tank",
       "categoryLabel": "Edelstahltanks",
@@ -1119,7 +1117,6 @@
       "label": "Raumspar-Keller, 8.000 l",
       "blurb": "Sechs eckige Tanks von 800 bis 1.650 l, die sich Wand an Wand stellen lassen und keinen Zwickel Platz verschenken. Für einen engen Altbaukeller die dichteste Art, 8.000 l unterzubringen.",
       "ids": [
-        "T-14",
         "T-15",
         "T-16",
         "T-17",
@@ -1127,9 +1124,9 @@
         "T-19"
       ],
       "giftIds": [],
-      "full": 5400,
-      "price": 4600,
-      "short": 0
+      "full": 4750,
+      "price": 4050,
+      "short": 1
     },
     {
       "id": "grossgebinde",
