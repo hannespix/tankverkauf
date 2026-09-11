@@ -514,22 +514,31 @@ function DealModal({ open, onClose, tanks }: { open: boolean; onClose: () => voi
    * tippte den verhandelten Preis aus dem Gedächtnis neu ein oder übersah,
    * dass überhaupt ein Angebot lief. Übernommen wird der Preis nur, wenn die
    * Auswahl das Angebot genau trifft: für eine Teilmenge gälte er nicht.
+   * Überlappen mehrere, zählt Deckung vor Alter — `db.quotes` selbst ist
+   * unshift-, nicht zeitsortiert (siehe openQuotesOf in stats.ts).
    */
   const angebot = (() => {
     const ids = new Set(tanks.map((x) => x.id))
-    const offene = db.quotes.filter((q) => q.status !== 'angenommen' && q.status !== 'abgelehnt' && q.tankIds.some((id) => ids.has(id)))
+    const offene = db.quotes
+      .filter((q) => q.status !== 'angenommen' && q.status !== 'abgelehnt' && q.tankIds.some((id) => ids.has(id)))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     return offene.find((q) => q.tankIds.length === tanks.length && q.tankIds.every((id) => ids.has(id))) ?? offene[0] ?? null
   })()
   const deckt = angebot != null && angebot.tankIds.length === tanks.length && angebot.tankIds.every((id) => tanks.some((x) => x.id === id))
+  // Auswahl ganz im Angebot (Teilverkauf an denselben) — nur dann taugt
+  // dessen Interessent als Käufer-Vorschlag. Läge auch nur eine fremde
+  // Position in der Auswahl, stünde beim Laufkundschafts-Verkauf still der
+  // falsche Name im Feld, und wer dem Formular traut, bucht auf ihn.
+  const imAngebot = angebot != null && tanks.every((x) => angebot.tankIds.includes(x.id))
   const [price, setPrice] = useState(() => (deckt && angebot ? String(angebot.buyerOffer ?? angebot.askPrice) : ''))
   /*
    * Wer auf eine der Positionen wartet, ist der wahrscheinlichste Käufer — als
    * Vorschlag, nicht als Zwang. Ohne Käufer gebucht bliebe sein Bescheid-Wunsch
    * stehen und die Karte behauptete „für eine Absage", obwohl er gekauft hat.
-   * Ein laufendes Angebot ist der stärkere Beleg als ein Bescheid-Wunsch.
+   * Ein laufendes Angebot über die ganze Auswahl ist der stärkere Beleg.
    */
   const [leadId, setLeadId] = useState(() => {
-    if (angebot?.leadId) return angebot.leadId
+    if (imAngebot && angebot?.leadId) return angebot.leadId
     const ids = new Set(tanks.map((x) => x.id))
     const w = db.leads
       .flatMap((l) => (l.watch ?? []).filter((x) => ids.has(x.tankId)).map((x) => ({ leadId: l.id, at: x.at })))
@@ -564,9 +573,13 @@ function DealModal({ open, onClose, tanks }: { open: boolean; onClose: () => voi
               </p>
             )
             : (
+              // Der Text sagt, was übernommen wurde — die alte Fassung nannte
+              // nur den Preis und verschwieg den vorbelegten Käufer.
               <p className="mt-2 rounded-lg bg-amber-soft px-2.5 py-1.5 text-[13px] text-amber">
                 Zu dieser Auswahl läuft Angebot {angebot.id} über {angebot.tankIds.length === 1 ? '1 Position' : `${angebot.tankIds.length} Positionen`} ({eur(angebot.buyerOffer ?? angebot.askPrice)}) —
-                die Auswahl deckt sich nicht damit, der Preis wird nicht übernommen.
+                {imAngebot
+                  ? ' die Auswahl ist ein Teil davon: der Käufer ist vorgeschlagen, der Preis nicht übernommen.'
+                  : ' die Auswahl deckt sich nicht damit, Preis und Käufer werden nicht übernommen.'}
               </p>
             ))}
         </div>

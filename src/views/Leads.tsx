@@ -322,14 +322,24 @@ function LeadModal({ lead, onClose, readOnly, go }: { lead: Lead | null; onClose
                   Zum Angebot
                 </Button>
               )}
-              {quote && buchung && (
+              {/*
+                Nur bei GENAU EINEM offenen Angebot: bei zweien buchte der
+                Knopf stillschweigend das neueste, und nichts an der Leiste
+                sagte, welches — die identischen „Anfrage <Name>"-Labels
+                unterscheiden nichts. Dann führt der Weg über „Zum Angebot",
+                wo beide Karten nebeneinanderstehen. Die Rückfrage nennt
+                Nummer und Wortlaut wie an der Angebotskarte selbst.
+              */}
+              {!readOnly && alleAngebote.length === 1 && quote && buchung && (
                 <Button
                   size="sm"
                   variant="primary"
                   onClick={() => {
+                    const qTanks = quote.tankIds.map((id) => db.tanks.find((t) => t.id === id)).filter((t) => t != null)
+                    const weg = qTanks.filter((t) => t.status === 'verkauft').length
                     const frage = buchung.partial
-                      ? `Ein Teil des Angebots ist schon verkauft. Nur die ${buchung.tankIds.length === 1 ? 'übrige Position' : `übrigen ${buchung.tankIds.length} Positionen`} (${collapseIds(buchung.tankIds)}) zu ${eur(buchung.price)} als Verkauf buchen?`
-                      : `„${quote.label}“ zu ${eur(buchung.price)} als Verkauf buchen?`
+                      ? `„${quote.label}“ (${quote.id}): ${weg} von ${qTanks.length} Positionen ${weg === 1 ? 'ist' : 'sind'} schon verkauft. Nur die ${buchung.tankIds.length === 1 ? 'übrige' : 'übrigen'} (${collapseIds(buchung.tankIds)}) zu ${eur(buchung.price)} als Verkauf buchen?`
+                      : `„${quote.label}“ (${quote.id}) zu ${eur(buchung.price)} als Verkauf buchen?`
                     if (!confirm(frage)) return
                     if (quoteToDeal(quote.id)) { onClose(); go('deals', { leadId: lead.id }) }
                   }}

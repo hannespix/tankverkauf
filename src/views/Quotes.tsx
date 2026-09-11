@@ -277,6 +277,11 @@ function QuoteCard({ quote, go, startOpen }: { quote: Quote; go: Go; startOpen: 
             )
           })}
           {quote.tankIds.length === 0 && <li className="text-[13px] text-amber">Keine Position im Angebot.</li>}
+          {/* Zeigen alle Nummern ins Leere, blieb die Zeile einfach leer —
+              die einzige Auskunft steckte im Hover-Text eines Knopfs. */}
+          {quote.tankIds.length > 0 && positionen.length === 0 && (
+            <li className="text-[13px] text-amber">Die Positionen dieses Angebots sind nicht mehr im Bestand.</li>
+          )}
         </ul>
       )}
 
@@ -355,23 +360,27 @@ function QuoteCard({ quote, go, startOpen }: { quote: Quote; go: Go; startOpen: 
         aus älteren Buchungen noch so dasteht.
       */}
       {!closed && positionen.length > 0 && !buchbar && (() => {
-        // Dieselbe Zurechnung wie der automatische Schließer in createDeal:
-        // überholt nur bei belegtem Fremdkauf, im Zweifel derselbe Vorgang.
-        const fremdVerkauft = quote.leadId != null && verkauft.some((t) => {
-          const d = db.deals.find((x) => x.id === t.dealId)
-          return d?.leadId != null && d.leadId !== quote.leadId
-        })
+        /*
+         * Wohin schließen? Hat DIESER Interessent nachweislich etwas davon
+         * gekauft, als angenommen — auch wenn eine andere Position woanders
+         * landete. Ohne eigenen Kauf als abgelehnt: hier heilt man Altbestände
+         * ohne den Kontext eines laufenden Verkaufs, ein unbelegtes
+         * „Angenommen" (samt Verlaufszeile) wäre erfundene Geschichte. Die
+         * Knopfwörter sind die der Status-Marke — „erledigt" drücken und
+         * „Abgelehnt" lesen sah nach einem Fehler aus.
+         */
+        const anIhn = quote.leadId != null && verkauft.some((t) => db.deals.find((x) => x.id === t.dealId)?.leadId === quote.leadId)
         return (
           <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-amber-soft px-3 py-2 text-[13px] text-amber">
             <span>
-              Alle Positionen sind inzwischen verkauft{fremdVerkauft ? ', aber nicht über dieses Angebot' : ''}.
+              Alle Positionen sind inzwischen verkauft{anIhn ? (lead ? ` — an ${lead.name}` : '') : ', aber nicht über dieses Angebot'}.
               Es gibt hier nichts mehr zu buchen.
             </span>
             <Button
               size="sm"
-              onClick={() => patchQuote(quote.id, { status: fremdVerkauft ? 'abgelehnt' : 'angenommen' }, `Angebot ${fremdVerkauft ? 'überholt' : 'angenommen'}: ${quote.label}`)}
+              onClick={() => patchQuote(quote.id, { status: anIhn ? 'angenommen' : 'abgelehnt' }, `Angebot ${anIhn ? 'angenommen' : 'überholt'}: ${quote.label}`)}
             >
-              {fremdVerkauft ? 'Als erledigt schließen' : 'Als angenommen schließen'}
+              {anIhn ? 'Als angenommen schließen' : 'Als abgelehnt schließen'}
             </Button>
           </div>
         )
@@ -421,11 +430,17 @@ function QuoteCard({ quote, go, startOpen }: { quote: Quote; go: Go; startOpen: 
             Angebot über null Positionen (entsteht, wenn die letzte Position aus
             dem Bestand gelöscht wird) war ebenfalls buchbar.
           */}
-          {!closed && (
+          {/*
+            Ist alles verkauft, trägt der Kasten oben Erklärung UND Griff — der
+            gesperrte Primary daneben wäre genau der tote Knopf mit Hover-Text,
+            den dieser Umbau abschafft. Nur das leere Angebot behält ihn als
+            Auskunft am Ort der Handlung.
+          */}
+          {!closed && (buchbar || positionen.length === 0) && (
             <Button
               variant="primary"
               disabled={!buchbar}
-              title={positionen.length === 0 ? 'Keine Position im Angebot' : buchbar ? undefined : 'Alle Positionen sind bereits verkauft'}
+              title={buchbar ? undefined : 'Keine Position im Angebot'}
               onClick={buchen}
             >
               <IconHandshake />Als Verkauf buchen
@@ -623,8 +638,8 @@ function QuoteCard({ quote, go, startOpen }: { quote: Quote; go: Go; startOpen: 
                 Buchen-Knopf und musste erst wissen, dass er hinter „Fertig"
                 liegt.
               */}
-              {!closed && (
-                <Button disabled={!buchbar} title={buchbar ? undefined : positionen.length === 0 ? 'Keine Position im Angebot' : 'Alle Positionen sind bereits verkauft'} onClick={buchen}>
+              {!closed && (buchbar || positionen.length === 0) && (
+                <Button disabled={!buchbar} title={buchbar ? undefined : 'Keine Position im Angebot'} onClick={buchen}>
                   <IconHandshake />Als Verkauf buchen
                 </Button>
               )}
