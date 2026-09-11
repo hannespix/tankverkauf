@@ -7,7 +7,7 @@
   "imprintUrl": "https://www.weingut-pix.de/impressum/",
   "privacy": "Verantwortlich für diese Seite: Weingut Pix, 79241 Ihringen, info@weingut-pix.de. Vollständige Anschrift im Impressum.\n\nDiese Seite wird von GitHub Inc. (GitHub Pages) ausgeliefert. Beim Aufruf überträgt Ihr Browser technisch bedingt Ihre IP-Adresse an GitHub; GitHub speichert sie in Server-Protokollen. Rechtsgrundlage ist Art. 6 Abs. 1 lit. f DSGVO — ohne diese Übertragung lässt sich keine Seite ausliefern.\n\nDie Seite setzt keine Cookies, misst kein Nutzungsverhalten und bindet keine fremden Inhalte ein. Schrift und Bilder werden von derselben Adresse geladen wie die Seite selbst.\n\nIhre Auswahl bleibt in Ihrem Browser und wird nirgends gespeichert. Klicken Sie auf „Anfrage senden“, öffnet sich Ihr eigenes E-Mail-Programm mit einem vorbereiteten Text. Abgeschickt wird die Nachricht erst von Ihnen. Was Sie uns dabei schreiben — Name, Adresse, Telefonnummer — verarbeiten wir ausschließlich, um Ihre Anfrage zu beantworten und ein Geschäft abzuwickeln (Art. 6 Abs. 1 lit. b DSGVO), und löschen es, sobald die gesetzlichen Aufbewahrungsfristen abgelaufen sind.\n\nSie haben das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung der Verarbeitung, Datenübertragbarkeit und Widerspruch sowie das Recht, sich bei einer Aufsichtsbehörde zu beschweren.",
   "vatRate": 0.19,
-  "updatedAt": "2026-09-11T05:32:33.400Z",
+  "updatedAt": "2026-09-11T05:41:39.573Z",
   "items": [
     {
       "id": "T-11",
@@ -80,63 +80,6 @@
       },
       "photos": [
         "fotos/T-15-112lm1.jpg"
-      ],
-      "tags": [],
-      "reserved": false
-    },
-    {
-      "id": "T-17",
-      "category": "tank",
-      "categoryLabel": "Edelstahltanks",
-      "maker": "Sonstige",
-      "type": "Edelstahltank",
-      "litres": 1650,
-      "vb": 1050,
-      "dims": {
-        "w": 106,
-        "d": 132,
-        "h": 147
-      },
-      "photos": [
-        "fotos/gruppe-09h2c9.jpg"
-      ],
-      "tags": [],
-      "reserved": false
-    },
-    {
-      "id": "T-18",
-      "category": "tank",
-      "categoryLabel": "Edelstahltanks",
-      "maker": "Sonstige",
-      "type": "Edelstahltank",
-      "litres": 1650,
-      "vb": 1050,
-      "dims": {
-        "w": 106,
-        "d": 132,
-        "h": 147
-      },
-      "photos": [
-        "fotos/gruppe-09h2c9.jpg"
-      ],
-      "tags": [],
-      "reserved": false
-    },
-    {
-      "id": "T-19",
-      "category": "tank",
-      "categoryLabel": "Edelstahltanks",
-      "maker": "Sonstige",
-      "type": "Edelstahltank",
-      "litres": 1650,
-      "vb": 1050,
-      "dims": {
-        "w": 106,
-        "d": 132,
-        "h": 147
-      },
-      "photos": [
-        "fotos/gruppe-09h2c9.jpg"
       ],
       "tags": [],
       "reserved": false
@@ -990,6 +933,57 @@
       ]
     },
     {
+      "id": "T-17",
+      "category": "tank",
+      "categoryLabel": "Edelstahltanks",
+      "maker": "Sonstige",
+      "type": "Edelstahltank",
+      "litres": 1650,
+      "dims": {
+        "w": 106,
+        "d": 132,
+        "h": 147
+      },
+      "tags": [],
+      "photos": [
+        "fotos/gruppe-09h2c9.jpg"
+      ]
+    },
+    {
+      "id": "T-18",
+      "category": "tank",
+      "categoryLabel": "Edelstahltanks",
+      "maker": "Sonstige",
+      "type": "Edelstahltank",
+      "litres": 1650,
+      "dims": {
+        "w": 106,
+        "d": 132,
+        "h": 147
+      },
+      "tags": [],
+      "photos": [
+        "fotos/gruppe-09h2c9.jpg"
+      ]
+    },
+    {
+      "id": "T-19",
+      "category": "tank",
+      "categoryLabel": "Edelstahltanks",
+      "maker": "Sonstige",
+      "type": "Edelstahltank",
+      "litres": 1650,
+      "dims": {
+        "w": 106,
+        "d": 132,
+        "h": 147
+      },
+      "tags": [],
+      "photos": [
+        "fotos/gruppe-09h2c9.jpg"
+      ]
+    },
+    {
       "id": "T-23",
       "category": "tank",
       "categoryLabel": "Edelstahltanks",
@@ -1110,21 +1104,6 @@
     }
   ],
   "bundles": [
-    {
-      "id": "raumspar",
-      "label": "Raumspar-Keller, 8.000 l",
-      "blurb": "Sechs eckige Tanks von 800 bis 1.650 l, die sich Wand an Wand stellen lassen und keinen Zwickel Platz verschenken. Für einen engen Altbaukeller die dichteste Art, 8.000 l unterzubringen.",
-      "ids": [
-        "T-15",
-        "T-17",
-        "T-18",
-        "T-19"
-      ],
-      "giftIds": [],
-      "full": 3900,
-      "price": 3300,
-      "short": 2
-    },
     {
       "id": "grossgebinde",
       "label": "Großgebinde, 16.100 l",
