@@ -508,13 +508,28 @@ function TankDetail({ id, onClose, readOnly }: { id: string | null; onClose: () 
 function DealModal({ open, onClose, tanks }: { open: boolean; onClose: () => void; tanks: Tank[] }) {
   const { db } = useStore()
   const t = totals(tanks)
-  const [price, setPrice] = useState('')
+  /*
+   * Läuft zu dieser Auswahl schon ein Angebot, kennt die Buchung Preis und
+   * Käufer — beides stand hier bisher leer, und wer aus dem Bestand buchte,
+   * tippte den verhandelten Preis aus dem Gedächtnis neu ein oder übersah,
+   * dass überhaupt ein Angebot lief. Übernommen wird der Preis nur, wenn die
+   * Auswahl das Angebot genau trifft: für eine Teilmenge gälte er nicht.
+   */
+  const angebot = (() => {
+    const ids = new Set(tanks.map((x) => x.id))
+    const offene = db.quotes.filter((q) => q.status !== 'angenommen' && q.status !== 'abgelehnt' && q.tankIds.some((id) => ids.has(id)))
+    return offene.find((q) => q.tankIds.length === tanks.length && q.tankIds.every((id) => ids.has(id))) ?? offene[0] ?? null
+  })()
+  const deckt = angebot != null && angebot.tankIds.length === tanks.length && angebot.tankIds.every((id) => tanks.some((x) => x.id === id))
+  const [price, setPrice] = useState(() => (deckt && angebot ? String(angebot.buyerOffer ?? angebot.askPrice) : ''))
   /*
    * Wer auf eine der Positionen wartet, ist der wahrscheinlichste Käufer — als
    * Vorschlag, nicht als Zwang. Ohne Käufer gebucht bliebe sein Bescheid-Wunsch
    * stehen und die Karte behauptete „für eine Absage", obwohl er gekauft hat.
+   * Ein laufendes Angebot ist der stärkere Beleg als ein Bescheid-Wunsch.
    */
   const [leadId, setLeadId] = useState(() => {
+    if (angebot?.leadId) return angebot.leadId
     const ids = new Set(tanks.map((x) => x.id))
     const w = db.leads
       .flatMap((l) => (l.watch ?? []).filter((x) => ids.has(x.tankId)).map((x) => ({ leadId: l.id, at: x.at })))
@@ -541,6 +556,19 @@ function DealModal({ open, onClose, tanks }: { open: boolean; onClose: () => voi
           <ul className="mt-2 space-y-0.5 text-[13px] text-muted">
             {tanks.map((x) => <li key={x.id}>{itemLabel(x)} · {eur(x.vb)}</li>)}
           </ul>
+          {angebot && (deckt
+            ? (
+              <p className="mt-2 text-[13px] text-muted">
+                Preis{angebot.leadId ? ' und Käufer' : ''} aus Angebot {angebot.id} übernommen
+                {angebot.buyerOffer != null ? ' — das Käufergebot' : ''}.
+              </p>
+            )
+            : (
+              <p className="mt-2 rounded-lg bg-amber-soft px-2.5 py-1.5 text-[13px] text-amber">
+                Zu dieser Auswahl läuft Angebot {angebot.id} über {angebot.tankIds.length === 1 ? '1 Position' : `${angebot.tankIds.length} Positionen`} ({eur(angebot.buyerOffer ?? angebot.askPrice)}) —
+                die Auswahl deckt sich nicht damit, der Preis wird nicht übernommen.
+              </p>
+            ))}
         </div>
 
         <Field label="Verkaufspreis brutto gesamt" hint={value > 0 && t.litres ? `${centsPerLitre(value, t.litres)} · ${value < t.floor ? 'unter der Summe der Untergrenzen' : 'über der Summe der Untergrenzen'}` : undefined}>

@@ -3,7 +3,7 @@ import { PriceLadder } from '../components/charts'
 import { LeadPicker } from '../components/LeadPicker'
 import { Button, Card, EmptyState, Field, Input, Pill, SectionTitle, Select, Stat, Textarea, cx, type Tone } from '../components/ui'
 import { IconHandshake, IconLock, IconPlus, IconTrash } from '../components/icons'
-import { patchQuote, quoteToDeal, releaseQuoteTanks, removeQuote, setQuoteLinePrice, setQuoteReserved, setQuoteTanks } from '../lib/actions'
+import { patchQuote, quoteBooking, quoteToDeal, releaseQuoteTanks, removeQuote, setQuoteLinePrice, setQuoteReserved, setQuoteTanks } from '../lib/actions'
 import { itemLabel, centsPerLitre, dateDE, eur, num, todayISO } from '../lib/format'
 import { collapseIds, publicEffect } from '../lib/inbox'
 import { Verlauf } from '../components/Verlauf'
@@ -120,7 +120,27 @@ function QuoteCard({ quote, go, startOpen }: { quote: Quote; go: Go; startOpen: 
   // Was dieses Angebot noch bindet, und ob überhaupt noch etwas zu verkaufen ist.
   const gebunden = positionen.filter((t) => t.status === 'kontakt' || t.status === 'reserviert')
   const verkauft = positionen.filter((t) => t.status === 'verkauft')
-  const buchbar = positionen.length > 0 && verkauft.length < positionen.length
+  /*
+   * Filter und Preis kommen aus quoteBooking — derselben Rechnung, die die
+   * Buchung nachher ausführt. Die Rückfrage nannte sonst den vollen
+   * verhandelten Preis, während ein teilverkauftes Angebot nur noch den Rest
+   * zu dessen Zeilenpreisen bucht.
+   */
+  const plan = quoteBooking(db, quote)
+  const buchbar = plan != null
+
+  function buchen() {
+    if (!plan) return
+    const frage = plan.partial
+      ? `${verkauft.length} von ${positionen.length} Positionen ${verkauft.length === 1 ? 'ist' : 'sind'} schon verkauft. Nur die ${plan.tankIds.length === 1 ? 'übrige' : 'übrigen'} (${collapseIds(plan.tankIds)}) zu ${eur(plan.price)} als Verkauf buchen?`
+      : `„${quote.label}“ zu ${eur(plan.price)} als Verkauf buchen?`
+    if (!confirm(frage)) return
+    if (quoteToDeal(quote.id)) {
+      // Der Beleg liegt in den Verkäufen — dort weitermachen, nicht vor einer
+      // Karte stehen, die nur stiller geworden ist.
+      go('deals', quote.leadId ? { leadId: quote.leadId } : undefined)
+    }
+  }
 
   /**
    * Reservieren wirkt nach außen, deshalb wird gefragt — und die Frage nennt,
@@ -309,6 +329,55 @@ function QuoteCard({ quote, go, startOpen }: { quote: Quote; go: Go; startOpen: 
       )}
 
       {/*
+        „Angenommen" ist noch kein Verkauf — die Buchung ist ein eigener Schritt.
+        Wer den Status von Hand umstellte, landete bisher in einer Sackgasse:
+        der Buchen-Knopf verschwand mit dem Status, das Angebot fiel aus allen
+        offenen Listen, und nirgends stand, dass das Geld nie gebucht wurde.
+      */}
+      {quote.status === 'angenommen' && plan && (
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-amber-soft px-3 py-2 text-[13px] text-amber">
+          <span>
+            Angenommen, aber noch kein Verkauf gebucht — {collapseIds(plan.tankIds)} {plan.tankIds.length === 1 ? 'steht' : 'stehen'} im
+            Bestand noch als unverkauft.
+          </span>
+          <Button size="sm" variant="primary" onClick={buchen}>
+            <IconHandshake />Als Verkauf buchen
+          </Button>
+        </div>
+      )}
+
+      {/*
+        Der Gegenfall: offen, aber es gibt nichts mehr zu buchen, weil alle
+        Positionen inzwischen (anderswo) verkauft wurden. Solche Angebote
+        zählten dauerhaft als „offen" mit, und die einzige Auskunft war ein
+        gesperrter Knopf mit Hover-Text. Neue Verkäufe schließen so etwas jetzt
+        selbst (createDeal misst am Tank-Status); dieser Griff räumt auf, was
+        aus älteren Buchungen noch so dasteht.
+      */}
+      {!closed && positionen.length > 0 && !buchbar && (() => {
+        // Dieselbe Zurechnung wie der automatische Schließer in createDeal:
+        // überholt nur bei belegtem Fremdkauf, im Zweifel derselbe Vorgang.
+        const fremdVerkauft = quote.leadId != null && verkauft.some((t) => {
+          const d = db.deals.find((x) => x.id === t.dealId)
+          return d?.leadId != null && d.leadId !== quote.leadId
+        })
+        return (
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-amber-soft px-3 py-2 text-[13px] text-amber">
+            <span>
+              Alle Positionen sind inzwischen verkauft{fremdVerkauft ? ', aber nicht über dieses Angebot' : ''}.
+              Es gibt hier nichts mehr zu buchen.
+            </span>
+            <Button
+              size="sm"
+              onClick={() => patchQuote(quote.id, { status: fremdVerkauft ? 'abgelehnt' : 'angenommen' }, `Angebot ${fremdVerkauft ? 'überholt' : 'angenommen'}: ${quote.label}`)}
+            >
+              {fremdVerkauft ? 'Als erledigt schließen' : 'Als angenommen schließen'}
+            </Button>
+          </div>
+        )
+      })()}
+
+      {/*
         Der Schriftwechsel gehört auch hierher.
         Aus dem Angebot heraus wird geantwortet — mit einem Knopf, der die
         fertige Angebots-E-Mail einsetzt. Gespeichert wird sie beim
@@ -357,7 +426,7 @@ function QuoteCard({ quote, go, startOpen }: { quote: Quote; go: Go; startOpen: 
               variant="primary"
               disabled={!buchbar}
               title={positionen.length === 0 ? 'Keine Position im Angebot' : buchbar ? undefined : 'Alle Positionen sind bereits verkauft'}
-              onClick={() => { if (confirm(`„${quote.label}“ zu ${eur(m.decisive)} als Verkauf buchen?`)) quoteToDeal(quote.id) }}
+              onClick={buchen}
             >
               <IconHandshake />Als Verkauf buchen
             </Button>
@@ -546,7 +615,21 @@ function QuoteCard({ quote, go, startOpen }: { quote: Quote; go: Go; startOpen: 
             <Button variant="danger" onClick={() => { if (confirm(`Angebot „${quote.label}“ löschen?`)) removeQuote(quote.id) }}>
               <IconTrash />Löschen
             </Button>
-            <Button variant="primary" onClick={() => setOpen(false)}>Fertig</Button>
+            <span className="flex flex-wrap justify-end gap-2">
+              {/*
+                Auch hier, nicht nur in der zugeklappten Karte: „Zum Angebot"
+                aus dem Interessenten-Dialog landet direkt in dieser
+                Bearbeiten-Ansicht — wer dort zusagen wollte, fand keinen
+                Buchen-Knopf und musste erst wissen, dass er hinter „Fertig"
+                liegt.
+              */}
+              {!closed && (
+                <Button disabled={!buchbar} title={buchbar ? undefined : positionen.length === 0 ? 'Keine Position im Angebot' : 'Alle Positionen sind bereits verkauft'} onClick={buchen}>
+                  <IconHandshake />Als Verkauf buchen
+                </Button>
+              )}
+              <Button variant="primary" onClick={() => setOpen(false)}>Fertig</Button>
+            </span>
           </div>
         </div>
       )}

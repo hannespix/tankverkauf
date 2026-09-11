@@ -66,11 +66,31 @@ export default function Overview({ go }: ViewProps) {
     return { lead, text: `${lead.name} wollte Bescheid: ${namen.join(', ')} — ${schluss}` }
   })
 
+  /*
+   * Angenommen heißt noch nicht gebucht: die Buchung ist ein eigener Schritt,
+   * und wer den Status von Hand auf „Angenommen" stellte, sah nirgends mehr,
+   * dass das Geld nie in den Verkäufen ankam. Der Gegenfall genauso: ein noch
+   * offenes Angebot, dessen Positionen längst anderweitig verkauft sind, zählte
+   * dauerhaft als offen mit — beides gehört auf diese Liste, der Klick landet
+   * an der Karte mit dem passenden Griff.
+   */
+  const buchungOffen = db.quotes.filter((q) => q.status === 'angenommen' && q.tankIds.some((id) => {
+    const t = db.tanks.find((x) => x.id === id)
+    return t && t.status !== 'verkauft'
+  }))
+  const ueberholt = db.quotes.filter((q) => {
+    if (q.status === 'angenommen' || q.status === 'abgelehnt') return false
+    const ts = q.tankIds.map((id) => db.tanks.find((t) => t.id === id)).filter((t) => t != null)
+    return ts.length > 0 && ts.every((t) => t.status === 'verkauft')
+  })
+
   const missing = missingFromSeed(db)
   const todos = [
     missing.length > 0 && { icon: <IconWarn />, tone: 'amber' as const, text: `${missing.length} Positionen aus dem Ausgangsbestand fehlen im Bestand`, go: 'settings' as View },
+    ...buchungOffen.map((q) => ({ icon: <IconWarn />, tone: 'amber' as const, text: `Angebot „${q.label}“ ist angenommen — der Verkauf ist noch nicht gebucht`, go: 'quotes' as View, focus: { quoteId: q.id }, key: `buchung-${q.id}` })),
     dueFollowUps.length > 0 && { icon: <IconClock />, tone: 'amber' as const, text: `${dueFollowUps.length} Wiedervorlage${dueFollowUps.length > 1 ? 'n' : ''} fällig`, go: 'leads' as View },
     ...dueByLead.map((d) => ({ icon: <IconClock />, tone: 'amber' as const, text: d.text, go: 'leads' as View, focus: { leadId: d.lead.id }, key: `bescheid-${d.lead.id}` })),
+    ...ueberholt.map((q) => ({ icon: <IconClock />, tone: 'sky' as const, text: `Angebot „${q.label}“ ist überholt — alle Positionen sind inzwischen verkauft`, go: 'quotes' as View, focus: { quoteId: q.id }, key: `ueberholt-${q.id}` })),
     belowFloor.length > 0 && { icon: <IconWarn />, tone: 'rose' as const, text: `${belowFloor.length} Gebot${belowFloor.length > 1 ? 'e' : ''} unter Untergrenze`, go: 'tanks' as View },
     staleAds.length > 0 && { icon: <IconMegaphone />, tone: 'amber' as const, text: `${staleAds.length} Anzeige${staleAds.length > 1 ? 'n' : ''} nicht mehr aktuell`, go: 'ads' as View },
     bumpDue.length > 0 && { icon: <IconClock />, tone: 'sky' as const, text: `${bumpDue.length} Anzeige${bumpDue.length > 1 ? 'n' : ''} zum Hochholen`, go: 'ads' as View },
