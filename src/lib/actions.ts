@@ -1018,16 +1018,43 @@ export function removeQuote(id: string) {
   )
 }
 
+/**
+ * Was das Buchen dieses Angebots wirklich buchen würde — vor dem Buchen.
+ *
+ * Die Rückfrage im Dialog braucht denselben Filter und dieselbe Preisregel wie
+ * `quoteToDeal`; zweimal gerechnet liefen sie auseinander, und die Frage nennte
+ * eine Summe, die die Buchung dann nicht schreibt.
+ *
+ * Gebucht wird nur, was noch existiert und nicht verkauft ist: ein teilweise
+ * verkauftes Angebot (zwei von sechs schon aus dem Bestand gebucht) buchte
+ * bisher alle sechs erneut zum vollen Preis — `revenue()` zählt je Verkauf,
+ * die zwei verkauften wären doppelt bezahlt worden. Der verhandelte
+ * Gesamtpreis deckt nur das GANZE Angebot — gemessen an q.tankIds, nicht am
+ * Vorhandenen: auch eine inzwischen gelöschte Position war Teil des
+ * verhandelten Umfangs, der volle Preis für den Rest wäre zu hoch. Für jeden
+ * Teilrest gilt die Summe seiner Zeilenpreise.
+ */
+export function quoteBooking(db: DB, q: Quote): { tankIds: string[]; price: number; partial: boolean } | null {
+  const offen = q.tankIds.filter((tid) => {
+    const t = db.tanks.find((x) => x.id === tid)
+    return t && t.status !== 'verkauft'
+  })
+  if (offen.length === 0) return null
+  const partial = offen.length < q.tankIds.length
+  return { tankIds: offen, price: partial ? sumLines(db, q, offen) : (q.buyerOffer ?? q.askPrice), partial }
+}
+
 /** Accepted offer becomes a booked sale at the price that was actually agreed. */
 export function quoteToDeal(quoteId: string): string | null {
   const db = store.getSnapshot().db
   const q = db.quotes.find((x) => x.id === quoteId)
   if (!q) return null
-  const price = q.buyerOffer ?? q.askPrice
+  const plan = quoteBooking(db, q)
+  if (!plan) return null
   const dealId = createDeal({
     label: q.label,
-    tankIds: q.tankIds,
-    price,
+    tankIds: plan.tankIds,
+    price: plan.price,
     leadId: q.leadId,
     date: new Date().toISOString().slice(0, 10),
     note: q.note,
@@ -1078,12 +1105,34 @@ export function createDeal(input: { label: string; tankIds: string[]; price: num
        * sämtlich verkauft sind — nicht schon eines, das zufällig eine davon
        * nennt: wer sechs anbietet und zwei verkauft, verhandelt über den Rest
        * weiter.
+       *
+       * Gemessen am Tank-STATUS, nicht an den IDs dieses einen Verkaufs: ein
+       * Angebot, dessen übrige Positionen schon früher verkauft wurden, wäre
+       * sonst nach dem Verkauf der letzten immer noch offen — als Geist in
+       * „Offene Angebote", mit gesperrtem Buchen-Knopf als einziger Auskunft.
+       * Die Statusumstellung weiter oben ist da schon geschehen, der Vergleich
+       * sieht also Alt- und Neuverkäufe gleichermaßen.
+       *
+       * WIE geschlossen wird, hängt davon ab, an wen die Ware ging. Hat der
+       * Interessent dieses Angebots selbst etwas davon gekauft — irgendein
+       * tragender Verkauf nennt ihn, der gerade gebuchte liegt da schon in
+       * db.deals —, ist es angenommen: wer den Rest seines Angebots kauft,
+       * bekommt kein „abgelehnt", bloß weil eine frühere Position woanders
+       * landete. Erst ohne eigenen Kauf zählt der belegte Fremdkauf (ein
+       * Verkauf nennt einen ANDEREN Käufer) als überholt. Fehlen überall nur
+       * die Namen, ist es im Zweifel derselbe Vorgang und bleibt „angenommen"
+       * — wie bisher.
        */
-      const verkauft = new Set(input.tankIds)
+      const beruehrt = new Set(input.tankIds)
       for (const q of db.quotes) {
         if (q.status === 'angenommen' || q.status === 'abgelehnt') continue
-        if (q.tankIds.length === 0 || !q.tankIds.every((tid) => verkauft.has(tid))) continue
-        q.status = 'angenommen'
+        if (!q.tankIds.some((tid) => beruehrt.has(tid))) continue
+        const ts = q.tankIds.map((tid) => db.tanks.find((t) => t.id === tid)).filter((t): t is Tank => Boolean(t))
+        if (ts.length === 0 || !ts.every((t) => t.status === 'verkauft')) continue
+        const traeger = ts.map((t) => db.deals.find((d) => d.id === t.dealId))
+        const anIhn = q.leadId != null && traeger.some((d) => d?.leadId === q.leadId)
+        const fremdVerkauft = q.leadId != null && traeger.some((d) => d?.leadId != null && d.leadId !== q.leadId)
+        q.status = !anIhn && fremdVerkauft ? 'abgelehnt' : 'angenommen'
         q.updatedAt = now()
       }
       if (input.leadId) {
@@ -1201,15 +1250,27 @@ export function removeDeal(dealId: string) {
         t.updatedAt = now()
       }
 
-      // Nur das Angebot, das wirklich zu diesem Verkauf gehört. Ein Verkauf trägt
-      // keine Angebotsnummer, also entscheiden die Positionen — über `leadId`
-      // allein wurde jedes angenommene Angebot desselben Käufers zurückgesetzt,
-      // auch das eines anderen, noch gebuchten Verkaufs.
-      const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x))
+      /*
+       * Nur die Angebote, die wirklich an diesem Verkauf hingen. Ein Verkauf
+       * trägt keine Angebotsnummer, also entscheiden die Positionen: wieder
+       * geöffnet wird ein ANGENOMMENES Angebot, das eine der zurückgenommenen
+       * nennt und dessen Positionen danach nicht mehr sämtlich verkauft sind
+       * — die Mengengleichheit von früher übersähe jede Teilbuchung, die
+       * quoteToDeal inzwischen erzeugt, und ließe „angenommen" stehen, obwohl
+       * die Buchung soeben bewusst zurückgenommen wurde (die Übersicht mahnte
+       * dann eine Buchung an, die es nie mehr geben soll).
+       *
+       * Abgelehnte bleiben abgelehnt: eine echte Absage lebt unabhängig vom
+       * zurückgenommenen Geld, und ob „abgelehnt" von Hand kam oder vom
+       * automatischen Schließer, weiß hinterher niemand mehr. Wer den
+       * Sonderfall hat, stellt den Status im Angebot selbst zurück.
+       */
+      const zurueck = new Set(deal.tankIds)
       for (const q of db.quotes) {
         if (q.status !== 'angenommen') continue
-        if (q.leadId !== deal.leadId || !sameSet(q.tankIds, deal.tankIds)) continue
-        if (others.some((d) => sameSet(d.tankIds, q.tankIds))) continue
+        if (!q.tankIds.some((tid) => zurueck.has(tid))) continue
+        const ts = q.tankIds.map((tid) => db.tanks.find((t) => t.id === tid)).filter((t): t is Tank => Boolean(t))
+        if (ts.length > 0 && ts.every((t) => t.status === 'verkauft')) continue
         q.status = 'gesendet'
         q.updatedAt = now()
       }

@@ -3,7 +3,7 @@ import { Button, Modal, Pill, Textarea, cx } from './ui'
 import { IconCamera, IconCheck, IconClose, IconCopy, IconInbox, IconSpark, IconWarn } from './icons'
 import { AiError, draftReply, readProposals, type AiImage } from '../lib/ai'
 import { buildPlan, checkProposals, collapseIds, resolvePick, type MessageContext, type Plan, type Proposal } from '../lib/inbox'
-import { applyProposal, quoteToDeal, saveReply } from '../lib/actions'
+import { applyProposal, quoteBooking, quoteToDeal, saveReply } from '../lib/actions'
 import { parseMessage } from '../lib/ads'
 import { eur, itemLabel } from '../lib/format'
 import { openQuotesOf } from '../lib/stats'
@@ -341,13 +341,17 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
     () => openQuotesOf(db, leadId)[0] ?? null,
     [db.quotes, leadId],
   )
+  // Dieselbe Rechnung wie die Buchung selbst: Kasten und Erfolgszeile nannten
+  // sonst alle Positionen zum vollen Verhandlungspreis, während quoteToDeal
+  // bei einem teilverkauften Angebot nur den Rest zur Zeilensumme bucht.
+  const buchung = useMemo(() => (quote ? quoteBooking(db, quote) : null), [db, quote])
 
   function bookSale() {
-    if (!quote) return
+    if (!quote || !buchung) return
     const id = quoteToDeal(quote.id)
     setConfirmSale(false)
     setLog((prev) => [...prev, id
-      ? { text: `Verkauf gebucht: ${quote.label} für ${eur(quote.buyerOffer ?? quote.askPrice)}`, ok: true }
+      ? { text: `Verkauf gebucht: ${quote.label} für ${eur(buchung.price)}`, ok: true }
       : { text: 'Verkauf konnte nicht gebucht werden', ok: false }])
   }
 
@@ -729,7 +733,7 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
                     {applied[p.id] ? `✓ ${p.title}` : !leadId ? `${p.title} — erst den Interessenten` : p.title}
                   </Button>
                 ))}
-                {quote && !confirmSale && (
+                {quote && buchung && !confirmSale && (
                   <Button size="sm" variant="danger" onClick={() => setConfirmSale(true)}>
                     Verkauf buchen
                   </Button>
@@ -741,11 +745,13 @@ export function Inbox({ open, onClose, initialText }: { open: boolean; onClose: 
                   gebuchtes ist erledigt.
                 </p>
               )}
-              {confirmSale && quote && (
+              {confirmSale && quote && buchung && (
                 <div className="mt-2 rounded-xl border border-rose/50 bg-rose-soft/30 p-3 text-[13px]">
                   <p>
-                    <strong>{quote.tankIds.length} {quote.tankIds.length === 1 ? 'Position' : 'Positionen'} für {eur(quote.buyerOffer ?? quote.askPrice)}</strong>{' '}
-                    als verkauft buchen. Sie verschwinden binnen etwa einer Minute aus der Käuferliste, auch aus jedem Paket.
+                    <strong>{buchung.tankIds.length} {buchung.tankIds.length === 1 ? 'Position' : 'Positionen'} für {eur(buchung.price)}</strong>{' '}
+                    als verkauft buchen.
+                    {buchung.partial && ' Der Rest des Angebots ist schon verkauft und bleibt unberührt; der Preis ist die Summe der übrigen Zeilenpreise.'}{' '}
+                    Sie verschwinden binnen etwa einer Minute aus der Käuferliste, auch aus jedem Paket.
                   </p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     <Button size="sm" variant="danger" onClick={bookSale}>Ja, buchen</Button>
@@ -925,7 +931,7 @@ export function InboxButton({ onClick }: { onClick: () => void }) {
       type="button"
       onClick={onClick}
       aria-label="Nachricht einlesen"
-      className="tx press fixed right-4 bottom-20 z-30 flex h-14 w-14 items-center justify-center rounded-full border border-primary bg-primary text-primary-text shadow-card hover:brightness-110 lg:bottom-6"
+      className="tx press no-print fixed right-4 bottom-20 z-30 flex h-14 w-14 items-center justify-center rounded-full border border-primary bg-primary text-primary-text shadow-card hover:brightness-110 lg:bottom-6"
     >
       <IconInbox className="h-6 w-6" />
     </button>

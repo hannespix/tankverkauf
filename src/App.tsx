@@ -191,7 +191,14 @@ export default function App() {
           </div>
         )}
 
-        <main className="mx-auto w-full max-w-[1400px] p-3 pb-24 sm:p-4 lg:p-6 lg:pb-6">
+        {/*
+          Unten so viel Luft, dass der schwebende Posteingangs-Knopf (56 px, ab
+          bottom-20 bzw. lg:bottom-6) die letzte Karte nie verdeckt — dort
+          sitzen rechtsbündig genau die Abschluss-Knöpfe wie „Als Verkauf
+          buchen". `sm:p-4` setzt auch das Bottom-Padding zurück, deshalb steht
+          die Luft je Stufe noch einmal ausdrücklich da.
+        */}
+        <main className="mx-auto w-full max-w-[1400px] p-3 pb-36 sm:p-4 sm:pb-36 lg:p-6 lg:pb-24">
           <Current go={go} focus={focus} />
         </main>
 

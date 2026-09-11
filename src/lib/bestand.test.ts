@@ -24,7 +24,7 @@ const mem = new Map<string, string>()
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { store } from './store'
-import { addTank, applyProposal, createAd, createDeal, createQuote, detachTanks, noteOnLead, patchQuote, refreshAd, releaseQuoteTanks, removeLead, removeQuote, removeTank, saveReply, setLeadWatch, setQuoteLinePrice, setQuoteReserved, setQuoteTanks } from './actions'
+import { addTank, applyProposal, createAd, createDeal, createQuote, detachTanks, noteOnLead, patchQuote, quoteBooking, quoteToDeal, refreshAd, releaseQuoteTanks, removeDeal, removeLead, removeQuote, removeTank, saveReply, setLeadWatch, setQuoteLinePrice, setQuoteReserved, setQuoteTanks } from './actions'
 import { quoteMail } from './mail'
 import { resolveBundle } from './bundles'
 import { adDrift, generateAd } from './ads'
@@ -1034,4 +1034,179 @@ test('B62 · die Einzelanzeige einer stillen Position wirbt nicht', () => {
 
   store.mutate((x) => { x.tanks[0]!.status = 'verkauft'; x.tanks[0]!.dealId = 'D-1' })
   assert.match(generateAd(db(), { kind: 'tank', tankId: 'T-1' }, db().settings.portals[0]!).body, /verkauft/)
+})
+
+test('B63 · quoteToDeal bucht nur, was noch nicht verkauft ist — zu den Zeilenpreisen', () => {
+  /*
+   * Ein teilverkauftes Angebot buchte bisher ALLE Positionen erneut, zum
+   * vollen verhandelten Preis: T-1 wäre in zwei Verkäufen gelandet und
+   * revenue() hätte doppelt gezählt. Der verhandelte Gesamtpreis gilt nur fürs
+   * Ganze — für den Rest zählt die Summe seiner Zeilenpreise.
+   */
+  setDb({
+    tanks: [tank('T-1', { status: 'verkauft', dealId: 'D-0' }), tank('T-2'), tank('T-3')],
+    leads: [lead('L-1')],
+    deals: [deal('D-0', { tankIds: ['T-1'], price: 900, leadId: 'L-2' })],
+    quotes: [quote('Q-1', { leadId: 'L-1', tankIds: ['T-1', 'T-2', 'T-3'], askPrice: 2600, buyerOffer: 2500, prices: { 'T-2': 700 } })],
+  })
+  const dealId = quoteToDeal('Q-1')
+  const d = db().deals.find((x) => x.id === dealId)!
+  assert.deepEqual(d.tankIds, ['T-2', 'T-3'], 'die verkaufte Position bleibt draußen')
+  assert.equal(d.price, 1700, 'Zeilenpreise 700 + 1000 — nicht das Käufergebot über alles')
+  assert.equal(db().quotes[0]!.status, 'angenommen')
+  assert.equal(db().deals.length, 2, 'T-1 steckt weiter allein im alten Verkauf')
+})
+
+test('B64 · quoteToDeal nimmt den verhandelten Preis, solange nichts fehlt', () => {
+  setDb({
+    tanks: [tank('T-1'), tank('T-2')],
+    leads: [lead('L-1')],
+    quotes: [quote('Q-1', { leadId: 'L-1', tankIds: ['T-1', 'T-2'], askPrice: 2000, buyerOffer: 1800, prices: { 'T-1': 700 } })],
+  })
+  quoteToDeal('Q-1')
+  const d = db().deals[0]!
+  assert.equal(d.price, 1800, 'das Käufergebot, nicht die Zeilensumme')
+  assert.deepEqual(d.tankIds, ['T-1', 'T-2'])
+  assert.ok(db().tanks.every((t) => t.status === 'verkauft'))
+  assert.equal(db().leads[0]!.stage, 'gewonnen')
+})
+
+test('B65 · quoteToDeal bucht nichts, wenn nichts mehr da ist', () => {
+  // Alles schon verkauft: kein zweiter Verkauf, kein Statuswechsel — die
+  // Karte bietet stattdessen das Schließen an.
+  setDb({
+    tanks: [tank('T-1', { status: 'verkauft', dealId: 'D-0' })],
+    deals: [deal('D-0', { tankIds: ['T-1'], price: 900 })],
+    quotes: [quote('Q-1', { tankIds: ['T-1'], askPrice: 1000 })],
+  })
+  assert.equal(quoteToDeal('Q-1'), null)
+  assert.equal(db().deals.length, 1)
+  assert.equal(db().quotes[0]!.status, 'gesendet')
+})
+
+test('B66 · der letzte Verkauf schließt ein längst angebrochenes Angebot', () => {
+  /*
+   * createDeal maß bisher nur an den IDs DIESES Verkaufs: war T-1 schon früher
+   * weg, blieb das Angebot nach dem Verkauf von T-2 für immer „offen" — ein
+   * Geist in der Angebotsliste mit gesperrtem Buchen-Knopf.
+   */
+  setDb({
+    tanks: [tank('T-1', { status: 'verkauft', dealId: 'D-0' }), tank('T-2')],
+    leads: [lead('L-1')],
+    deals: [deal('D-0', { tankIds: ['T-1'], price: 900, leadId: 'L-1' })],
+    quotes: [quote('Q-1', { leadId: 'L-1', tankIds: ['T-1', 'T-2'], askPrice: 2000 })],
+  })
+  createDeal({ label: 'Rest', tankIds: ['T-2'], price: 950, leadId: 'L-1', date: '2026-09-11', note: '' })
+  assert.equal(db().quotes[0]!.status, 'angenommen')
+})
+
+test('B67 · quoteBooking sagt der Rückfrage dasselbe, was die Buchung dann tut', () => {
+  // Rückfrage und Buchung rechnen über denselben Helfer — läuft das auseinander,
+  // nennt der Dialog eine Summe, die nie gebucht wird.
+  setDb({
+    tanks: [tank('T-1', { status: 'verkauft', dealId: 'D-0' }), tank('T-2', { vb: 1200 })],
+    deals: [deal('D-0', { tankIds: ['T-1'], price: 900 })],
+    quotes: [quote('Q-1', { tankIds: ['T-1', 'T-2'], askPrice: 2100, buyerOffer: 2000 })],
+  })
+  const plan = quoteBooking(db(), db().quotes[0]!)!
+  assert.deepEqual(plan, { tankIds: ['T-2'], price: 1200, partial: true })
+  // Erst buchen, DANN den Stand ziehen — db() vor dem Aufruf hielte den alten
+  // Schnappschuss ohne den neuen Verkauf.
+  const dealId = quoteToDeal('Q-1')
+  const d = db().deals.find((x) => x.id === dealId)!
+  assert.equal(d.price, plan.price)
+  assert.deepEqual(d.tankIds, plan.tankIds)
+})
+
+test('B68 · kauft ein Fremder alles weg, ist das Angebot überholt — nicht angenommen', () => {
+  /*
+   * „Angenommen" hieße, DIESER Interessent hätte gekauft. Der Schließer stellt
+   * nur bei belegtem Fremdkauf auf „abgelehnt": nennt ein tragender Verkauf
+   * keinen Käufer oder das Angebot keinen Interessenten, ist es im Zweifel
+   * derselbe Vorgang und schließt wie bisher als angenommen.
+   */
+  setDb({
+    tanks: [tank('T-1')],
+    leads: [lead('L-1'), lead('L-2')],
+    quotes: [quote('Q-1', { leadId: 'L-1', tankIds: ['T-1'], askPrice: 1000 })],
+  })
+  createDeal({ label: 'Fremd', tankIds: ['T-1'], price: 950, leadId: 'L-2', date: '2026-09-11', note: '' })
+  assert.equal(db().quotes[0]!.status, 'abgelehnt', 'überholt, nicht angenommen')
+  assert.equal(db().leads[0]!.stage, 'neu', 'L-1 hat nicht gewonnen')
+
+  // Gegenprobe: ohne benannten Käufer bleibt es die Annahme desselben Vorgangs.
+  setDb({
+    tanks: [tank('T-1')],
+    leads: [lead('L-1')],
+    quotes: [quote('Q-1', { leadId: 'L-1', tankIds: ['T-1'], askPrice: 1000 })],
+  })
+  createDeal({ label: 'Ohne Namen', tankIds: ['T-1'], price: 950, leadId: null, date: '2026-09-11', note: '' })
+  assert.equal(db().quotes[0]!.status, 'angenommen')
+
+  // Und andersherum: Angebot ohne Interessent, Verkauf mit Namen — der Name
+  // wurde vermutlich erst beim Verkauf erfasst, kein Beleg für einen Fremden.
+  setDb({
+    tanks: [tank('T-1')],
+    leads: [lead('L-2')],
+    quotes: [quote('Q-1', { leadId: null, tankIds: ['T-1'], askPrice: 1000 })],
+  })
+  createDeal({ label: 'Nachbenannt', tankIds: ['T-1'], price: 950, leadId: 'L-2', date: '2026-09-11', note: '' })
+  assert.equal(db().quotes[0]!.status, 'angenommen')
+})
+
+test('B69 · wer den Rest seines Angebots kauft, bekommt kein „abgelehnt"', () => {
+  /*
+   * Q-1 nennt T-1 und T-2; T-1 ging früher an L-2. Kauft L-1 jetzt selbst
+   * T-2, ist sein Angebot angenommen — die reine Fremdkauf-Prüfung über alle
+   * Positionen stellte es auf „abgelehnt", während dieselbe Buchung L-1 auf
+   * „gewonnen" hob: gewonnen und abgelehnt im selben Atemzug.
+   */
+  setDb({
+    tanks: [tank('T-1', { status: 'verkauft', dealId: 'D-0', leadId: 'L-2' }), tank('T-2')],
+    leads: [lead('L-1'), lead('L-2')],
+    deals: [deal('D-0', { tankIds: ['T-1'], price: 900, leadId: 'L-2' })],
+    quotes: [quote('Q-1', { leadId: 'L-1', tankIds: ['T-1', 'T-2'], askPrice: 2000 })],
+  })
+  createDeal({ label: 'Rest an L-1', tankIds: ['T-2'], price: 950, leadId: 'L-1', date: '2026-09-11', note: '' })
+  assert.equal(db().quotes[0]!.status, 'angenommen', 'eigener Kauf schlägt fremden Altverkauf')
+  assert.equal(db().leads[0]!.stage, 'gewonnen')
+})
+
+test('B70 · die Rücknahme einer Teilbuchung öffnet das Angebot wieder', () => {
+  /*
+   * removeDeal verlangte Mengengleichheit zwischen Verkauf und Angebot — die
+   * gab es bei jeder Vollbuchung, aber nie bei einem Teilrest. Nach der
+   * Rücknahme stand „angenommen" ohne Verkauf da, und die Übersicht mahnte
+   * eine Buchung an, die soeben bewusst zurückgenommen wurde.
+   */
+  setDb({
+    tanks: [tank('T-1', { status: 'verkauft', dealId: 'D-0' }), tank('T-2'), tank('T-3')],
+    leads: [lead('L-1')],
+    deals: [deal('D-0', { tankIds: ['T-1'], price: 900, leadId: 'L-2' })],
+    quotes: [quote('Q-1', { leadId: 'L-1', tankIds: ['T-1', 'T-2', 'T-3'], askPrice: 2600 })],
+  })
+  const dealId = quoteToDeal('Q-1')!
+  assert.equal(db().quotes[0]!.status, 'angenommen')
+  removeDeal(dealId)
+  assert.equal(db().quotes[0]!.status, 'gesendet', 'die Teilbuchung ist zurück, also ist das Angebot wieder offen')
+
+  // Eine echte Absage reißt die Rücknahme dagegen nicht wieder auf.
+  setDb({
+    tanks: [tank('T-1', { status: 'verkauft', dealId: 'D-1' })],
+    leads: [lead('L-2')],
+    deals: [deal('D-1', { tankIds: ['T-1'], price: 900, leadId: 'L-2' })],
+    quotes: [quote('Q-1', { leadId: 'L-1', tankIds: ['T-1'], askPrice: 1000, status: 'abgelehnt' })],
+  })
+  removeDeal('D-1')
+  assert.equal(db().quotes[0]!.status, 'abgelehnt', 'abgesagt bleibt abgesagt')
+})
+
+test('B71 · eine verwaiste Position löst nicht den vollen Verhandlungspreis aus', () => {
+  // T-9 steht im Angebot, aber nicht mehr im Bestand: der verhandelte
+  // Gesamtpreis galt für beide — für den Rest zählt sein Zeilenpreis.
+  setDb({
+    tanks: [tank('T-1')],
+    quotes: [quote('Q-1', { tankIds: ['T-1', 'T-9'], askPrice: 2100, buyerOffer: 2000 })],
+  })
+  assert.deepEqual(quoteBooking(db(), db().quotes[0]!), { tankIds: ['T-1'], price: 1000, partial: true })
 })

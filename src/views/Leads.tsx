@@ -1,14 +1,14 @@
 import { useMemo, useState } from 'react'
 import { Button, Card, EmptyState, Field, Input, Modal, Pill, SectionTitle, Select, Textarea, cx, type Tone } from '../components/ui'
 import { IconCheck, IconPlus, IconSpark, IconTrash } from '../components/icons'
-import { addLead, attachTanks, createQuote, detachTanks, noteOnLead, patchLead, patchQuote, removeLead, setLeadWatch, setQuoteTanks } from '../lib/actions'
+import { addLead, attachTanks, createQuote, detachTanks, noteOnLead, patchLead, patchQuote, quoteBooking, quoteToDeal, removeLead, setLeadWatch, setQuoteTanks } from '../lib/actions'
 import { parseMessage } from '../lib/ads'
 import { AiError, readMessage, type AiResult } from '../lib/ai'
 import { itemLabel, dateDE, eur, num, relativeDE, todayISO } from '../lib/format'
 import { openQuotesOf, quoteRelation, totals } from '../lib/stats'
 import { Verlauf } from '../components/Verlauf'
 import { MAX_PER_LEAD } from '../lib/inbox'
-import { askFor } from '../lib/inbox'
+import { askFor, collapseIds } from '../lib/inbox'
 import { useStore } from '../lib/store'
 import { STAGE_LABEL, SOURCE_LABEL, QUOTE_STATUS_LABEL, type Lead, type LeadSource, type LeadStage } from '../types'
 import type { Go, ViewProps } from '../App'
@@ -205,6 +205,14 @@ function LeadModal({ lead, onClose, readOnly, go }: { lead: Lead | null; onClose
   // also gar nicht zu sehen.
   const reserviertHier = live ? db.tanks.filter((t) => t.leadId === live.id && t.status === 'reserviert') : []
   const quote = alleAngebote[0] ?? null
+  /*
+   * Der Abschluss gehört in den Vorgang: am Telefon zugesagt heißt HIER
+   * zugesagt. Bisher war der einzige Weg zum Buchen der Reiterwechsel in die
+   * Angebote — der Dialog, in dem das ganze Gespräch dokumentiert ist, hatte
+   * keinen. Filter und Preis rechnet quoteBooking, dieselbe Rechnung wie die
+   * Buchung selbst.
+   */
+  const buchung = quote ? quoteBooking(db, quote) : null
   const quoteIds = useMemo(() => new Set(quote?.tankIds ?? []), [quote])
   // Was auseinandergeht, und in welche Richtung. „2 von 1 Position“ stand da,
   // solange ich das Angebot für eine Teilmenge der Auswahl hielt — nach dem
@@ -312,6 +320,31 @@ function LeadModal({ lead, onClose, readOnly, go }: { lead: Lead | null; onClose
               {quote && (
                 <Button size="sm" onClick={() => { onClose(); go('quotes', { leadId: lead.id, quoteId: quote.id }) }}>
                   Zum Angebot
+                </Button>
+              )}
+              {/*
+                Nur bei GENAU EINEM offenen Angebot: bei zweien buchte der
+                Knopf stillschweigend das neueste, und nichts an der Leiste
+                sagte, welches — die identischen „Anfrage <Name>"-Labels
+                unterscheiden nichts. Dann führt der Weg über „Zum Angebot",
+                wo beide Karten nebeneinanderstehen. Die Rückfrage nennt
+                Nummer und Wortlaut wie an der Angebotskarte selbst.
+              */}
+              {!readOnly && alleAngebote.length === 1 && quote && buchung && (
+                <Button
+                  size="sm"
+                  variant="primary"
+                  onClick={() => {
+                    const qTanks = quote.tankIds.map((id) => db.tanks.find((t) => t.id === id)).filter((t) => t != null)
+                    const weg = qTanks.filter((t) => t.status === 'verkauft').length
+                    const frage = buchung.partial
+                      ? `„${quote.label}“ (${quote.id}): ${weg} von ${qTanks.length} Positionen ${weg === 1 ? 'ist' : 'sind'} schon verkauft. Nur die ${buchung.tankIds.length === 1 ? 'übrige' : 'übrigen'} (${collapseIds(buchung.tankIds)}) zu ${eur(buchung.price)} als Verkauf buchen?`
+                      : `„${quote.label}“ (${quote.id}) zu ${eur(buchung.price)} als Verkauf buchen?`
+                    if (!confirm(frage)) return
+                    if (quoteToDeal(quote.id)) { onClose(); go('deals', { leadId: lead.id }) }
+                  }}
+                >
+                  Als Verkauf buchen
                 </Button>
               )}
               {verkaeufe.length > 0 && (
